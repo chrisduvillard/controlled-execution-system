@@ -1,0 +1,41 @@
+# CES starter manifest: python-service
+#
+# This is a human-editable starter. Fill in the fields before running
+# `ces classify` or `ces review`. Field names match the TaskManifest model.
+
+manifest_id: manifest-TODO
+description: |
+  TODO: describe the change a CES agent should make in this service.
+
+# Classification (let `ces classify` fill these, or set manually)
+risk_tier: tier_c
+behavior_confidence: deterministic
+change_class: refactor_or_enhancement
+
+# File boundaries — which paths the agent may edit.
+affected_files:
+  - "src/"
+forbidden_files:
+  - ".env"
+  - "secrets/"
+
+# Tool boundaries — allowlist enforced by the sandbox.
+allowed_tools:
+  - "Read"
+  - "Grep"
+  - "Glob"
+  - "Edit"
+  - "Write"
+forbidden_tools:
+  - "Bash(rm:*)"
+  - "Bash(git push:*)"
+
+# Token budget and TTL (seconds). Defaults assume Tier C.
+token_budget: 40000
+ttl_seconds: 1209600  # 14 days
+
+# Acceptance criteria — what reviewers will check.
+acceptance_criteria:
+  - "All existing tests pass."
+  - "New behaviour has a test."
+  - "No new lint errors."

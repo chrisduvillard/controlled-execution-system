@@ -1,0 +1,249 @@
+[project]
+name = "controlled-execution-system"
+version = "0.1.6"
+description = "Deterministic governance controls for AI agent-driven software delivery"
+requires-python = ">=3.12"
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [
+    { name = "Christophe Duvillard" },
+]
+keywords = ["ai", "governance", "agents", "cli", "delivery"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Build Tools",
+]
+dependencies = [
+    # Upper bounds bracket the next major so a downstream publish of an
+    # unexpected breaking change can't brick a user's install. Widen as needed
+    # after validating against the new major in CI.
+    "pydantic>=2.12.5,<3",
+    "pydantic-settings>=2.13.1,<3",
+    "pyyaml>=6.0.2,<7",
+    "sqlalchemy>=2.0.49,<3",
+    "python-statemachine>=3.0.0,<4",
+    "cryptography>=46.0.7,<50",
+    "structlog>=25.5.0,<26",
+    "typer>=0.24.1,<1",
+    "rich>=14.1.0,<15",
+    "httpx>=0.28.1,<1",
+]
+
+[project.optional-dependencies]
+docker = [
+    "docker>=7.1.0,<8",
+]
+observability = [
+    "opentelemetry-api>=1.40.0,<2",
+    "opentelemetry-sdk>=1.40.0,<2",
+    "opentelemetry-exporter-otlp-proto-grpc>=1.40.0,<2",
+    "opentelemetry-semantic-conventions>=0.61b0,<1",
+    "opentelemetry-instrumentation-httpx>=0.61b0,<1",
+    "opentelemetry-instrumentation-sqlalchemy>=0.61b0,<1",
+]
+all = [
+    "controlled-execution-system[docker,observability]",
+]
+# Compat-tests extras pin the SQLAlchemy/Postgres stack used only by the
+# integration test compatibility suite under ``tests/integration/_compat``.
+# These are not part of the published runtime — they're only installed when
+# running the legacy SQL-backed integration tests against a Postgres service.
+compat-tests = [
+    "alembic>=1.18.4",
+    "asyncpg>=0.31.0",
+    "psycopg[binary]>=3.2",
+    "testcontainers>=4.10.0",
+]
+
+[project.scripts]
+ces = "ces.cli:app"
+
+[dependency-groups]
+dev = [
+    "controlled-execution-system[observability]",
+    "hatchling>=1.27.0",
+    "twine>=6.1.0",
+    "pytest>=9.0.3",
+    "pytest-asyncio>=1.0.0",
+    "pytest-cov>=7.1.0",
+    "ruff>=0.15.9",
+    "mypy>=1.20.0",
+    "pre-commit>=4.1.0",
+    "hypothesis>=6.100.0",
+    "pip-audit>=2.8",
+    "vulture>=2.14",
+]
+ci = [
+    { include-group = "dev" },
+    "controlled-execution-system[docker,compat-tests]",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project.urls]
+Homepage = "https://github.com/chrisduvillard/controlled-execution-system"
+Repository = "https://github.com/chrisduvillard/controlled-execution-system"
+Documentation = "https://github.com/chrisduvillard/controlled-execution-system/blob/master/docs/Quickstart.md"
+Issues = "https://github.com/chrisduvillard/controlled-execution-system/issues"
+Changelog = "https://github.com/chrisduvillard/controlled-execution-system/blob/master/CHANGELOG.md"
+
+[tool.hatch.build]
+exclude = [
+    "/.ces",
+    "/.claude",
+    "/.codex",
+    "/.coverage",
+    "/.mypy_cache",
+    "/.planning",
+    "/.pytest_cache",
+    "/.ruff_cache",
+    "/.tmp",
+    "/.uv-cache",
+    "/.venv",
+    "/tasks",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/ces"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+extend-exclude = ["*.tcss"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "UP", "S", "B", "A", "C4", "DTZ", "T10", "ICN", "PIE", "PT", "RSE", "RET", "SIM", "TID", "TCH", "ARG", "ERA", "PGH", "PL", "TRY", "FLY", "PERF", "RUF"]
+ignore = [
+    "ARG001",
+    "ARG002",
+    "B008",
+    "B009",
+    "B010",
+    "B023",
+    "B904",
+    "B905",
+    "C408",
+    "DTZ011",
+    "E501",
+    "ERA001",
+    "N817",
+    "PERF401",
+    "PLC0415",
+    "PLW0108",
+    "PLW0602",
+    "PLR0911",
+    "PLR0912",
+    "PLR0913",
+    "PLR0915",
+    "PLR2004",
+    "PT006",
+    "PT012",
+    "PT018",
+    "RET505",
+    "RUF006",
+    "RUF012",
+    "SIM105",
+    "SIM102",
+    "SIM108",
+    "TC001",
+    "TC002",
+    "TC003",
+    "TRY300",
+    "TRY003",
+    "TRY004",
+    "TRY301",
+    "UP017",
+    "UP035",
+    "UP042",
+    "UP045",
+    "UP046",
+    "UP047",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"src/ces/cli/*.py" = ["F841"]
+"src/ces/control/models/*.py" = ["RUF012", "UP042"]
+"src/ces/control/models/__init__.py" = ["F401", "RUF022"]
+"src/ces/control/services/policy_engine.py" = ["SIM110"]
+"src/ces/execution/agent_runner.py" = ["RUF012"]
+"src/ces/execution/providers/*.py" = ["TRY300"]
+"src/ces/execution/runtimes/adapters.py" = ["S603"]
+"src/ces/harness/models/*.py" = ["UP042"]
+"src/ces/harness/sensors/dependency.py" = ["PIE810", "PLW2901"]
+"src/ces/harness/services/guide_pack_builder.py" = ["F841"]
+"src/ces/intake/services/interview_engine.py" = ["RUF059"]
+"src/ces/shared/config.py" = ["S104", "S105"]
+"src/ces/shared/enums.py" = ["S105", "UP042"]
+"tests/support/*.py" = ["RUF009"]
+"tests/**/*.py" = ["ARG005", "B017", "DTZ001", "DTZ011", "E402", "F401", "F821", "F841", "PT001", "PT011", "RET504", "RUF043", "RUF059", "S101", "S105", "S106", "SIM102"]
+
+[tool.ruff.format]
+quote-style = "double"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+addopts = "-p no:anyio"
+markers = [
+    "integration: marks optional compatibility tests that may require Docker services (deselect with '-m \"not integration\"')",
+]
+
+[tool.coverage.run]
+source = ["ces"]
+branch = true
+omit = [
+    # The six expert-workflow CLI commands below predate the builder-first
+    # pivot and are kept omitted for now: they shell out to services that
+    # are mocked differently than the builder path. Bringing them under the
+    # gate is tracked as a 0.1.x follow-up.
+    "src/ces/cli/audit_cmd.py",
+    "src/ces/cli/classify_cmd.py",
+    "src/ces/cli/gate_cmd.py",
+    "src/ces/cli/intake_cmd.py",
+    "src/ces/cli/report_cmd.py",
+    "src/ces/cli/triage_cmd.py",
+]
+
+[tool.coverage.report]
+# Restored to the PRD-mandated 90% gate in 0.1.3 after the 0.1.1 fixture
+# work stabilised the local-first suite (see tests/integration/test_freshcart_e2e.py).
+# The CLI command modules in the omit list below remain omitted pending a
+# later coverage pass — they cover legacy/expert commands that are not part
+# of the builder-first hot path.
+fail_under = 90
+show_missing = true
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+plugins = ["pydantic.mypy"]
+check_untyped_defs = false
+disallow_any_generics = false
+disallow_incomplete_defs = false
+disallow_subclassing_any = false
+disallow_untyped_calls = false
+disallow_untyped_decorators = false
+disallow_untyped_defs = false
+warn_return_any = false
+warn_unused_ignores = false
+disable_error_code = [
+    "abstract",
+    "arg-type",
+    "assignment",
+    "attr-defined",
+    "call-arg",
+    "import-untyped",
+    "index",
+    "list-item",
+    "operator",
+    "union-attr",
+]

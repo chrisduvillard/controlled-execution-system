@@ -1,0 +1,38 @@
+# CES starter manifest: python-library
+#
+# Tailored for libraries published to PyPI — extra guardrails around
+# public API and version bumps.
+
+manifest_id: manifest-TODO
+description: |
+  TODO: describe the library-level change a CES agent should make.
+
+risk_tier: tier_b
+behavior_confidence: deterministic
+change_class: api_surface_change
+
+affected_files:
+  - "src/"
+  - "tests/"
+forbidden_files:
+  - "CHANGELOG.md"  # prefer ces-generated changelog entries
+  - "pyproject.toml"  # version bumps are humans-only
+
+allowed_tools:
+  - "Read"
+  - "Grep"
+  - "Glob"
+  - "Edit"
+  - "Write"
+forbidden_tools:
+  - "Bash(rm:*)"
+  - "Bash(git push:*)"
+  - "Bash(uv publish:*)"
+
+token_budget: 60000
+ttl_seconds: 604800  # 7 days (Tier B)
+
+acceptance_criteria:
+  - "Public API is backwards-compatible or documented as breaking."
+  - "Type stubs and docs are updated together."
+  - "Coverage does not drop below the project gate."

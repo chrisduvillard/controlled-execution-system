@@ -1,0 +1,37 @@
+# CES Gating pipeline for GitLab CI
+# Runs ces doctor and ces dogfood review on merge requests.
+
+stages:
+  - ces-gating
+
+variables:
+  PIP_DISABLE_PIP_VERSION_CHECK: "1"
+
+ces-gating:
+  stage: ces-gating
+  image: python:3.12-slim
+  variables:
+    CES_DEMO_MODE: "1"
+  before_script:
+    - pip install --upgrade pip
+    - pip install controlled-execution-system
+  script:
+    - |
+      if command -v claude >/dev/null 2>&1 || command -v codex >/dev/null 2>&1; then
+        ces doctor
+      else
+        echo "Skipping ces doctor; no CLI runtime installed on runner."
+      fi
+    - |
+      if [ -n "$CI_MERGE_REQUEST_TARGET_BRANCH_NAME" ]; then
+        git fetch origin "$CI_MERGE_REQUEST_TARGET_BRANCH_NAME"
+        ces dogfood --base "origin/$CI_MERGE_REQUEST_TARGET_BRANCH_NAME"
+      fi
+  artifacts:
+    when: always
+    paths:
+      - .ces/artifacts/
+    expire_in: 1 week
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'

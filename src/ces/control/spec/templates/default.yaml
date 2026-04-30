@@ -1,0 +1,26 @@
+name: default
+version: 1
+required_sections:
+  - "## Problem"
+  - "## Users"
+  - "## Success Criteria"
+  - "## Non-Goals"
+  - "## Risks & Mitigations"
+  - "## Stories"
+  - "## Rollback Plan"
+story_header_pattern: "^### Story: (.+)$"
+required_story_fields:
+  - id
+  - size
+  - description
+  - acceptance
+optional_story_fields:
+  - risk
+  - depends_on
+# Mirrors SignalHints fields in src/ces/control/models/spec.py — keep in sync.
+signal_fields:
+  - primary_change_class
+  - blast_radius_hint
+  - touches_data
+  - touches_auth
+  - touches_billing

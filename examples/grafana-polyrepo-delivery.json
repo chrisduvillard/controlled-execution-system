@@ -1,0 +1,44 @@
+{
+  "title": "CES Polyrepo Delivery Visibility",
+  "schemaVersion": 41,
+  "version": 1,
+  "timezone": "browser",
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Active Registry Entries",
+      "datasource": "${DS_PROMETHEUS}",
+      "targets": [
+        {
+          "expr": "ces_polyrepo_registry_entries_active"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Active Subscriptions",
+      "datasource": "${DS_PROMETHEUS}",
+      "targets": [
+        {
+          "expr": "ces_polyrepo_subscriptions_active"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "Invalidation Event Throughput",
+      "datasource": "${DS_PROMETHEUS}",
+      "targets": [
+        {
+          "expr": "ces_polyrepo_invalidation_events_total"
+        },
+        {
+          "expr": "ces_polyrepo_invalidation_events_processed_total"
+        }
+      ]
+    }
+  ]
+}

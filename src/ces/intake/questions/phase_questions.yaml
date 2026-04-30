@@ -1,0 +1,123 @@
+# Intake interview questions organized by phase and stage.
+#
+# Each question has:
+#   question_id: Unique identifier (Q-P{phase}-{stage_initial}{num})
+#   text: The question text
+#   category: block | flag | proceed (AssumptionCategory)
+#   is_material: Whether the question covers material concerns
+#   condition: (conditional stage only) Trigger condition name
+
+phases:
+  1:
+    mandatory:
+      - question_id: "Q-P1-M01"
+        text: "What is the primary purpose of this project?"
+        category: "block"
+        is_material: true
+      - question_id: "Q-P1-M02"
+        text: "What programming language and framework does this project use?"
+        category: "block"
+        is_material: true
+      - question_id: "Q-P1-M03"
+        text: "What are the critical business rules that must be preserved?"
+        category: "block"
+        is_material: true
+      - question_id: "Q-P1-M04"
+        text: "Who are the primary stakeholders for this project?"
+        category: "block"
+        is_material: false
+      - question_id: "Q-P1-M05"
+        text: "What is the target deployment environment?"
+        category: "flag"
+        is_material: false
+    conditional:
+      - question_id: "Q-P1-C01"
+        text: "Does this project interact with external APIs?"
+        category: "flag"
+        is_material: false
+        condition: "has_external_deps"
+      - question_id: "Q-P1-C02"
+        text: "Are there existing database schemas that must be preserved?"
+        category: "block"
+        is_material: true
+        condition: "has_database"
+      - question_id: "Q-P1-C03"
+        text: "Does the project have regulatory compliance requirements?"
+        category: "block"
+        is_material: true
+        condition: "has_compliance"
+    completeness:
+      - question_id: "Q-P1-K01"
+        text: "Are there any other constraints or requirements not yet captured?"
+        category: "proceed"
+        is_material: false
+      - question_id: "Q-P1-K02"
+        text: "Is there anything about the project architecture that should be documented?"
+        category: "proceed"
+        is_material: false
+
+  2:
+    mandatory:
+      - question_id: "Q-P2-M01"
+        text: "What are the key interfaces between system components?"
+        category: "block"
+        is_material: true
+      - question_id: "Q-P2-M02"
+        text: "What is the expected data flow through the system?"
+        category: "block"
+        is_material: true
+      - question_id: "Q-P2-M03"
+        text: "What are the performance requirements for this phase?"
+        category: "flag"
+        is_material: false
+    conditional:
+      - question_id: "Q-P2-C01"
+        text: "Are there integration points with third-party services?"
+        category: "flag"
+        is_material: false
+        condition: "has_integrations"
+      - question_id: "Q-P2-C02"
+        text: "Does this phase involve data migration?"
+        category: "block"
+        is_material: true
+        condition: "has_migration"
+    completeness:
+      - question_id: "Q-P2-K01"
+        text: "Have all cross-team dependencies been identified?"
+        category: "proceed"
+        is_material: false
+
+  3:
+    mandatory:
+      - question_id: "Q-P3-M01"
+        text: "What are the security requirements for this phase?"
+        category: "block"
+        is_material: true
+      - question_id: "Q-P3-M02"
+        text: "What monitoring and observability is required?"
+        category: "flag"
+        is_material: false
+      - question_id: "Q-P3-M03"
+        text: "What is the rollback strategy if deployment fails?"
+        category: "block"
+        is_material: true
+    conditional:
+      - question_id: "Q-P3-C01"
+        text: "Are there feature flags needed for gradual rollout?"
+        category: "flag"
+        is_material: false
+        condition: "has_feature_flags"
+      - question_id: "Q-P3-C02"
+        text: "Does this phase require load testing before deployment?"
+        category: "flag"
+        is_material: false
+        condition: "has_load_testing"
+    completeness:
+      - question_id: "Q-P3-K01"
+        text: "Are there any remaining risks not covered by the current plan?"
+        category: "proceed"
+        is_material: false
+      - question_id: "Q-P3-K02"
+        text: "Is the documentation complete for operational handoff?"
+        category: "proceed"
+        is_material: false

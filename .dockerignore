@@ -1,0 +1,16 @@
+.venv/
+.git/
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+tests/
+docs/
+.planning/
+.claude/
+.coverage
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.ces/
+tasks/

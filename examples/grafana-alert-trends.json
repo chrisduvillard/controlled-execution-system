@@ -1,0 +1,44 @@
+{
+  "title": "CES Alert Trends",
+  "schemaVersion": 41,
+  "version": 1,
+  "timezone": "browser",
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "Active Alerts by Severity",
+      "datasource": "${DS_PROMETHEUS}",
+      "targets": [
+        {
+          "expr": "sum by (severity, project_id) (ces_alert_active_total)",
+          "legendFormat": "{{project_id}} {{severity}}"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "Calibration Observation Mode",
+      "datasource": "${DS_PROMETHEUS}",
+      "targets": [
+        {
+          "expr": "ces_alert_calibration_observation_only",
+          "legendFormat": "{{project_id}}"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "Agent Error Rate",
+      "datasource": "${DS_PROMETHEUS}",
+      "targets": [
+        {
+          "expr": "ces_agent_error_rate",
+          "legendFormat": "{{project_id}}"
+        }
+      ]
+    }
+  ]
+}

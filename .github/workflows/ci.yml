@@ -1,0 +1,57 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v7
+        with:
+          version: ">=0.11.3"
+      - run: uv sync --frozen --group ci
+      - run: uv run ruff check src/ tests/
+      - run: uv run ruff format --check src/ tests/
+
+  typecheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v7
+        with:
+          version: ">=0.11.3"
+      - run: uv sync --frozen --group ci
+      - run: uv run mypy src/ces/ --ignore-missing-imports
+
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v7
+        with:
+          version: ">=0.11.3"
+      - run: uv sync --frozen --group ci
+      - name: Audit dependencies for known CVEs
+        run: |
+          uv export --frozen --group ci --format requirements-txt --no-emit-project --no-hashes --output-file /tmp/ces-ci-requirements.txt
+          uv run pip-audit --strict -r /tmp/ces-ci-requirements.txt
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v7
+        with:
+          version: ">=0.11.3"
+      - run: uv sync --frozen --group ci
+      - name: Run local-first tests with coverage
+        run: uv run pytest tests/ -m "not integration" --cov=ces --cov-fail-under=90 --cov-report=term-missing -q -W error
+      - name: Build distributions
+        run: uv build
+      - name: Check distribution metadata
+        run: uvx twine check dist/*

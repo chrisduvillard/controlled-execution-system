@@ -1,0 +1,54 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+dist/
+build/
+*.egg-info/
+
+# Environment
+.env
+!.env.example
+
+# IDE
+.idea/
+.vscode/
+*.swp
+.claude/worktrees/
+.claude/settings.local.json
+.claude/*.lock
+.worktrees/
+
+# Reviewer-agent scratch artifacts (codex / claude CLI sub-agents create
+# these inside the working tree when exploring stateful code paths)
+scratch_*/
+tmp_test.cmd
+
+# Testing
+.coverage
+coverage.json
+htmlcov/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# CES project-level secrets
+*.private_key
+.controlled-execution/keys/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# UV
+.python-version
+
+# Local CES project state (created by ces init / ces build)
+.ces/
+
+# Internal development artifacts
+.codex/
+.planning/
+tasks/
+docs/superpowers/

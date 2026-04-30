@@ -1,0 +1,53 @@
+name: Publish to PyPI
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write  # Required for trusted publishing
+      contents: read   # Required for actions/checkout (the permissions block replaces defaults, not merges)
+    steps:
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v7
+        with:
+          version: ">=0.11.3"
+      - run: uv sync --frozen
+
+      - name: Run tests before publishing
+        env:
+          CES_DATABASE_URL: "sqlite+aiosqlite:///test.db"
+          CES_DATABASE_SYNC_URL: "sqlite:///test.db"
+        run: uv run pytest tests/unit/ -q -W error
+
+      - name: Run builder-first smoke tests
+        run: uv run pytest tests/integration/test_freshcart_e2e.py -q
+
+      - name: Build distributions
+        run: uv build
+
+      - name: Check distribution metadata
+        run: uvx twine check dist/*
+
+      - name: Smoke test installed CLI
+        shell: bash
+        run: |
+          wheel_path="$(python - <<'PY'
+          from pathlib import Path
+
+          wheels = sorted(Path("dist").glob("controlled_execution_system-*.whl"))
+          if len(wheels) != 1:
+              raise SystemExit(f"Expected exactly one wheel, found {len(wheels)}: {wheels}")
+          print(wheels[0])
+          PY
+          )"
+          uv tool run --from "$wheel_path" ces --help
+          uv tool run --from "$wheel_path" ces init --help
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1

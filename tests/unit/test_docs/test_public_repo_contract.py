@@ -1,0 +1,52 @@
+"""Public repository contract checks for GitHub and release docs."""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[3]
+
+
+def test_readme_uses_local_first_contract_and_avoids_stale_numeric_badges() -> None:
+    """README should describe the local public contract and avoid frozen counts."""
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+
+    assert "local runtime execution" in readme.lower() or "supported local runtime" in readme.lower()
+    assert "Authorization: Bearer" not in readme
+    assert "X-API-Key" not in readme
+    assert "tests-3087" not in readme
+    assert "coverage-91%25" not in readme
+
+
+def test_production_deployment_guide_uses_real_package_name() -> None:
+    """Deployment docs should install the published package by its actual name."""
+    guide = (ROOT / "docs" / "Production_Deployment_Guide.md").read_text(encoding="utf-8")
+
+    assert "uv tool install controlled-execution-system" in guide
+    assert "uv tool install ces" not in guide
+
+
+def test_publish_workflow_keeps_strict_tests_and_cli_smoke() -> None:
+    """Release publishing must keep warning-strict tests and wheel smoke coverage."""
+    workflow = (ROOT / ".github" / "workflows" / "publish.yml").read_text(encoding="utf-8")
+
+    assert "uv run pytest tests/unit/ -q -W error" in workflow
+    assert "uv tool run --from" in workflow
+    assert "ces --help" in workflow
+
+
+def test_github_community_files_exist_for_public_repo() -> None:
+    """Public GitHub repos need issue intake, PR guidance, and ownership metadata."""
+    assert (ROOT / ".github" / "CODEOWNERS").is_file()
+    assert (ROOT / ".github" / "pull_request_template.md").is_file()
+
+    issue_templates = list((ROOT / ".github" / "ISSUE_TEMPLATE").glob("*"))
+    assert issue_templates, "Expected at least one issue template"
+
+
+def test_readme_documents_repo_self_dogfooding() -> None:
+    """Public docs should explain how to bootstrap CES on the CES repo itself."""
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+
+    assert "ces dogfood" in readme
+    assert ".ces/" in readme

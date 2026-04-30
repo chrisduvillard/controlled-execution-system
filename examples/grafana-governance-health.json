@@ -1,0 +1,44 @@
+{
+  "title": "CES Governance Health",
+  "schemaVersion": 41,
+  "version": 1,
+  "timezone": "browser",
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "Manifest Issuance Rate",
+      "datasource": "${DS_PROMETHEUS}",
+      "targets": [
+        {
+          "expr": "ces_control_plane_manifest_issuance_rate",
+          "legendFormat": "{{project_id}}"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "Approval Queue Depth",
+      "datasource": "${DS_PROMETHEUS}",
+      "targets": [
+        {
+          "expr": "ces_control_plane_approval_queue_depth",
+          "legendFormat": "{{project_id}}"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "System Burn Rate",
+      "datasource": "${DS_PROMETHEUS}",
+      "targets": [
+        {
+          "expr": "ces_system_cost_burn_rate",
+          "legendFormat": "{{project_id}}"
+        }
+      ]
+    }
+  ]
+}
