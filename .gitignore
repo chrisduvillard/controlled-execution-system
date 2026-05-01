@@ -19,6 +19,7 @@ build/
 .claude/settings.local.json
 .claude/*.lock
 .worktrees/
+.codex
 
 # Reviewer-agent scratch artifacts (codex / claude CLI sub-agents create
 # these inside the working tree when exploring stateful code paths)
