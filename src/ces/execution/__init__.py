@@ -27,14 +27,13 @@ if TYPE_CHECKING:
         CodexRuntimeAdapter,
         RuntimeRegistry,
     )
-    from ces.execution.sandbox import AgentSandbox, SandboxConfig
+    from ces.execution.secrets import build_allowed_env, scrub_secrets_from_text, strip_secret_env
 
 __all__ = [
     "AgentRunResult",
     "AgentRunner",
     "AgentRuntimeProtocol",
     "AgentRuntimeResult",
-    "AgentSandbox",
     "CLILLMProvider",
     "CapturedOutput",
     "ChainOfCustodyTracker",
@@ -48,7 +47,9 @@ __all__ = [
     "OutputCapture",
     "ProviderRegistry",
     "RuntimeRegistry",
-    "SandboxConfig",
+    "build_allowed_env",
+    "scrub_secrets_from_text",
+    "strip_secret_env",
 ]
 
 
@@ -91,11 +92,8 @@ def __getattr__(name: str) -> Any:
         from ces.execution import runtimes as runtimes_module
 
         return getattr(runtimes_module, name)
-    if name in {"AgentSandbox", "SandboxConfig"}:
-        from ces.execution.sandbox import AgentSandbox, SandboxConfig
+    if name in {"build_allowed_env", "scrub_secrets_from_text", "strip_secret_env"}:
+        from ces.execution import secrets as secrets_module
 
-        return {
-            "AgentSandbox": AgentSandbox,
-            "SandboxConfig": SandboxConfig,
-        }[name]
+        return getattr(secrets_module, name)
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

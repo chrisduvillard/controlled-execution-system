@@ -6,7 +6,9 @@ Parses requirements.txt and pyproject.toml using stdlib only.
 
 from __future__ import annotations
 
+import json
 import re
+from pathlib import Path
 
 from ces.harness.models.sensor_result import SensorFinding
 from ces.harness.sensors._file_reader import read_file_safe
@@ -29,6 +31,7 @@ _LOCKFILE_NAMES = {
     "pyproject.toml": {"uv.lock", "poetry.lock", "pdm.lock"},
     "Pipfile": {"Pipfile.lock"},
 }
+_AUDIT_ARTIFACT_NAMES = ("pip-audit-report.json", "pip-audit.json")
 
 # Pattern for version-pinned requirement lines (==, >=, <=, ~=, !=, >)
 _PINNED_RE = re.compile(r"[><=!~]=")
@@ -62,6 +65,10 @@ class DependencySensor(BaseSensor):
         unpinned_count = 0
 
         affected_set = set(affected_files)
+        root = Path(project_root) if project_root else None
+        audit_artifact = context.get("dependency_audit_artifact")
+        audit_findings = self._parse_pip_audit_artifact(project_root, audit_artifact)
+        findings.extend(audit_findings)
 
         for dep_file in dep_files:
             # Lockfile drift check
@@ -79,6 +86,20 @@ class DependencySensor(BaseSensor):
                         suggestion="Run package manager to update lockfile",
                     )
                 )
+            elif root is not None:
+                stale_lock = _find_stale_lockfile(root, dep_file, expected_locks)
+                if stale_lock is not None:
+                    msg = f"{stale_lock} appears older than {dep_file}"
+                    findings.append(msg)
+                    self._findings.append(
+                        SensorFinding(
+                            category="stale_lockfile",
+                            severity="medium",
+                            location=stale_lock,
+                            message=msg,
+                            suggestion="Regenerate the lockfile after dependency changes",
+                        )
+                    )
 
             content = read_file_safe(project_root, dep_file)
             if content is None:
@@ -167,3 +188,58 @@ class DependencySensor(BaseSensor):
                 if not _PINNED_RE.search(dep_str):
                     unpinned += 1
         return unpinned, total
+
+    def _parse_pip_audit_artifact(self, project_root: str, artifact_path: str | None) -> list[str]:
+        if not project_root:
+            return []
+        candidate_names = [artifact_path] if artifact_path else list(_AUDIT_ARTIFACT_NAMES)
+        for candidate in candidate_names:
+            if not candidate:
+                continue
+            content = read_file_safe(project_root, candidate)
+            if content is None:
+                continue
+            try:
+                payload = json.loads(content)
+            except json.JSONDecodeError:
+                msg = f"{candidate}: invalid pip-audit JSON"
+                self._findings.append(
+                    SensorFinding(
+                        category="invalid_dependency_audit_artifact",
+                        severity="medium",
+                        location=candidate,
+                        message=msg,
+                        suggestion="Regenerate the pip-audit JSON report",
+                    )
+                )
+                return [msg]
+            findings = []
+            for dependency in payload.get("dependencies", []):
+                vulns = dependency.get("vulns", []) if isinstance(dependency, dict) else []
+                for vuln in vulns:
+                    vuln_id = vuln.get("id", "unknown") if isinstance(vuln, dict) else "unknown"
+                    name = dependency.get("name", "unknown") if isinstance(dependency, dict) else "unknown"
+                    msg = f"{candidate}: {name} has vulnerability {vuln_id}"
+                    findings.append(msg)
+                    self._findings.append(
+                        SensorFinding(
+                            category="dependency_vulnerability",
+                            severity="high",
+                            location=candidate,
+                            message=msg,
+                            suggestion="Upgrade or remove the vulnerable dependency",
+                        )
+                    )
+            return findings
+        return []
+
+
+def _find_stale_lockfile(root: Path, dep_file: str, expected_locks: set[str]) -> str | None:
+    dep_path = root / dep_file
+    if not expected_locks or not dep_path.exists():
+        return None
+    for lock_name in expected_locks:
+        lock_path = root / lock_name
+        if lock_path.exists() and lock_path.stat().st_mtime <= dep_path.stat().st_mtime:
+            return lock_name
+    return None

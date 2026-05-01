@@ -2,7 +2,7 @@
 
 Exercises the local builder-first CLI loop through the same entrypoints the
 public quickstart documents, using deterministic mock services so the tests do
-not require Docker, Postgres, Redis, or LLM API access.
+not require Postgres, Redis, or LLM API access.
 """
 
 from __future__ import annotations
@@ -28,6 +28,7 @@ from tests.support.builder_scenarios import (
     BROWNFIELD_RETRY_SCENARIO,
     BuilderScenario,
     BuilderScenarioHarness,
+    _completion_stdout,
 )
 
 runner = CliRunner()
@@ -40,6 +41,7 @@ FRESHCART_BUILDER_SCENARIO = BuilderScenario(
         "build",
         "Build a FreshCart order summary service",
         "--yes",
+        "--accept-runtime-side-effects",
         "--acceptance",
         "Shoppers can see item counts plus subtotal, tax, and shipping",
     ),
@@ -64,7 +66,7 @@ FRESHCART_BUILDER_SCENARIO = BuilderScenario(
             "reported_model": "gpt-5.4",
             "invocation_ref": "run-freshcart-1",
             "exit_code": 0,
-            "stdout": "FreshCart builder run complete",
+            "stdout": _completion_stdout(criterion="Shoppers can see item counts plus subtotal, tax, and shipping"),
             "stderr": "",
             "duration_seconds": 0.5,
         },

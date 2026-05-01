@@ -59,6 +59,23 @@ class DependencyChangeEvidence(CESBaseModel):
     audit_evidence: str = Field(min_length=1)
 
 
+class ExplorationEvidence(CESBaseModel):
+    """One concrete repo/context item inspected before editing."""
+
+    path: str = Field(min_length=1)
+    reason: str = Field(min_length=1)
+    observation: str = Field(min_length=1)
+
+
+class VerificationCommandEvidence(CESBaseModel):
+    """One command or tool run used to verify completion."""
+
+    command: str = Field(min_length=1)
+    exit_code: int = Field(ge=0)
+    summary: str = Field(min_length=1)
+    artifact_path: str | None = None
+
+
 class CompletionClaim(CESBaseModel):
     """The structured 'I'm done' payload an agent must emit before exit.
 
@@ -76,6 +93,8 @@ class CompletionClaim(CESBaseModel):
     open_questions: tuple[str, ...] = ()
     scope_deviations: tuple[str, ...] = ()
     dependency_changes: tuple[DependencyChangeEvidence, ...] = ()
+    exploration_evidence: tuple[ExplorationEvidence, ...] = ()
+    verification_commands: tuple[VerificationCommandEvidence, ...] = ()
 
 
 class VerificationFinding(CESBaseModel):

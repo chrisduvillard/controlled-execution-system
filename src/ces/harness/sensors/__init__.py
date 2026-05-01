@@ -8,7 +8,7 @@ Sensor packs:
     PerformanceSensor: Performance checks (benchmarks, resource usage)
     DependencySensor: Dependency checks (outdated packages, license compliance)
     MigrationSensor: Migration checks (schema diffs, rollback safety)
-    InfrastructureSensor: Infrastructure checks (Dockerfile linting, container security)
+    InfrastructureSensor: Infrastructure checks (repo configuration hygiene)
     AccessibilitySensor: Accessibility checks (WCAG compliance, ARIA validation)
     ResilienceSensor: Resilience checks (retry logic, circuit breakers)
     CoverageSensor: Test-coverage checks (line/branch coverage metrics)

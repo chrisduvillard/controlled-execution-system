@@ -27,6 +27,7 @@ from ces.control.services.workflow_engine import WorkflowEngine
 from ces.harness.models.completion_claim import VerificationResult
 from ces.harness.models.tool_call_signature import ToolCallSignature
 from ces.harness.prompts.engineering_charter import attach_engineering_charter
+from ces.harness.services.change_impact import build_observability_acceptance_template
 from ces.shared.base import CESBaseModel
 from ces.shared.enums import ActorType, WorkflowState
 
@@ -46,6 +47,12 @@ Schema (emit one such block, no markdown wrapping the JSON):
   "task_id": "<this manifest's id>",
   "summary": "<one sentence: what you did>",
   "files_changed": ["<path>", ...],
+  "exploration_evidence": [
+    {"path": "<file/test/doc inspected>", "reason": "<why it mattered>", "observation": "<convention or behavior learned>"}
+  ],
+  "verification_commands": [
+    {"command": "<command run>", "exit_code": 0, "summary": "<key result>", "artifact_path": "<optional artifact path>"}
+  ],
   "criteria_satisfied": [
     {"criterion": "<exact text from acceptance_criteria>", "evidence": "<command output, file path, or other concrete proof>", "evidence_kind": "command_output | file_artifact | manual_inspection"}
   ],
@@ -60,6 +67,8 @@ Schema (emit one such block, no markdown wrapping the JSON):
 Rules:
 - The `task_id` must equal the manifest id printed below.
 - `files_changed` must list every file you edited; out-of-scope files fail the gate.
+- `exploration_evidence` must list the repo files, tests, docs, or conventions you inspected before editing when the manifest requires it.
+- `verification_commands` must list the concrete verification commands you ran when the manifest requires it.
 - Every entry in this manifest's `acceptance_criteria` MUST appear once in `criteria_satisfied` with concrete evidence (a command you ran and its output, or a file artifact you produced).
 - If you changed dependency files, include one `dependency_changes` entry per dependency file.
 - Surface uncertainty in `open_questions` rather than hide it.
@@ -76,6 +85,18 @@ def _build_prompt_pack(manifest: object) -> str:
         f"Task:\n{description}\n"
         f"Manifest ID:\n{getattr(manifest, 'manifest_id', 'unknown')}"
     )
+    mcp_servers = getattr(manifest, "mcp_servers", ())
+    if isinstance(mcp_servers, tuple) and mcp_servers:
+        base += (
+            "\nMCP grounding requested:\n"
+            + "\n".join(f"- {server}" for server in mcp_servers)
+            + "\nUse these servers only when the runtime exposes them; disclose unsupported grounding."
+        )
+    observability_template = build_observability_acceptance_template(
+        list(getattr(manifest, "affected_files", ()) or ())
+    )
+    if observability_template:
+        base += f"\n{observability_template}"
 
     sensors = getattr(manifest, "verification_sensors", ())
     gate_active = isinstance(sensors, tuple) and len(sensors) > 0

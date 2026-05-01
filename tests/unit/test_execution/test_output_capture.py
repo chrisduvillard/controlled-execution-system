@@ -2,7 +2,7 @@
 
 Tests verify:
 - CapturedOutput is a frozen CESBaseModel with correct fields
-- OutputCapture reads stdout/stderr from Docker containers
+- OutputCapture reads stdout/stderr from attached stream sources
 - OutputCapture enforces 1MB size limit
 - Truncation flag is set when output exceeds limit
 """
@@ -48,7 +48,7 @@ class TestOutputCapture:
     """Test OutputCapture streaming with byte limits."""
 
     def test_capture_reads_stdout_and_stderr(self) -> None:
-        """capture() reads stdout and stderr from container."""
+        """capture() reads stdout and stderr from stream source."""
         container = MagicMock()
         container.attach.return_value = [
             (b"hello stdout", None),

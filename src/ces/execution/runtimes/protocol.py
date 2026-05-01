@@ -58,7 +58,7 @@ class AgentRuntimeProtocol(Protocol):
             allowed_tools: Allowlist of agent tools (empty tuple = runtime
                 default; explicit tuple = exactly those tools). Adapters
                 that understand tool allowlists (e.g. Claude) honour this;
-                others (e.g. Codex) rely on their own sandbox flags.
+                others (e.g. Codex) rely on their own runtime-boundary flags.
         """
 
     def summarize_evidence(self, evidence_context: dict) -> tuple[str, str]:

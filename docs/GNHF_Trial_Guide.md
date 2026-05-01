@@ -44,7 +44,7 @@ Do not use `gnhf` unsupervised on code that defines CES governance guarantees:
 - audit-ledger and tamper-evidence paths
 - kill switch and emergency enforcement logic
 - `src/ces/execution/agent_runner.py`
-- sandbox and runtime-boundary code under `src/ces/execution/`
+- runtime-boundary code under `src/ces/execution/`
 
 If a run touches those areas unintentionally, stop and discard or isolate the work before review.
 
@@ -70,7 +70,7 @@ If a run touches those areas unintentionally, stop and discard or isolate the wo
    gnhf --agent codex --max-iterations 4 \
      "Improve CES status command copy and tests. Stay within src/ces/cli/status_cmd.py \
      and tests/unit/test_cli/. Do not touch src/ces/control/, src/ces/execution/, \
-     approval, triage, review, manifest, audit, kill switch, sandbox, or runtime-boundary logic. \
+     approval, triage, review, manifest, audit, kill switch, or runtime-boundary logic. \
      Add or update tests for any behavior change."
    ```
 
@@ -94,7 +94,7 @@ Prefer prompts that look like this:
 ```text
 Add tests for the runtime adapter transcript path behavior.
 Only edit tests/unit/test_execution/ and the adapter test helpers needed for that case.
-Do not modify sandbox, runtime-boundary, manifest, audit, approval, triage,
+Do not modify runtime-boundary, manifest, audit, approval, triage,
 review, policy, or kill-switch code.
 Keep the change mechanical and test-backed.
 ```

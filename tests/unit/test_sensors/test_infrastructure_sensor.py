@@ -13,7 +13,7 @@ def sensor():
 
 
 class TestInfrastructureSensorNoScope:
-    """InfrastructureSensor with no infra files in scope."""
+    """InfrastructureSensor with no infrastructure files in scope."""
 
     @pytest.mark.asyncio
     async def test_empty_context_passes(self, sensor):
@@ -28,140 +28,90 @@ class TestInfrastructureSensorNoScope:
         assert "No infrastructure files" in result.details
 
     @pytest.mark.asyncio
-    async def test_missing_dockerfile_is_skipped(self, sensor, tmp_path):
-        """A Dockerfile in affected_files but absent on disk yields no findings (line 59 continue)."""
+    async def test_missing_infrastructure_file_is_skipped(self, sensor, tmp_path):
+        """A listed infrastructure file absent on disk yields no findings."""
         result = await sensor.run(
             {
-                "affected_files": ["Dockerfile"],
+                "affected_files": [".github/workflows/ci.yml"],
                 "project_root": str(tmp_path),
             }
         )
         assert result.passed is True
 
 
-class TestInfrastructureSensorDockerfile:
-    """InfrastructureSensor Dockerfile linting."""
+class TestInfrastructureSensorConfigFiles:
+    """InfrastructureSensor repository configuration linting."""
 
     @pytest.mark.asyncio
-    async def test_clean_dockerfile_passes(self, sensor, tmp_path):
-        (tmp_path / "Dockerfile").write_text(
-            "FROM python:3.12-slim\n"
-            "RUN pip install --no-cache-dir flask\n"
-            "HEALTHCHECK CMD curl -f http://localhost/ || exit 1\n"
-            "USER appuser\n"
-            'CMD ["python", "app.py"]\n',
+    async def test_clean_workflow_passes(self, sensor, tmp_path):
+        workflow = tmp_path / ".github" / "workflows"
+        workflow.mkdir(parents=True)
+        (workflow / "ci.yml").write_text(
+            "jobs:\n"
+            "  test:\n"
+            "    steps:\n"
+            "      - uses: actions/checkout@v4\n"
+            "      - uses: actions/setup-python@v5\n"
+            "        with:\n"
+            "          python-version: '3.12'\n",
             encoding="utf-8",
         )
         result = await sensor.run(
             {
-                "affected_files": ["Dockerfile"],
+                "affected_files": [".github/workflows/ci.yml"],
                 "project_root": str(tmp_path),
             }
         )
         assert result.passed is True
 
     @pytest.mark.asyncio
-    async def test_latest_tag_flagged(self, sensor, tmp_path):
-        (tmp_path / "Dockerfile").write_text(
-            "FROM python:latest\nHEALTHCHECK CMD true\nUSER app\n",
-            encoding="utf-8",
-        )
+    async def test_floating_action_ref_flagged(self, sensor, tmp_path):
+        workflow = tmp_path / ".github" / "workflows"
+        workflow.mkdir(parents=True)
+        (workflow / "ci.yml").write_text("steps:\n  - uses: actions/checkout@main\n", encoding="utf-8")
         result = await sensor.run(
             {
-                "affected_files": ["Dockerfile"],
+                "affected_files": [".github/workflows/ci.yml"],
                 "project_root": str(tmp_path),
             }
         )
         assert result.passed is False
-        assert ":latest" in result.details
+        assert "floating ref" in result.details
 
     @pytest.mark.asyncio
-    async def test_missing_healthcheck_flagged(self, sensor, tmp_path):
-        (tmp_path / "Dockerfile").write_text(
-            'FROM python:3.12\nUSER app\nCMD ["python"]\n',
-            encoding="utf-8",
-        )
+    async def test_unpinned_python_version_flagged(self, sensor, tmp_path):
+        workflow = tmp_path / ".github" / "workflows"
+        workflow.mkdir(parents=True)
+        (workflow / "ci.yml").write_text("with:\n  python-version: '3'\n", encoding="utf-8")
         result = await sensor.run(
             {
-                "affected_files": ["Dockerfile"],
+                "affected_files": [".github/workflows/ci.yml"],
                 "project_root": str(tmp_path),
             }
         )
         assert result.passed is False
-        assert "HEALTHCHECK" in result.details
+        assert "Python version" in result.details
 
     @pytest.mark.asyncio
-    async def test_no_user_instruction_flagged(self, sensor, tmp_path):
-        (tmp_path / "Dockerfile").write_text(
-            'FROM python:3.12\nHEALTHCHECK CMD true\nCMD ["python"]\n',
-            encoding="utf-8",
-        )
+    async def test_pyproject_without_project_metadata_flagged(self, sensor, tmp_path):
+        (tmp_path / "pyproject.toml").write_text("[tool.ruff]\n", encoding="utf-8")
         result = await sensor.run(
             {
-                "affected_files": ["Dockerfile"],
+                "affected_files": ["pyproject.toml"],
                 "project_root": str(tmp_path),
             }
         )
         assert result.passed is False
-        assert "USER" in result.details
+        assert "[project]" in result.details
 
     @pytest.mark.asyncio
-    async def test_copy_all_flagged(self, sensor, tmp_path):
-        (tmp_path / "Dockerfile").write_text(
-            "FROM python:3.12\nCOPY . .\nHEALTHCHECK CMD true\nUSER app\n",
-            encoding="utf-8",
-        )
+    async def test_lockfile_without_package_entries_flagged(self, sensor, tmp_path):
+        (tmp_path / "uv.lock").write_text("version = 1\n", encoding="utf-8")
         result = await sensor.run(
             {
-                "affected_files": ["Dockerfile"],
+                "affected_files": ["uv.lock"],
                 "project_root": str(tmp_path),
             }
         )
         assert result.passed is False
-        assert "COPY . ." in result.details
-
-    @pytest.mark.asyncio
-    async def test_pip_without_no_cache_flagged(self, sensor, tmp_path):
-        (tmp_path / "Dockerfile").write_text(
-            "FROM python:3.12\nRUN pip install flask\nHEALTHCHECK CMD true\nUSER app\n",
-            encoding="utf-8",
-        )
-        result = await sensor.run(
-            {
-                "affected_files": ["Dockerfile"],
-                "project_root": str(tmp_path),
-            }
-        )
-        assert result.passed is False
-        assert "no-cache-dir" in result.details
-
-    @pytest.mark.asyncio
-    async def test_apt_get_without_no_install_recommends_flagged(self, sensor, tmp_path):
-        """apt-get install without --no-install-recommends triggers an issue (line 113)."""
-        (tmp_path / "Dockerfile").write_text(
-            "FROM debian:bullseye-slim\nRUN apt-get install -y curl\nHEALTHCHECK CMD true\nUSER app\n",
-            encoding="utf-8",
-        )
-        result = await sensor.run(
-            {
-                "affected_files": ["Dockerfile"],
-                "project_root": str(tmp_path),
-            }
-        )
-        assert result.passed is False
-        assert "no-install-recommends" in result.details
-
-    @pytest.mark.asyncio
-    async def test_multiple_issues_reduce_score(self, sensor, tmp_path):
-        (tmp_path / "Dockerfile").write_text(
-            'FROM python:latest\nRUN pip install flask\nCOPY . .\nCMD ["python"]\n',
-            encoding="utf-8",
-        )
-        result = await sensor.run(
-            {
-                "affected_files": ["Dockerfile"],
-                "project_root": str(tmp_path),
-            }
-        )
-        assert result.passed is False
-        assert result.score < 0.6  # Multiple issues stack
+        assert "package entries" in result.details

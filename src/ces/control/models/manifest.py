@@ -111,6 +111,11 @@ class TaskManifest(GovernedArtifactBase):
     # manifest can transition out of `verifying`. Empty tuple disables the gate.
     # Sensor IDs resolved by CompletionVerifier against its registered registry.
     verification_sensors: tuple[str, ...] = ()
+    requires_exploration_evidence: bool = False
+    requires_verification_commands: bool = False
+    requires_impacted_flow_evidence: bool = False
+    requires_docs_evidence_for_public_changes: bool = False
+    accepted_runtime_side_effect_risk: bool = False
 
     # Reviewer-in-clean-context (P5): when True, review sub-agents must spawn
     # without inheriting the builder's transcript context so attention quality

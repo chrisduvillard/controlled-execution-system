@@ -5,16 +5,15 @@ These three sensors are the deterministic backbone of the Completion Gate
 the agent runs the underlying tool and writes a known artifact to the project
 root; the sensor parses the artifact and emits structured findings.
 
-Artifacts (all in project root, all skip-on-missing):
+Artifacts (all in project root, all fail-on-missing when the sensor runs):
 
 - ``pytest-results.json`` — pytest-json-report shape: ``{"summary": {"passed": N, "failed": N, "errors": N, ...}}``
 - ``ruff-report.json``    — ruff ``--output-format=json`` output: a list of violation objects
 - ``mypy-report.txt``     — mypy stdout/stderr; this sensor counts ``error:`` lines
 
-The "skip when missing" convention is intentional: a manifest opts in to a
-sensor by listing it in ``verification_sensors``; the sensor reports neutrally
-when the agent did not produce the artifact, leaving the verifier to escalate
-the missing-artifact case as a separate finding.
+A manifest opts in to a sensor by listing it in ``verification_sensors``.
+Missing artifacts are governance failures, because a configured check without
+data is not a passing verification.
 """
 
 from __future__ import annotations
@@ -33,6 +32,16 @@ def _project_root(context: dict) -> Path | None:
     if not raw:
         return None
     return Path(raw)
+
+
+def _missing_artifact_finding(artifact_name: str, suggestion: str) -> SensorFinding:
+    return SensorFinding(
+        category="missing_artifact",
+        severity="high",
+        location=artifact_name,
+        message=f"Required verification artifact is missing: {artifact_name}",
+        suggestion=suggestion,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -58,10 +67,15 @@ class TestPassSensor(BaseSensor):
 
         artifact = root / self.ARTIFACT_NAME
         if not artifact.is_file():
-            self._mark_skipped(f"No {self.ARTIFACT_NAME} found")
+            self._findings.append(
+                _missing_artifact_finding(
+                    self.ARTIFACT_NAME,
+                    f"Run pytest with --json-report-file={self.ARTIFACT_NAME} before claiming completion",
+                )
+            )
             return (
-                True,
-                1.0,
+                False,
+                0.0,
                 f"No pytest results found; run pytest with --json-report to produce {self.ARTIFACT_NAME}",
             )
 
@@ -123,10 +137,15 @@ class LintSensor(BaseSensor):
 
         artifact = root / self.ARTIFACT_NAME
         if not artifact.is_file():
-            self._mark_skipped(f"No {self.ARTIFACT_NAME} found")
+            self._findings.append(
+                _missing_artifact_finding(
+                    self.ARTIFACT_NAME,
+                    f"Run `ruff check --output-format=json --output-file={self.ARTIFACT_NAME}` before claiming completion",
+                )
+            )
             return (
-                True,
-                1.0,
+                False,
+                0.0,
                 f"No lint report found; run `ruff check --output-format=json` to produce {self.ARTIFACT_NAME}",
             )
 
@@ -211,8 +230,13 @@ class TypeCheckSensor(BaseSensor):
 
         artifact = root / self.ARTIFACT_NAME
         if not artifact.is_file():
-            self._mark_skipped(f"No {self.ARTIFACT_NAME} found")
-            return (True, 1.0, f"No mypy report found; run `mypy ... > {self.ARTIFACT_NAME}` to produce one")
+            self._findings.append(
+                _missing_artifact_finding(
+                    self.ARTIFACT_NAME,
+                    f"Run `mypy ... > {self.ARTIFACT_NAME}` before claiming completion",
+                )
+            )
+            return (False, 0.0, f"No mypy report found; run `mypy ... > {self.ARTIFACT_NAME}` to produce one")
 
         text = artifact.read_text(encoding="utf-8", errors="replace")
         errors = list(_iter_mypy_errors(text))

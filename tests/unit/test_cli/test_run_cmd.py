@@ -466,7 +466,14 @@ class TestRunCommand:
             app = _get_app()
             result = runner.invoke(
                 app,
-                ["build", "Build portfolio site", "--yes", "--acceptance", "Portfolio site renders"],
+                [
+                    "build",
+                    "Build portfolio site",
+                    "--yes",
+                    "--accept-runtime-side-effects",
+                    "--acceptance",
+                    "Portfolio site renders",
+                ],
             )
 
         assert result.exit_code == 0, f"stdout={result.stdout}"
@@ -730,7 +737,14 @@ class TestRunCommand:
             app = _get_app()
             result = runner.invoke(
                 app,
-                ["build", "Build portfolio site", "--yes", "--acceptance", "Portfolio site renders"],
+                [
+                    "build",
+                    "Build portfolio site",
+                    "--yes",
+                    "--accept-runtime-side-effects",
+                    "--acceptance",
+                    "Portfolio site renders",
+                ],
             )
 
         assert result.exit_code == 0, f"stdout={result.stdout}"
@@ -836,7 +850,14 @@ class TestRunCommand:
             app = _get_app()
             result = runner.invoke(
                 app,
-                ["build", "Build portfolio site", "--yes", "--acceptance", "Portfolio site renders"],
+                [
+                    "build",
+                    "Build portfolio site",
+                    "--yes",
+                    "--accept-runtime-side-effects",
+                    "--acceptance",
+                    "Portfolio site renders",
+                ],
             )
 
         assert result.exit_code == 0, f"stdout={result.stdout}"
@@ -948,7 +969,14 @@ class TestRunCommand:
             app = _get_app()
             result = runner.invoke(
                 app,
-                ["build", "Build portfolio site", "--yes", "--acceptance", "Portfolio site renders"],
+                [
+                    "build",
+                    "Build portfolio site",
+                    "--yes",
+                    "--accept-runtime-side-effects",
+                    "--acceptance",
+                    "Portfolio site renders",
+                ],
             )
 
         assert result.exit_code == 0, f"stdout={result.stdout}"
@@ -1032,6 +1060,11 @@ class TestRunCommand:
         assert "Plan For Your Request" in result.stdout
         assert "What CES Found" in result.stdout
         assert "Build Review Complete" in result.stdout
+        create_kwargs = mock_manager.create_manifest.call_args.kwargs
+        assert create_kwargs["verification_sensors"] == ["test_pass", "lint", "typecheck", "coverage"]
+        assert create_kwargs["requires_exploration_evidence"] is True
+        assert create_kwargs["requires_verification_commands"] is True
+        assert create_kwargs["requires_impacted_flow_evidence"] is False
 
     def test_build_auto_detects_brownfield_and_reviews_candidate_behaviors(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -1148,6 +1181,98 @@ class TestRunCommand:
         assert brief_kwargs["project_mode"] == "brownfield"
         assert brief_kwargs["source_of_truth"] == "legacy_app.py"
         assert brief_kwargs["critical_flows"] == ["Invoice editing"]
+
+    def test_brownfield_yes_blocks_auto_approval_when_manifest_scope_is_unknown(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / "legacy_app.py").write_text("print('existing')\n", encoding="utf-8")
+        ces_dir = tmp_path / ".ces"
+        ces_dir.mkdir()
+        (ces_dir / "config.yaml").write_text("project_id: local-proj\npreferred_runtime: codex\n")
+
+        manifest = MagicMock()
+        manifest.manifest_id = "M-brown-scope"
+        manifest.description = "Modernize invoice editing"
+        manifest.risk_tier = RiskTier.B
+        manifest.behavior_confidence = BehaviorConfidence.BC2
+        manifest.change_class = ChangeClass.CLASS_2
+        manifest.affected_files = []
+
+        mock_manager = AsyncMock()
+        mock_manager.create_manifest.return_value = manifest
+        mock_runtime = MagicMock()
+        mock_runtime.runtime_name = "codex"
+        mock_runtime.generate_manifest_assist.return_value = {
+            "description": "Modernize invoice editing",
+            "risk_tier": RiskTier.B.value,
+            "behavior_confidence": BehaviorConfidence.BC2.value,
+            "change_class": ChangeClass.CLASS_2.value,
+            "affected_files": [],
+            "token_budget": 75000,
+            "reasoning": "Brownfield change but scope was not identified",
+        }
+        mock_runtime_registry = MagicMock()
+        mock_runtime_registry.resolve_runtime.return_value = mock_runtime
+        mock_runner = AsyncMock()
+        mock_runner.execute_runtime.return_value = {
+            "runtime_name": "codex",
+            "runtime_version": "1.0.0",
+            "reported_model": None,
+            "invocation_ref": "run-123",
+            "exit_code": 0,
+            "stdout": _completion_stdout("M-brown-scope", "Invoice editing still works"),
+            "stderr": "",
+            "duration_seconds": 0.5,
+        }
+        mock_store = MagicMock()
+        mock_store.save_builder_brief.return_value = "BB-123"
+        mock_synth = MagicMock()
+        mock_synth.format_summary_slots = AsyncMock(return_value=MagicMock(summary="Line 1", challenge="Challenge 1"))
+        mock_synth.triage = AsyncMock(
+            return_value=MagicMock(
+                color=MagicMock(value="yellow"),
+                auto_approve_eligible=False,
+                reason="Scope unclear",
+            )
+        )
+
+        mock_services = {
+            "settings": MagicMock(default_runtime="codex"),
+            "manifest_manager": mock_manager,
+            "runtime_registry": mock_runtime_registry,
+            "agent_runner": mock_runner,
+            "local_store": mock_store,
+            "evidence_synthesizer": mock_synth,
+            "audit_ledger": AsyncMock(),
+            "sensor_orchestrator": MagicMock(run_all=AsyncMock(return_value=[])),
+            "legacy_behavior_service": AsyncMock(),
+            "project_config": {"preferred_runtime": "codex"},
+        }
+
+        with _patch_services(mock_services):
+            app = _get_app()
+            result = runner.invoke(
+                app,
+                [
+                    "build",
+                    "Modernize invoice editing",
+                    "--brownfield",
+                    "--yes",
+                    "--accept-runtime-side-effects",
+                    "--acceptance",
+                    "Invoice editing still works",
+                    "--source-of-truth",
+                    "legacy_app.py",
+                    "--critical-flow",
+                    "Invoice editing",
+                ],
+            )
+
+        assert result.exit_code == 0, f"stdout={result.stdout}"
+        approval_kwargs = mock_store.save_approval.call_args.kwargs
+        assert approval_kwargs["decision"] == "reject"
+        assert "brownfield scope unknown" in approval_kwargs["rationale"]
 
     def test_build_can_export_prl_draft(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.chdir(tmp_path)

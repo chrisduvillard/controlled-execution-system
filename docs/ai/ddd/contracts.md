@@ -27,7 +27,6 @@ Purpose: catalog public, persisted, serialized, operational, and cross-context c
 | Starter manifest templates | CLI / Control | `ces init --template`, human-edited starter manifests | `src/ces/cli/templates/manifests/*.yaml` | Field names should match `TaskManifest` or be intentionally transitional. | init template tests | Source/user-workflow breaking | Fact | Current starter values are human-editable examples, not strict manifests. |
 | Local-first project config | CLI / Factory | `get_services`, operators, tests | `.ces/config.yaml` keys such as `project_id`, `project_name`, `preferred_runtime`, `execution_mode` | `execution_mode: server` is rejected; key renames are operationally breaking. | factory, execute, local-first tests | Operationally breaking | Fact | Full config schema is not centralized as a Pydantic model. |
 | Optional compatibility migrations | Compatibility Tests | CI/dev compatibility suite only | root `alembic.ini`; `tests/integration/_compat/alembic/versions/`; `compat-tests` extra | Treating these as production migrations is a product-contract error. | `tests/integration/_compat/`; integration fixtures | Operationally breaking if misapplied | Fact | Retention/deprecation plan is open. |
-| Optional Docker sandbox / compose | Execution compatibility / Tests | Docker extra users, integration tests, infrastructure sensor | `src/ces/execution/sandbox.py`; `docker-compose.yml`; `controlled-execution-system[docker]` extra | Not required for supported local-first flow; do not make it default. | sandbox tests; optional integration tests | Operationally breaking / scope creep | Fact | Supported Docker sandbox posture should stay explicit. |
 | Publish and release workflow | Packaging / CI | Maintainers, PyPI release process | `.github/workflows/publish.yml`; `uv build`; `twine check`; installed wheel smoke | Removing pre-publish tests or CLI smoke weakens release gate. | docs release packaging tests; workflow tests | Release-quality risk | Fact | None. |
 
 ## Compatibility Classifications
@@ -37,7 +36,7 @@ Purpose: catalog public, persisted, serialized, operational, and cross-context c
 - Source-breaking: CLI command/flag removals, package export removals, runtime protocol signature changes.
 - Wire-breaking: JSON output field changes, Pydantic serialized field changes, spec Markdown required fields, completion claim schema.
 - Persistence-breaking: SQLite table/column drops or renames, audit hash input changes, enum value changes stored in DB.
-- Operationally breaking: default runtime/dependency changes, generated CI gate changes, `.ces/` layout changes, making Docker/Postgres mandatory.
+- Operationally breaking: default runtime/dependency changes, generated CI gate changes, `.ces/` layout changes, making Postgres mandatory.
 
 ## Consumer Discovery Notes
 
@@ -57,4 +56,4 @@ Purpose: catalog public, persisted, serialized, operational, and cross-context c
 - Keep `README.md`, `.env.example`, CLI help, docs tests, and command behavior aligned when changing operator contracts.
 - Add local-store migrations in `LocalProjectStore.initialize()` with old-shape regression tests; do not rely on compatibility Alembic for product SQLite state.
 - Do not change audit ledger hash inputs or manifest signing payloads without an explicit backward-compatibility story.
-- Keep optional compatibility surfaces (`docker-compose.yml`, `tests/integration/_compat/`, root `alembic.ini`) out of the supported local-first runtime path.
+- Keep optional compatibility surfaces (`tests/integration/_compat/`, root `alembic.ini`) out of the supported local-first runtime path.

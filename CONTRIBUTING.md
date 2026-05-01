@@ -12,8 +12,7 @@ rather than as public issues.
 
 - Python 3.12+
 - [uv](https://docs.astral.sh/uv/) (package manager)
-- Docker is optional and only needed for the compatibility tests that exercise
-  Docker-backed sandbox behavior.
+- A supported local runtime (`codex` or `claude`) for governed builder runs.
 
 ### Getting Started
 
@@ -40,7 +39,7 @@ rather than as a replacement for CES's own builder-first or expert workflows:
 - use a clean sibling worktree or clean clone, never an in-flight dirty checkout
 - keep runs bounded to docs, tests, CLI UX, or similarly scoped work
 - exclude control-plane, approval/triage/review, manifest, audit, kill-switch,
-  policy, sandbox, and runtime-boundary changes
+  policy, and runtime-boundary changes
 - review every generated branch manually before cherry-picking or merging
 
 See the [GNHF Trial Guide](docs/GNHF_Trial_Guide.md) and
@@ -55,7 +54,7 @@ uv run pytest tests/unit/ -q
 # Run the default local-first suite
 uv run pytest tests/ -m "not integration" -q
 
-# Optional compatibility tests, if you installed the docker extra and have a daemon
+# Local integration tests
 uv run pytest tests/ -m integration -q
 
 # Run with coverage report
@@ -122,7 +121,7 @@ CES is organized into three planes:
 
 - **Control Plane** (`src/ces/control/`): Deterministic governance — manifests, audit, classification, policy, workflow. No LLM calls allowed here (LLM-05).
 - **Harness Plane** (`src/ces/harness/`): Quality assurance — evidence, reviews, sensors, trust management.
-- **Execution Plane** (`src/ces/execution/`): Agent runtime — LLM providers, sandbox, output capture.
+- **Execution Plane** (`src/ces/execution/`): Agent runtime — LLM providers, runtime adapters, output capture.
 
 Supporting modules:
 - `src/ces/cli/` — Typer CLI commands

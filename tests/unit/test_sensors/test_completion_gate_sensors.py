@@ -2,8 +2,8 @@
 
 TestPassSensor reads `pytest-results.json`, LintSensor reads `ruff-report.json`,
 and TypeCheckSensor reads `mypy-report.txt` from the project root. All three
-follow CoverageSensor's pattern: pure file-readers that gracefully skip when
-the artifact is missing.
+follow CoverageSensor's pattern: pure file-readers that fail when configured
+artifacts are missing.
 """
 
 from __future__ import annotations
@@ -41,12 +41,13 @@ class TestTestPassSensor:
         assert score == 1.0
 
     @pytest.mark.asyncio
-    async def test_no_artifact_skips(self, tmp_path: Path) -> None:
+    async def test_no_artifact_fails(self, tmp_path: Path) -> None:
         sensor = TestPassSensor()
         passed, _, details = await sensor._execute({"project_root": str(tmp_path)})
-        assert sensor._skipped_flag is True
+        assert sensor._skipped_flag is False
         assert "No pytest results" in details
-        assert passed is True
+        assert passed is False
+        assert sensor._findings[0].category == "missing_artifact"
 
     @pytest.mark.asyncio
     async def test_all_passed_yields_pass(self, tmp_path: Path) -> None:
@@ -109,11 +110,12 @@ class TestLintSensor:
         assert score == 1.0
 
     @pytest.mark.asyncio
-    async def test_no_artifact_skips(self, tmp_path: Path) -> None:
+    async def test_no_artifact_fails(self, tmp_path: Path) -> None:
         sensor = LintSensor()
         passed, _, _ = await sensor._execute({"project_root": str(tmp_path)})
-        assert sensor._skipped_flag is True
-        assert passed is True
+        assert sensor._skipped_flag is False
+        assert passed is False
+        assert sensor._findings[0].category == "missing_artifact"
 
     @pytest.mark.asyncio
     async def test_empty_violations_passes(self, tmp_path: Path) -> None:
@@ -181,11 +183,12 @@ class TestTypeCheckSensor:
         assert score == 1.0
 
     @pytest.mark.asyncio
-    async def test_no_artifact_skips(self, tmp_path: Path) -> None:
+    async def test_no_artifact_fails(self, tmp_path: Path) -> None:
         sensor = TypeCheckSensor()
         passed, _, _ = await sensor._execute({"project_root": str(tmp_path)})
-        assert sensor._skipped_flag is True
-        assert passed is True
+        assert sensor._skipped_flag is False
+        assert passed is False
+        assert sensor._findings[0].category == "missing_artifact"
 
     @pytest.mark.asyncio
     async def test_zero_errors_passes(self, tmp_path: Path) -> None:

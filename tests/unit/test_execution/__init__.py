@@ -1,1 +1,1 @@
-"""Tests for the execution plane -- sandbox, output capture, agent runner."""
+"""Tests for the execution plane -- runtime boundaries, output capture, agent runner."""

@@ -1,22 +1,20 @@
-"""Tests for AgentRunner service orchestrating sandbox, LLM, and policy.
+"""Tests for AgentRunner service orchestrating LLM/runtime execution and policy.
 
 Tests verify:
-- AgentRunner accepts LLMProviderProtocol, KillSwitchProtocol, SandboxConfig
+- AgentRunner accepts LLMProviderProtocol and KillSwitchProtocol
 - Kill switch halts execution before any work
 - Manifest workflow state validation
 - LLM calls with token budget enforcement
 - Chain of custody tracking for every LLM call
 - Policy enforcement via PolicyEngine.check_tool_access
-- Sandbox lifecycle (create/run/capture/destroy)
 - AgentRunResult model with correct fields
-- Truncation disclosure integration
 """
 
 from __future__ import annotations
 
 from collections.abc import AsyncIterator
 from datetime import datetime, timezone
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -30,7 +28,6 @@ from ces.execution.providers.protocol import (
     LLMProviderProtocol,
     LLMResponse,
 )
-from ces.execution.sandbox import SandboxConfig
 from ces.shared.base import CESBaseModel
 from ces.shared.enums import (
     ArtifactStatus,
@@ -175,29 +172,18 @@ class TestAgentRunResult:
 class TestAgentRunnerInit:
     """Test AgentRunner constructor."""
 
-    def test_accepts_protocol_and_config(self) -> None:
-        """AgentRunner.__init__ accepts LLMProviderProtocol, KillSwitchProtocol, SandboxConfig."""
+    def test_accepts_protocols(self) -> None:
+        """AgentRunner.__init__ accepts LLMProviderProtocol and KillSwitchProtocol."""
         provider = MockProvider()
         kill_switch = MockKillSwitch()
-        config = SandboxConfig()
 
         runner = AgentRunner(
             provider=provider,
             kill_switch=kill_switch,
-            sandbox_config=config,
         )
 
         assert runner._provider is provider
         assert runner._kill_switch is kill_switch
-        assert runner._sandbox_config is config
-
-    def test_default_sandbox_config(self) -> None:
-        """AgentRunner uses default SandboxConfig when none provided."""
-        runner = AgentRunner(
-            provider=MockProvider(),
-            kill_switch=MockKillSwitch(),
-        )
-        assert isinstance(runner._sandbox_config, SandboxConfig)
 
 
 # ---------------------------------------------------------------------------
@@ -288,15 +274,14 @@ class TestAgentRunnerExecute:
 
 
 # ---------------------------------------------------------------------------
-# Test AgentRunner.execute_command (sandbox execution)
+# Test AgentRunner.execute_command (legacy direct command path)
 # ---------------------------------------------------------------------------
 
 
 class TestAgentRunnerExecuteCommand:
-    """Test AgentRunner.execute_command() for sandboxed command execution."""
+    """Test AgentRunner.execute_command() policy and fail-closed behavior."""
 
-    @patch("ces.execution.agent_runner.AgentSandbox")
-    def test_policy_violation_blocks_command(self, mock_sandbox_cls: MagicMock) -> None:
+    def test_policy_violation_blocks_command(self) -> None:
         """execute_command() returns policy_violations when command is blocked."""
         runner = AgentRunner(
             provider=MockProvider(),
@@ -311,22 +296,9 @@ class TestAgentRunnerExecuteCommand:
 
         assert len(result.policy_violations) > 0
         assert "curl" in result.policy_violations[0]
-        # Sandbox should NOT have been created
-        mock_sandbox_cls.assert_not_called()
 
-    @patch("ces.execution.agent_runner.OutputCapture")
-    @patch("ces.execution.agent_runner.AgentSandbox")
-    def test_sandbox_lifecycle(self, mock_sandbox_cls: MagicMock, mock_capture_cls: MagicMock) -> None:
-        """execute_command creates sandbox, runs command, captures output, destroys sandbox."""
-        mock_sandbox = MagicMock()
-        mock_container = MagicMock()
-        mock_sandbox.create_container.return_value = mock_container
-        mock_sandbox_cls.return_value = mock_sandbox
-
-        mock_capture = MagicMock()
-        mock_capture.capture.return_value = CapturedOutput(stdout="output", stderr="", truncated=False, bytes_read=6)
-        mock_capture_cls.return_value = mock_capture
-
+    def test_allowed_direct_command_fails_closed(self) -> None:
+        """execute_command() rejects allowed direct commands and points callers at runtimes."""
         runner = AgentRunner(
             provider=MockProvider(),
             kill_switch=MockKillSwitch(),
@@ -335,64 +307,11 @@ class TestAgentRunnerExecuteCommand:
 
         result = runner.execute_command(manifest, "python script.py")
 
-        # Verify lifecycle
-        mock_sandbox_cls.assert_called_once()
-        mock_sandbox.create_container.assert_called_once_with("python script.py")
-        mock_container.wait.assert_called_once()
-        mock_capture.capture.assert_called_once_with(mock_container)
-        mock_sandbox.destroy_container.assert_called_once()
-
-    @patch("ces.execution.agent_runner.OutputCapture")
-    @patch("ces.execution.agent_runner.AgentSandbox")
-    def test_returns_agent_run_result_with_output(
-        self, mock_sandbox_cls: MagicMock, mock_capture_cls: MagicMock
-    ) -> None:
-        """execute_command returns AgentRunResult with captured output and chain of custody."""
-        mock_sandbox = MagicMock()
-        mock_container = MagicMock()
-        mock_sandbox.create_container.return_value = mock_container
-        mock_sandbox_cls.return_value = mock_sandbox
-
-        captured = CapturedOutput(stdout="hello", stderr="", truncated=False, bytes_read=5)
-        mock_capture = MagicMock()
-        mock_capture.capture.return_value = captured
-        mock_capture_cls.return_value = mock_capture
-
-        runner = AgentRunner(
-            provider=MockProvider(),
-            kill_switch=MockKillSwitch(),
-        )
-        manifest = _make_manifest(allowed_tools=("python",))
-
-        result = runner.execute_command(manifest, "python script.py")
-
-        assert result.output is captured
-        assert isinstance(result.chain_of_custody, list)
-        assert result.policy_violations == []
-
-    @patch("ces.execution.agent_runner.OutputCapture")
-    @patch("ces.execution.agent_runner.AgentSandbox")
-    def test_truncation_sets_disclosure_flag(self, mock_sandbox_cls: MagicMock, mock_capture_cls: MagicMock) -> None:
-        """execute_command sets truncated_output=True when output is truncated."""
-        mock_sandbox = MagicMock()
-        mock_container = MagicMock()
-        mock_sandbox.create_container.return_value = mock_container
-        mock_sandbox_cls.return_value = mock_sandbox
-
-        captured = CapturedOutput(stdout="truncated...", stderr="", truncated=True, bytes_read=1_048_576)
-        mock_capture = MagicMock()
-        mock_capture.capture.return_value = captured
-        mock_capture_cls.return_value = mock_capture
-
-        runner = AgentRunner(
-            provider=MockProvider(),
-            kill_switch=MockKillSwitch(),
-        )
-        manifest = _make_manifest(allowed_tools=("python",))
-
-        result = runner.execute_command(manifest, "python script.py")
-
-        assert result.truncated_output is True
+        assert result.output is None
+        assert result.truncated_output is False
+        assert result.policy_violations == [
+            "Direct command execution is no longer supported; use execute_runtime() with a local runtime adapter"
+        ]
 
     def test_kill_switch_blocks_command(self) -> None:
         """execute_command raises KillSwitchActiveError when kill switch is halted."""
@@ -451,28 +370,6 @@ class TestAgentRunnerExecuteRuntime:
                 prompt_pack="prompt",
                 working_dir=MagicMock(),
             )
-
-    @patch("ces.execution.agent_runner.OutputCapture")
-    @patch("ces.execution.agent_runner.AgentSandbox")
-    def test_sandbox_destroyed_on_exception(self, mock_sandbox_cls: MagicMock, mock_capture_cls: MagicMock) -> None:
-        """execute_command destroys sandbox even when an exception occurs."""
-        mock_sandbox = MagicMock()
-        mock_container = MagicMock()
-        mock_container.wait.side_effect = RuntimeError("Container crashed")
-        mock_sandbox.create_container.return_value = mock_container
-        mock_sandbox_cls.return_value = mock_sandbox
-
-        runner = AgentRunner(
-            provider=MockProvider(),
-            kill_switch=MockKillSwitch(),
-        )
-        manifest = _make_manifest(allowed_tools=("python",))
-
-        with pytest.raises(RuntimeError, match="Container crashed"):
-            runner.execute_command(manifest, "python script.py")
-
-        # Sandbox MUST be destroyed even on error
-        mock_sandbox.destroy_container.assert_called_once()
 
 
 # ---------------------------------------------------------------------------

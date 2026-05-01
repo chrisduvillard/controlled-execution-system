@@ -249,6 +249,13 @@ flowchart TD
 
 Use the [Operator Playbook](Operator_Playbook.md) when you need the fuller builder-first versus expert workflow boundary for a single request.
 
+**Completion evidence:** Builder-created manifests require inspected repo context,
+verification command evidence, and configured completion-gate artifacts. Missing
+`pytest-results.json`, `ruff-report.json`, `mypy-report.txt`, or `coverage.json`
+is missing evidence, not a passing check. `pip-audit-report.json` and SAST JSON
+artifacts give CES deterministic dependency/security findings when those risks
+are in scope.
+
 ---
 
 ## 6. Key Section References

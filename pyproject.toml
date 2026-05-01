@@ -37,9 +37,6 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-docker = [
-    "docker>=7.1.0,<8",
-]
 observability = [
     "opentelemetry-api>=1.40.0,<2",
     "opentelemetry-sdk>=1.40.0,<2",
@@ -49,7 +46,7 @@ observability = [
     "opentelemetry-instrumentation-sqlalchemy>=0.61b0,<1",
 ]
 all = [
-    "controlled-execution-system[docker,observability]",
+    "controlled-execution-system[observability]",
 ]
 # Compat-tests extras pin the SQLAlchemy/Postgres stack used only by the
 # integration test compatibility suite under ``tests/integration/_compat``.
@@ -59,7 +56,6 @@ compat-tests = [
     "alembic>=1.18.4",
     "asyncpg>=0.31.0",
     "psycopg[binary]>=3.2",
-    "testcontainers>=4.10.0",
 ]
 
 [project.scripts]
@@ -82,7 +78,7 @@ dev = [
 ]
 ci = [
     { include-group = "dev" },
-    "controlled-execution-system[docker,compat-tests]",
+    "controlled-execution-system[compat-tests]",
 ]
 
 [build-system]
@@ -194,7 +190,7 @@ testpaths = ["tests"]
 asyncio_mode = "auto"
 addopts = "-p no:anyio"
 markers = [
-    "integration: marks optional compatibility tests that may require Docker services (deselect with '-m \"not integration\"')",
+    "integration: local integration tests",
 ]
 
 [tool.coverage.run]

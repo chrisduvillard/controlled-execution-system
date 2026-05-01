@@ -4,7 +4,7 @@ Tests the end-to-end flow: create -> classify -> validate -> sign -> verify
 -> workflow transitions -> invalidation -> audit chain integrity.
 
 Uses real services (no mocks) but no database -- in-memory audit ledger.
-Does NOT require Docker (no @pytest.mark.integration).
+Does not require external services (no @pytest.mark.integration).
 """
 
 from __future__ import annotations

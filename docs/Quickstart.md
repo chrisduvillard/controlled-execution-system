@@ -1,7 +1,7 @@
 # 5-Minute Quickstart
 
 Get from zero to a governed AI build in under 5 minutes. CES is a local
-builder-first tool: no Docker, no Postgres, and no hosted control plane.
+builder-first tool with SQLite project state and no hosted control plane.
 
 ## Prerequisites
 

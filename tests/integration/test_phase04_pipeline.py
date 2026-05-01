@@ -3,7 +3,7 @@
 Tests the full LLM + Agent Execution pipeline:
 1. LLM Provider protocol conformance and model swapping
 2. Agent Runner with kill switch integration
-3. Sandbox execution with secret stripping
+3. Runtime execution with secret stripping
 4. Chain of custody tracking across pipeline stages
 5. End-to-end manifest-to-evidence flow
 6. LLM-05 import boundary verification
@@ -36,7 +36,7 @@ from ces.execution.providers.protocol import (
     LLMResponse,
 )
 from ces.execution.providers.registry import ProviderRegistry
-from ces.execution.sandbox import AgentSandbox, SandboxConfig
+from ces.execution.secrets import build_allowed_env, strip_secret_env
 from ces.shared.enums import (
     ArtifactStatus,
     BehaviorConfidence,
@@ -230,14 +230,14 @@ class TestAgentExecutionKillSwitchBlocks:
 
 
 # ---------------------------------------------------------------------------
-# Test 5: Sandbox command policy enforcement
+# Test 5: Direct command policy enforcement
 # ---------------------------------------------------------------------------
 
 
-class TestSandboxCommandPolicyEnforcement:
+class TestDirectCommandPolicyEnforcement:
     """AgentRunner.execute_command() enforces tool policy from manifest."""
 
-    def test_sandbox_command_policy_enforcement(self) -> None:
+    def test_direct_command_policy_enforcement(self) -> None:
         """Forbidden tool 'rm' returns policy_violations in AgentRunResult."""
         provider = MockProvider()
         kill_switch = MockKillSwitch(halted=False)
@@ -248,7 +248,7 @@ class TestSandboxCommandPolicyEnforcement:
             forbidden_tools=("rm", "curl"),
         )
 
-        # "rm" is forbidden -- should return violation without creating container
+        # "rm" is forbidden -- should return violation before any execution.
         result = runner.execute_command(manifest, "rm -rf /tmp/data")
 
         assert isinstance(result, AgentRunResult)
@@ -257,18 +257,18 @@ class TestSandboxCommandPolicyEnforcement:
 
 
 # ---------------------------------------------------------------------------
-# Test 6: Sandbox secret stripping
+# Test 6: Runtime secret stripping
 # ---------------------------------------------------------------------------
 
 
-class TestSandboxSecretStripping:
-    """AgentSandbox._build_env strips secret-like keys from allowlist."""
+class TestRuntimeSecretStripping:
+    """build_allowed_env strips secret-like keys from allowlist."""
 
-    def test_sandbox_secret_stripping(self) -> None:
-        """_build_env with allowlist strips API_KEY but keeps PATH."""
+    def test_runtime_secret_stripping(self) -> None:
+        """build_allowed_env with allowlist strips API_KEY but keeps PATH."""
         # Set up host environment with both safe and secret vars
         with patch.dict(os.environ, {"PATH": "/usr/bin", "API_KEY": "sk-secret123"}):
-            env = AgentSandbox._build_env(allowlist=["PATH", "API_KEY"])
+            env = build_allowed_env(allowlist=["PATH", "API_KEY"])
 
         # PATH should be kept (not secret-like)
         assert "PATH" in env
@@ -276,21 +276,21 @@ class TestSandboxSecretStripping:
         assert "API_KEY" not in env
 
     def test_strip_secrets_removes_value_prefixes(self) -> None:
-        """_strip_secrets removes values starting with known API key prefixes."""
+        """strip_secret_env removes values starting with known API key prefixes."""
         env = {
             "SAFE_VAR": "some_value",
             "ANOTHER": "sk-live-secret-key-12345",
             "GITHUB": "ghp_abcdef123456",
         }
-        result = AgentSandbox._strip_secrets(env)
+        result = strip_secret_env(env)
 
         assert "SAFE_VAR" in result
         assert "ANOTHER" not in result  # sk- prefix
         assert "GITHUB" not in result  # ghp_ prefix
 
     def test_build_env_empty_without_allowlist(self) -> None:
-        """_build_env returns empty dict when no allowlist is given."""
-        env = AgentSandbox._build_env(allowlist=None)
+        """build_allowed_env returns empty dict when no allowlist is given."""
+        env = build_allowed_env(allowlist=None)
         assert env == {}
 
 
@@ -422,31 +422,16 @@ class TestEndToEndManifestToEvidence:
         assert custody_entry.agent_role == "builder"
         assert custody_entry.timestamp is not None
 
-        # 4. Verify command execution with mocked Docker returns policy violation
-        #    for forbidden tool
+        # 4. Verify command execution returns policy violation for forbidden tool.
         forbidden_result = runner.execute_command(manifest, "rm -rf /data")
         assert len(forbidden_result.policy_violations) > 0
 
-        # 5. Verify allowed command proceeds to sandbox (will hit Docker mock)
-        #    We patch docker.from_env to avoid needing a real Docker daemon
-        with patch("ces.execution.sandbox.docker") as mock_docker:
-            mock_client = MagicMock()
-            mock_docker.from_env.return_value = mock_client
-            mock_container = MagicMock()
-            mock_client.containers.run.return_value = mock_container
-            mock_container.attach.return_value = iter([(b"test output", b"")])
-
-            allowed_runner = AgentRunner(
-                provider=provider,
-                kill_switch=kill_switch,
-                sandbox_config=SandboxConfig(max_output_bytes=1_048_576),
-            )
-            cmd_result = allowed_runner.execute_command(manifest, "python test.py")
-
-            assert cmd_result.output is not None
-            assert cmd_result.output.stdout == "test output"
-            assert cmd_result.output.truncated is False
-            assert len(cmd_result.policy_violations) == 0
+        # 5. Verify allowed direct command fails closed and points to runtime adapters.
+        cmd_result = runner.execute_command(manifest, "python test.py")
+        assert cmd_result.output is None
+        assert cmd_result.policy_violations == [
+            "Direct command execution is no longer supported; use execute_runtime() with a local runtime adapter"
+        ]
 
 
 # ---------------------------------------------------------------------------

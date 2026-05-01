@@ -44,10 +44,18 @@ class CoverageSensor(BaseSensor):
             return self._parse_coverage_json(coverage_json)
 
         # No coverage data found
-        self._mark_skipped("No coverage data found (coverage.json)")
+        self._findings.append(
+            SensorFinding(
+                category="missing_artifact",
+                severity="high",
+                location="coverage.json",
+                message="Required coverage artifact is missing: coverage.json",
+                suggestion="Run tests with coverage and generate coverage.json before claiming completion",
+            )
+        )
         return (
-            True,
-            1.0,
+            False,
+            0.0,
             "No coverage data found; run 'coverage json' to generate coverage.json",
         )
 
@@ -76,7 +84,7 @@ class CoverageSensor(BaseSensor):
         # Determine severity based on coverage level
         if line_pct < 60:
             severity: str = "high"
-        elif line_pct < 80:
+        elif line_pct < 90:
             severity = "medium"
         else:
             severity = "info"
@@ -97,7 +105,7 @@ class CoverageSensor(BaseSensor):
 
         # Score: normalize coverage percentage to 0.0-1.0
         score = min(1.0, max(0.0, line_pct / 100.0))
-        passed = line_pct >= 60  # Minimum passing threshold
+        passed = line_pct >= 90  # Minimum passing threshold matches repo/product gate
 
         details = msg
         return (passed, score, details)

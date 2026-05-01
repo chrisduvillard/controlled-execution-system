@@ -222,7 +222,7 @@ CLI (Typer)          Governance + Harness             Execution Plane
 │ ces build    │────▶│ ClassificationOracle     │     │ AgentRunner        │
 │ ces continue │     │ ManifestManager          │     │ RuntimeRegistry    │
 │ ces execute  │     │ AuditLedgerService       │     │ Codex / Claude     │
-│ ces review   │     │ WorkflowEngine           │     │ Sandbox helpers    │
+│ ces review   │     │ WorkflowEngine           │     │ Runtime helpers    │
 │ ces approve  │     │ KillSwitchService        │     │ Output capture     │
 └─────────────┘     │ GateEvaluator            │     └────────────────────┘
                     │ ReviewRouter             │

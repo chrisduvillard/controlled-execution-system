@@ -30,6 +30,7 @@ from ces.harness.models.completion_claim import (
 )
 from ces.harness.models.sensor_result import SensorResult
 from ces.harness.sensors.base import BaseSensor
+from ces.harness.services.change_impact import detects_docs_impact
 
 if TYPE_CHECKING:
     from ces.control.models.manifest import TaskManifest
@@ -74,6 +75,8 @@ class CompletionVerifier:
         findings.extend(_check_criteria(manifest, claim))
         findings.extend(_check_scope(manifest, claim))
         findings.extend(_check_dependency_evidence(claim))
+        findings.extend(_check_required_evidence(manifest, claim, project_root))
+        findings.extend(_check_open_questions(claim))
 
         sensor_results = await self._run_sensors(manifest, project_root, findings)
 
@@ -270,5 +273,99 @@ def _check_dependency_evidence(claim: CompletionClaim) -> list[VerificationFindi
                 "Add dependency_changes entries with package, rationale, existing alternative, "
                 "lockfile evidence, and audit evidence."
             ),
+        )
+    ]
+
+
+def _check_required_evidence(
+    manifest: TaskManifest,
+    claim: CompletionClaim,
+    project_root: Path | None = None,
+) -> list[VerificationFinding]:
+    findings: list[VerificationFinding] = []
+    if getattr(manifest, "requires_exploration_evidence", False) and not claim.exploration_evidence:
+        findings.append(
+            VerificationFinding(
+                kind=VerificationFindingKind.EVIDENCE_MISMATCH,
+                severity="high",
+                message="Manifest requires exploration evidence, but the completion claim did not include any.",
+                hint="Add exploration_evidence entries listing files, tests, docs, or conventions inspected before editing.",
+            )
+        )
+    if getattr(manifest, "requires_verification_commands", False) and not claim.verification_commands:
+        findings.append(
+            VerificationFinding(
+                kind=VerificationFindingKind.EVIDENCE_MISMATCH,
+                severity="high",
+                message="Manifest requires verification command evidence, but the completion claim did not include any.",
+                hint="Add verification_commands entries with command, exit_code, summary, and artifact path when available.",
+            )
+        )
+    if getattr(manifest, "requires_impacted_flow_evidence", False) and not _has_impacted_flow_evidence(claim):
+        findings.append(
+            VerificationFinding(
+                kind=VerificationFindingKind.EVIDENCE_MISMATCH,
+                severity="high",
+                message="Manifest requires impacted-flow evidence, but the completion claim did not include it.",
+                hint="Add exploration_evidence that names critical flows, impacted callers, or must-not-break behavior inspected.",
+            )
+        )
+    docs_evidence = [entry.path for entry in claim.exploration_evidence if _is_docs_path(entry.path)]
+    if getattr(manifest, "requires_docs_evidence_for_public_changes", False) and detects_docs_impact(
+        list(claim.files_changed), docs_evidence
+    ):
+        findings.append(
+            VerificationFinding(
+                kind=VerificationFindingKind.EVIDENCE_MISMATCH,
+                severity="medium",
+                message="Public behavior changed without documentation evidence.",
+                hint="Update maintained docs or add exploration_evidence explaining why docs are unaffected.",
+            )
+        )
+    for entry in claim.verification_commands:
+        if entry.exit_code != 0:
+            findings.append(
+                VerificationFinding(
+                    kind=VerificationFindingKind.EVIDENCE_MISMATCH,
+                    severity="high",
+                    message=f"Verification command failed with exit code {entry.exit_code}: {entry.command}",
+                    hint="Fix the failure or disclose why the command cannot pass before claiming completion.",
+                )
+            )
+        if project_root is not None and entry.artifact_path and not (project_root / entry.artifact_path).exists():
+            findings.append(
+                VerificationFinding(
+                    kind=VerificationFindingKind.EVIDENCE_MISMATCH,
+                    severity="medium",
+                    message=f"Verification artifact path does not exist: {entry.artifact_path}",
+                    hint="Attach an existing artifact path or omit artifact_path when the command has no artifact output.",
+                )
+            )
+    return findings
+
+
+def _has_impacted_flow_evidence(claim: CompletionClaim) -> bool:
+    needles = ("critical flow", "impacted flow", "must-not-break", "must not break", "caller", "route")
+    for entry in claim.exploration_evidence:
+        haystack = f"{entry.path} {entry.reason} {entry.observation}".lower()
+        if any(needle in haystack for needle in needles):
+            return True
+    return False
+
+
+def _is_docs_path(path: str) -> bool:
+    normalized = path.replace("\\", "/")
+    return normalized == "README.md" or normalized.startswith(("docs/", "CHANGELOG"))
+
+
+def _check_open_questions(claim: CompletionClaim) -> list[VerificationFinding]:
+    if not claim.open_questions:
+        return []
+    return [
+        VerificationFinding(
+            kind=VerificationFindingKind.EVIDENCE_MISMATCH,
+            severity="high",
+            message="Completion claim contains unresolved open questions.",
+            hint="Resolve material open questions before completion, or stop and ask the operator for clarification.",
         )
     ]

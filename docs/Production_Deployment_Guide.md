@@ -26,7 +26,7 @@ Each CES operator needs:
 - A writable project checkout where CES can create `.ces/`
 
 CES stores operational state locally in `.ces/state.db`. It does not require
-Postgres, Redis, Celery, FastAPI, or Docker for supported usage.
+Postgres, Redis, Celery, FastAPI, or a hosted service stack for supported usage.
 
 ## Environment Variables
 

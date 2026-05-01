@@ -1,6 +1,6 @@
 """Output capture with byte-counted buffer and truncation (EXEC-01).
 
-Captures stdout/stderr from Docker containers with size limits.
+Captures stdout/stderr from streaming process handles with size limits.
 When output exceeds the limit, it is truncated and flagged for
 mandatory disclosure in evidence packets (D-04 via DisclosureSet).
 
@@ -10,7 +10,7 @@ Threat mitigation:
 
 Exports:
     CapturedOutput: Frozen model with stdout, stderr, truncated flag, bytes_read.
-    OutputCapture: Service that reads container logs with byte counting.
+    OutputCapture: Service that reads attached output streams with byte counting.
 """
 
 from __future__ import annotations
@@ -19,7 +19,7 @@ from ces.shared.base import CESBaseModel
 
 
 class CapturedOutput(CESBaseModel):
-    """Result of capturing container output.
+    """Result of capturing process output.
 
     Frozen model -- once captured, output cannot be altered.
     The truncated flag MUST be disclosed in evidence packets
@@ -52,15 +52,16 @@ class OutputCapture:
     def __init__(self, max_bytes: int = 1_048_576) -> None:
         self._max_bytes = max_bytes
 
-    def capture(self, container: object) -> CapturedOutput:
-        """Capture stdout/stderr from a Docker container with size limit.
+    def capture(self, stream_source: object) -> CapturedOutput:
+        """Capture stdout/stderr from an attached stream source with size limit.
 
-        Streams container output incrementally and stops reading once the
+        Streams output incrementally and stops reading once the
         combined byte budget is exhausted. This avoids materializing the
         full stdout/stderr payload in host memory before truncation.
 
         Args:
-            container: Docker container object with a .logs() method.
+            stream_source: Object exposing an ``attach`` method that yields
+                demuxed ``(stdout, stderr)`` byte chunks.
 
         Returns:
             CapturedOutput with decoded text, truncation flag, and byte count.
@@ -69,7 +70,7 @@ class OutputCapture:
         stderr_buffer = bytearray()
         truncated = False
 
-        stream = container.attach(  # type: ignore[union-attr]
+        stream = stream_source.attach(  # type: ignore[union-attr]
             stdout=True,
             stderr=True,
             stream=True,

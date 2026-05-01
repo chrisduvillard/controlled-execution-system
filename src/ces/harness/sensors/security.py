@@ -7,6 +7,7 @@ using regex. No external tool dependencies.
 
 from __future__ import annotations
 
+import json
 import re
 from pathlib import PurePosixPath
 
@@ -58,15 +59,17 @@ class SecuritySensor(BaseSensor):
 
     async def _execute(self, context: dict) -> tuple[bool, float, str]:
         affected_files: list[str] = context.get("affected_files", [])
+        context_files: list[str] = context.get("context_files", [])
+        files_to_check = _dedupe_paths([*affected_files, *context_files])
         project_root: str = context.get("project_root", "")
 
-        if not affected_files:
+        if not files_to_check and not context.get("sast_artifact"):
             return (True, 1.0, "No files in scope for security scan")
 
         findings: list[str] = []
 
         # Path-based checks (no file reading needed)
-        for fpath in affected_files:
+        for fpath in files_to_check:
             # Cross-platform: normalize separators then extract final component
             name = PurePosixPath(fpath.replace("\\", "/")).name
             if name in _SENSITIVE_PATHS:
@@ -95,7 +98,7 @@ class SecuritySensor(BaseSensor):
         # Content-based checks (requires project_root)
         files_scanned = 0
         scannable = filter_by_extension(
-            affected_files,
+            files_to_check,
             (
                 ".py",
                 ".js",
@@ -109,6 +112,7 @@ class SecuritySensor(BaseSensor):
                 ".cfg",
                 ".ini",
                 ".conf",
+                ".md",
                 ".sh",
                 ".bash",
                 ".env",
@@ -135,6 +139,9 @@ class SecuritySensor(BaseSensor):
                         )
                     )
 
+        sast_findings = self._parse_sast_artifact(project_root, context.get("sast_artifact"))
+        findings.extend(sast_findings)
+
         if findings:
             score = max(0.0, 1.0 - 0.2 * len(findings))
             details = f"Found {len(findings)} potential secret(s): " + "; ".join(findings)
@@ -143,5 +150,55 @@ class SecuritySensor(BaseSensor):
         return (
             True,
             1.0,
-            f"No secrets detected ({files_scanned} file(s) scanned, {len(affected_files)} path(s) checked)",
+            f"No secrets detected ({files_scanned} file(s) scanned, {len(files_to_check)} path(s) checked)",
         )
+
+    def _parse_sast_artifact(self, project_root: str, artifact_path: str | None) -> list[str]:
+        if not project_root or not artifact_path:
+            return []
+        content = read_file_safe(project_root, artifact_path)
+        if content is None:
+            return []
+        try:
+            payload = json.loads(content)
+        except json.JSONDecodeError:
+            msg = f"{artifact_path}: invalid SAST JSON"
+            self._findings.append(
+                SensorFinding(
+                    category="invalid_sast_artifact",
+                    severity="medium",
+                    location=artifact_path,
+                    message=msg,
+                    suggestion="Regenerate the SAST JSON report",
+                )
+            )
+            return [msg]
+        findings: list[str] = []
+        for result in payload.get("results", []):
+            if not isinstance(result, dict):
+                continue
+            severity = str(result.get("issue_severity", "medium")).lower()
+            location = str(result.get("filename", artifact_path))
+            test_id = str(result.get("test_id", "SAST"))
+            msg = f"{location}: SAST finding {test_id} ({severity})"
+            findings.append(msg)
+            self._findings.append(
+                SensorFinding(
+                    category="sast_finding",
+                    severity="high" if severity in {"high", "critical"} else "medium",
+                    location=location,
+                    message=msg,
+                    suggestion="Review and fix or document why this SAST finding is acceptable",
+                )
+            )
+        return findings
+
+
+def _dedupe_paths(paths: list[str]) -> list[str]:
+    seen: set[str] = set()
+    result: list[str] = []
+    for path in paths:
+        if path and path not in seen:
+            seen.add(path)
+            result.append(path)
+    return result

@@ -44,7 +44,14 @@ Builder-first is the default for most day-to-day operator work because it keeps 
 For governed builder-first runs, evidence includes the runtime's `ces:completion`
 claim, the actual workspace delta, runtime safety disclosure, configured sensor
 results, and any scope or verification blockers. `--yes` skips the interactive
-prompt only when that evidence is clean enough for unattended approval.
+prompt only when that evidence is clean enough for unattended approval. Missing
+configured verification artifacts are blockers. If the selected runtime cannot
+enforce manifest tool allowlists, unattended approval also requires an explicit
+`--accept-runtime-side-effects` waiver.
+`ces explain --view decisioning --governance` and `ces report builder` surface
+the evidence-quality state, runtime side-effect waiver state, tool-allowlist
+boundary, and MCP-grounding support so reviewers do not have to infer those
+risks from raw runtime output.
 
 For day-to-day brownfield delivery, stay builder-first with `ces build`, `ces continue`, and `ces explain --view brownfield`. Switch into the expert brownfield commands only when you need to make a named legacy-behavior decision such as `ces brownfield review OLB-<entry-id> --disposition preserve`. The [Brownfield Guide](Brownfield_Guide.md) covers that handoff in more detail.
 

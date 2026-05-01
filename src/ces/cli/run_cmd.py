@@ -36,9 +36,11 @@ from ces.control.spec.parser import SpecParser
 from ces.control.spec.template_loader import TemplateLoader
 from ces.execution.completion_parser import parse_completion_claim
 from ces.execution.providers.bootstrap import resolve_primary_provider
-from ces.execution.runtime_safety import safety_profile_for_runtime
+from ces.execution.runtime_safety import runtime_side_effects_block_auto_approval, safety_profile_for_runtime
 from ces.execution.workspace_delta import WorkspaceSnapshot
 from ces.harness.prompts.engineering_charter import attach_engineering_charter
+from ces.harness.sensors.security import SecuritySensor
+from ces.harness.services.change_impact import build_observability_acceptance_template
 from ces.harness.services.risk_sensor_policy import evaluate_sensor_policy
 from ces.shared.enums import (
     ActorType,
@@ -49,6 +51,8 @@ from ces.shared.enums import (
     TrustStatus,
     WorkflowState,
 )
+
+BUILDER_COMPLETION_SENSORS = ("test_pass", "lint", "typecheck", "coverage")
 
 #: Directories excluded from sensor file discovery.
 SENSOR_EXCLUDED_DIRS = {".venv", "node_modules", "__pycache__", ".git", ".ces"}
@@ -144,7 +148,12 @@ def _promoted_prl_context(local_store: Any) -> list[str]:
     return statements
 
 
-def _prompt_pack(brief: BuilderBriefDraft, *, promoted_prl_statements: list[str] | None = None) -> str:
+def _prompt_pack(
+    brief: BuilderBriefDraft,
+    *,
+    promoted_prl_statements: list[str] | None = None,
+    manifest: Any | None = None,
+) -> str:
     lines = [
         "You are executing a governed CES task in local mode.",
         "Work directly in the current project and keep the change scoped.",
@@ -158,6 +167,22 @@ def _prompt_pack(brief: BuilderBriefDraft, *, promoted_prl_statements: list[str]
         lines.extend(["", "Acceptance Criteria:", *[f"- {item}" for item in brief.acceptance_criteria]])
     if brief.must_not_break:
         lines.extend(["", "Must Not Break:", *[f"- {item}" for item in brief.must_not_break]])
+    mcp_servers = tuple(getattr(manifest, "mcp_servers", ()) or ()) if manifest is not None else ()
+    if mcp_servers:
+        lines.extend(
+            [
+                "",
+                "MCP Grounding Requested:",
+                *[f"- {server}" for server in mcp_servers],
+                "Use these only when the runtime adapter exposes them; otherwise disclose that limitation.",
+            ]
+        )
+    if manifest is not None:
+        observability_template = build_observability_acceptance_template(
+            list(getattr(manifest, "affected_files", ()) or ())
+        )
+        if observability_template:
+            lines.extend(["", observability_template])
     if brief.project_mode == "brownfield":
         lines.extend(["", "Project Mode: brownfield"])
         if brief.source_of_truth:
@@ -306,6 +331,7 @@ async def _wizard_flow(
     description: str | None,
     greenfield: bool,
     brownfield_flag: bool,
+    accept_runtime_side_effects: bool = False,
 ) -> None:
     """Guided interactive wizard: 5 steps with Rich panels, inline help, and confirmation."""
     # Step 1 - Project Scan
@@ -384,6 +410,7 @@ async def _wizard_flow(
             governance=governance,
             export_prl_draft=export_prl_draft,
             project_root=project_root,
+            accept_runtime_side_effects=accept_runtime_side_effects,
         )
 
 
@@ -399,6 +426,7 @@ async def _run_brief_flow(
     governance: bool,
     export_prl_draft: bool,
     project_root: Path,
+    accept_runtime_side_effects: bool = False,
     existing_brief_id: str | None = None,
     existing_session_id: str | None = None,
 ) -> None:
@@ -529,6 +557,12 @@ async def _run_brief_flow(
             acceptance_criteria=brief_draft.acceptance_criteria,
             token_budget=proposal.get("token_budget", 100_000),
             owner=actor,
+            verification_sensors=list(BUILDER_COMPLETION_SENSORS),
+            requires_exploration_evidence=True,
+            requires_verification_commands=True,
+            requires_impacted_flow_evidence=brief_draft.project_mode == "brownfield",
+            requires_docs_evidence_for_public_changes=True,
+            accepted_runtime_side_effect_risk=accept_runtime_side_effects,
         )
         local_store.update_builder_brief_artifacts(
             brief_id,
@@ -592,6 +626,28 @@ async def _run_brief_flow(
     manifest = _with_workflow_state(manifest, WorkflowState.IN_FLIGHT)
     await manager.save_manifest(manifest)
 
+    pre_runtime_security = await SecuritySensor().run(
+        {
+            "project_root": str(project_root),
+            "affected_files": list(getattr(manifest, "affected_files", ()) or ()),
+            "context_files": [path for path in (getattr(brief_draft, "prl_draft_path", None),) if path],
+        }
+    )
+    if not pre_runtime_security.passed:
+        if session_id is not None and hasattr(local_store, "update_builder_session"):
+            local_store.update_builder_session(
+                session_id,
+                stage="blocked",
+                next_action="retry_runtime",
+                last_action="runtime_failed",
+                recovery_reason="security_context_blocked",
+                last_error="Pre-runtime security scan found sensitive context",
+                runtime_manifest_id=manifest.manifest_id,
+            )
+        raise RuntimeError(
+            "Pre-runtime security scan found sensitive context; review security findings before running."
+        )
+
     workspace_before = WorkspaceSnapshot.capture(project_root)
     run_result = await agent_runner.execute_runtime(
         manifest=manifest,
@@ -599,6 +655,7 @@ async def _run_brief_flow(
         prompt_pack=_prompt_pack(
             brief_draft,
             promoted_prl_statements=_promoted_prl_context(local_store),
+            manifest=manifest,
         ),
         working_dir=project_root,
     )
@@ -607,6 +664,12 @@ async def _run_brief_flow(
     runtime_safety = safety_profile_for_runtime(
         execution.get("runtime_name", getattr(runtime_adapter, "runtime_name", "unknown")),
         allowed_tools=tuple(getattr(manifest, "allowed_tools", ()) or ()),
+        mcp_servers=tuple(getattr(manifest, "mcp_servers", ()) or ()),
+    ).model_copy(
+        update={
+            "accepted_runtime_side_effect_risk": accept_runtime_side_effects
+            or bool(getattr(manifest, "accepted_runtime_side_effect_risk", False))
+        }
     )
     runtime_result = getattr(run_result, "runtime_result", None)
     completion_claim = getattr(runtime_result, "completion_claim", None)
@@ -765,6 +828,13 @@ async def _run_brief_flow(
         auto_blockers.append("workspace changes exceeded manifest scope")
     if sensor_policy.blocking:
         auto_blockers.append("risk-aware sensor policy found blocking issues")
+    if yes and brief_draft.project_mode == "brownfield" and not getattr(manifest, "affected_files", ()):
+        auto_blockers.append("brownfield scope unknown: manifest affected_files is empty")
+    if yes and runtime_side_effects_block_auto_approval(
+        runtime_safety,
+        accepted=accept_runtime_side_effects or bool(getattr(manifest, "accepted_runtime_side_effect_risk", False)),
+    ):
+        auto_blockers.append("runtime side-effect boundary requires explicit operator acceptance")
 
     approved = yes and not auto_blockers
     if not yes:
@@ -967,6 +1037,11 @@ async def run_task(
         "--export-prl-draft",
         help="Write a lightweight PRL-style draft from the builder brief to `.ces/exports/`.",
     ),
+    accept_runtime_side_effects: bool = typer.Option(
+        False,
+        "--accept-runtime-side-effects",
+        help="Allow unattended approval when the selected runtime cannot enforce manifest tool allowlists.",
+    ),
     from_spec: Path | None = typer.Option(
         None,
         "--from-spec",
@@ -1031,6 +1106,7 @@ async def run_task(
                     governance=governance,
                     export_prl_draft=export_prl_draft,
                     project_root=project_root,
+                    accept_runtime_side_effects=accept_runtime_side_effects,
                 )
             else:
                 # Wizard path: guided step-by-step flow
@@ -1046,6 +1122,7 @@ async def run_task(
                     description=description,
                     greenfield=greenfield,
                     brownfield_flag=brownfield,
+                    accept_runtime_side_effects=accept_runtime_side_effects,
                 )
     except typer.Abort:
         raise typer.Exit(code=1)
@@ -1088,6 +1165,11 @@ async def continue_task(
         "--export-prl-draft",
         help="Write a lightweight PRL-style draft from the builder brief to `.ces/exports/`.",
     ),
+    accept_runtime_side_effects: bool = typer.Option(
+        False,
+        "--accept-runtime-side-effects",
+        help="Allow unattended approval when the selected runtime cannot enforce manifest tool allowlists.",
+    ),
 ) -> None:
     """Continue from the latest saved builder brief without re-answering prompts."""
     try:
@@ -1129,6 +1211,7 @@ async def continue_task(
                 project_root=project_root,
                 existing_brief_id=getattr(record, "brief_id", None),
                 existing_session_id=getattr(session, "session_id", None),
+                accept_runtime_side_effects=accept_runtime_side_effects,
             )
     except typer.Abort:
         raise typer.Exit(code=1)

@@ -86,12 +86,6 @@ Then rerun `ces doctor` and `ces build`.
 pip install controlled-execution-system
 ```
 
-If you also need Docker-backed sandbox support:
-
-```bash
-pip install controlled-execution-system[docker]
-```
-
 Core commands (`ces build`, `ces init`, `ces status`, `ces classify`, `ces manifest`) do not require server packages.
 
 ---

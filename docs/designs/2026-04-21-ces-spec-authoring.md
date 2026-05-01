@@ -153,7 +153,7 @@ signals:
   - GET /healthcheck returns 200 with `{"status": "ok"}`
   - Response time <50ms p95
 
-### Story: Add probe to docker-compose
+### Story: Add service health probe
 - **id:** ST-01HXZ...
 - **size:** XS
 - **depends_on:** [ST-01HXY...]           # build ordering
@@ -341,7 +341,7 @@ $ ces spec decompose docs/specs/2026-04-21-healthcheck.md
 $ ces spec tree
 SP-01HXY... Healthcheck endpoint (decomposed)
 ├── ST-01 Add /healthcheck route     [M-01 classified A]  ✓ approved
-├── ST-02 Add probe to docker-compose [M-02 under_review] …
+├── ST-02 Add service health probe [M-02 under_review] …
 └── ST-03 Document operator runbook   [M-03 queued]       (blocked by M-02)
 
 $ ces build --from-spec docs/specs/2026-04-21-healthcheck.md

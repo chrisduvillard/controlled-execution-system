@@ -90,15 +90,14 @@ class TestCesDoctor:
         monkeypatch.chdir(tmp_path)  # type: ignore[attr-defined]
         app = _get_app()
         result = runner.invoke(app, ["doctor", "--expert"])
-        # Should name the optional extras groups explicitly.
-        assert "docker" in result.stdout
+        assert "no optional runtime extras" in result.stdout
 
     def test_default_doctor_hides_optional_compat_extras(self, tmp_path: Path, monkeypatch: object) -> None:
-        """Default doctor keeps Docker out of the local-first path."""
+        """Default doctor keeps optional extras out of the local-first path."""
         monkeypatch.chdir(tmp_path)  # type: ignore[attr-defined]
         app = _get_app()
         result = runner.invoke(app, ["doctor"])
-        assert "Extras: docker" not in result.stdout
+        assert "no optional runtime extras" not in result.stdout
 
     def test_reports_ces_directory_status(self, tmp_path: Path, monkeypatch: object) -> None:
         """ces doctor mentions whether a .ces/ project directory exists."""

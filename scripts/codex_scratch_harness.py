@@ -164,7 +164,7 @@ class FallbackAnswerProvider:
         ):
             text = "y"
         elif "stack or constraint" in prompt_lower:
-            text = "Keep the tiny Python app local-first; do not add Docker, Postgres, Redis, or new services."
+            text = "Keep the tiny Python app local-first; do not add Postgres, Redis, or new services."
         elif "true when this is done" in prompt_lower and brownfield_extension:
             text = f"add, subtract, multiply, and divide work; divide by zero raises; {context.pytest_command} passes."
         elif "true when this is done" in prompt_lower:
@@ -240,7 +240,7 @@ class CodexAnswerProvider:
                 "Project context:",
                 files,
                 "",
-                "Constraints: keep this local-first; do not suggest Docker, Postgres, Redis, or hosted services.",
+                "Constraints: keep this local-first; do not suggest Postgres, Redis, or hosted services.",
             ]
         )
 

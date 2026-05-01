@@ -5,8 +5,8 @@ Demonstrates the full CES governance pipeline via CLI commands:
   ces review -> ces approve -> ces status -> ces audit
 
 Uses CliRunner (in-process, no subprocess escalation -- T-06-22)
-with mocked services so the script can run without Docker, Postgres,
-Redis, or real LLM API keys.
+with mocked services so the script can run without Postgres, Redis, or real LLM
+API keys.
 
 Usage::
 

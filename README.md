@@ -18,7 +18,7 @@ The default product shape is deliberately small:
 | CES is | CES is not |
 |---|---|
 | Local-first CLI governance | A hosted control plane |
-| Builder-first operator workflow | A Docker-first platform |
+| Builder-first operator workflow | A managed service platform |
 | Repo-local SQLite state under `.ces/` | A required Postgres or Redis service |
 | Local runtime execution through Codex CLI or Claude Code | A replacement for your runtime credentials |
 
@@ -92,6 +92,7 @@ If you want to initialize local state explicitly:
 ```bash
 ces init my-project
 ces doctor
+ces doctor --runtime-safety
 ```
 
 `ces build` and `ces execute` need a real local runtime. `CES_DEMO_MODE=1`
@@ -123,7 +124,9 @@ Start with the builder-first loop for normal work:
 
 Unattended `--yes` runs are still evidence-gated: CES blocks auto-approval if
 the runtime omits the `ces:completion` claim, changes files outside the manifest
-scope, or trips a blocking sensor policy finding.
+scope, omits required verification artifacts, trips a blocking sensor policy
+finding, or uses a runtime boundary that cannot enforce manifest tool allowlists
+without an explicit `--accept-runtime-side-effects` waiver.
 
 Use the [Operator Playbook](docs/Operator_Playbook.md) when you need the full
 builder-first versus expert workflow boundary for a single request.
@@ -222,13 +225,11 @@ CES is organized around local CLI contexts:
 | `src/ces/local_store/` | Project-scoped SQLite persistence and repositories |
 | `src/ces/control/` | Deterministic governance models, manifests, workflow, policy, merge, and audit services |
 | `src/ces/harness/` | Evidence, review routing, sensors, trust, guide packs, and completion verification |
-| `src/ces/execution/` | Runtime adapters, providers, completion parsing, output capture, and optional sandbox helpers |
+| `src/ces/execution/` | Runtime adapters, providers, completion parsing, output capture, and secret-scrubbing helpers |
 | `src/ces/brownfield/` | Observed legacy behavior capture and PRL promotion |
 
-Compatibility Docker/Postgres/Alembic infrastructure exists for optional tests
-and historical parity. It is not the supported default runtime path. Historical
-server-oriented docs live under `docs/historical/` as design archives, not as
-the current product contract.
+Historical server-oriented docs live under `docs/historical/` as design
+archives, not as the current product contract.
 
 ## Development
 
@@ -250,7 +251,14 @@ uv build
 uvx twine check dist/*
 ```
 
-Optional compatibility tests may require Docker-backed services:
+Builder-created manifests expect command-backed completion evidence. When a
+manifest enables the completion-gate sensors, produce the matching artifacts
+before claiming completion: `pytest-results.json`, `ruff-report.json`,
+`mypy-report.txt`, and `coverage.json`. Dependency and security-sensitive
+changes can also be backed by `pip-audit-report.json` and SAST JSON artifacts
+such as `bandit-report.json`; CES parses those when present.
+
+Run local integration tests:
 
 ```bash
 uv sync --group ci
@@ -290,7 +298,7 @@ contribution expectations. Security-sensitive issues should follow
 If you use external agent loops such as `gnhf`, keep them outside CES itself as
 contributor tooling rather than part of the product. Run them from a clean
 sibling worktree or clean clone, keep the scope away from manifest/policy,
-approval/triage/review, audit, kill-switch, sandbox, and runtime-boundary
+approval/triage/review, audit, kill-switch, and runtime-boundary
 changes, and review every generated branch manually before using it. Follow the
 [GNHF Trial Guide](docs/GNHF_Trial_Guide.md) and
 [`scripts/gnhf_trial.sh`](scripts/gnhf_trial.sh); CES's own builder-first or expert workflows remain the delivery path.

@@ -8,6 +8,8 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
+from ces.harness.services.evidence_quality import compute_evidence_quality_state
+
 
 @dataclass(frozen=True)
 class BuilderRunReport:
@@ -25,6 +27,11 @@ class BuilderRunReport:
     approval_decision: str | None
     workflow_state: str | None
     triage_color: str | None
+    evidence_quality_state: str
+    verification_sensor_state: str
+    runtime_tool_allowlist_enforced: bool | None
+    runtime_side_effect_waived: bool
+    mcp_grounding_supported: bool | None
     prl_draft_path: str | None
     reported_model: str | None
     brownfield_reviewed_count: int
@@ -66,6 +73,7 @@ def build_builder_run_report(snapshot: Any) -> BuilderRunReport | None:
         latest_artifact=_text(getattr(snapshot, "latest_artifact", None)),
         brief_only_fallback=bool(getattr(snapshot, "brief_only_fallback", False)),
     )
+    runtime_safety = _evidence_content(evidence).get("runtime_safety", {}) if isinstance(evidence, dict) else {}
     return BuilderRunReport(
         session_id=_text(getattr(session, "session_id", None)),
         request=request,
@@ -83,6 +91,15 @@ def build_builder_run_report(snapshot: Any) -> BuilderRunReport | None:
         approval_decision=approval_decision,
         workflow_state=workflow_state,
         triage_color=evidence.get("triage_color") if isinstance(evidence, dict) else None,
+        evidence_quality_state=compute_evidence_quality_state(evidence if isinstance(evidence, dict) else None),
+        verification_sensor_state=(
+            "configured"
+            if tuple(getattr(manifest, "verification_sensors", ()) or ())
+            else "none_configured_expert_opt_out"
+        ),
+        runtime_tool_allowlist_enforced=_optional_bool(runtime_safety.get("tool_allowlist_enforced")),
+        runtime_side_effect_waived=bool(runtime_safety.get("accepted_runtime_side_effect_risk")),
+        mcp_grounding_supported=_optional_bool(runtime_safety.get("mcp_grounding_supported")),
         prl_draft_path=_text(getattr(brief, "prl_draft_path", None)),
         reported_model=_text(getattr(runtime_execution, "reported_model", None)),
         brownfield_reviewed_count=int(getattr(brownfield, "reviewed_count", 0) or 0),
@@ -129,6 +146,13 @@ def summarize_builder_run(report: BuilderRunReport) -> list[str]:
         lines.append(f"Manifest: {report.manifest_id}")
     if report.evidence_packet_id:
         lines.append(f"Evidence packet: {report.evidence_packet_id}")
+    lines.append(f"Evidence quality: {report.evidence_quality_state}")
+    lines.append(f"Verification sensors: {report.verification_sensor_state}")
+    if report.runtime_tool_allowlist_enforced is not None:
+        lines.append(f"Runtime tool allowlist enforced: {report.runtime_tool_allowlist_enforced}")
+        lines.append(f"Runtime side-effect waiver accepted: {report.runtime_side_effect_waived}")
+    if report.mcp_grounding_supported is not None:
+        lines.append(f"MCP grounding supported: {report.mcp_grounding_supported}")
     return lines
 
 
@@ -173,6 +197,11 @@ def render_builder_run_report_markdown(report: BuilderRunReport) -> str:
         f"- Approval decision: {report.approval_decision or 'none'}",
         f"- Workflow state: {report.workflow_state or 'unknown'}",
         f"- Triage color: {report.triage_color or 'unknown'}",
+        f"- Evidence quality: {report.evidence_quality_state}",
+        f"- Verification sensors: {report.verification_sensor_state}",
+        f"- Runtime tool allowlist enforced: {_render_optional_bool(report.runtime_tool_allowlist_enforced)}",
+        f"- Runtime side-effect waiver accepted: {report.runtime_side_effect_waived}",
+        f"- MCP grounding supported: {_render_optional_bool(report.mcp_grounding_supported)}",
         f"- Reported model: {report.reported_model or 'unknown'}",
     ]
     if report.prl_draft_path:
@@ -253,3 +282,16 @@ def _text(value: Any) -> str | None:
         stripped = primitive.strip()
         return stripped or None
     return str(primitive)
+
+
+def _evidence_content(evidence: dict[str, Any]) -> dict[str, Any]:
+    content = evidence.get("content")
+    return content if isinstance(content, dict) else evidence
+
+
+def _optional_bool(value: Any) -> bool | None:
+    return value if isinstance(value, bool) else None
+
+
+def _render_optional_bool(value: bool | None) -> str:
+    return "unknown" if value is None else str(value)

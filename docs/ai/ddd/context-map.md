@@ -19,7 +19,7 @@ Purpose: show likely bounded contexts and dependencies so future agents keep cha
 | Emergency Operations | Core safety / Supporting | Kill switch, emergency declaration, SLA/recovery support. | kill switch, emergency, halted action, recovery, escalation | `src/ces/emergency/`; `src/ces/control/services/kill_switch.py`; `src/ces/cli/emergency_cmd.py` | `ces emergency declare`, service calls | Halt/recovery decisions and audit events | emergency/kill-switch tests; operations docs | Fact |
 | Observability | Generic / Supporting | Metrics, counters, OpenTelemetry helpers, and Grafana examples. | metrics, collector, OTEL, dashboard | `src/ces/observability/`; `examples/grafana-*.json` | Optional env vars and optional dependency extra | Metrics/counters/OTel instrumentation | observability tests; `pyproject.toml` optional extra | Fact |
 | Packaging / Release / CI | Supporting | Build, publish, validate, and generate CI gating workflows. | console script, package, wheel, publish, setup-ci, dogfood workflow | `pyproject.toml`; `.github/workflows/`; `.github/`; `src/ces/cli/templates/ci/`; `src/ces/cli/setup_ci_cmd.py` | `uv sync`, `uv build`, `ces setup-ci`, GitHub/GitLab CI events | Built distributions, generated workflows, PR/issue templates | docs/packaging tests; CI workflow files | Fact |
-| Compatibility Test Infrastructure | Generic / Compatibility | Keep optional SQLAlchemy/Postgres/Alembic/Docker coverage separate from supported local-first runtime. | compat-tests, Alembic, Docker compatibility, Postgres testcontainer | `tests/integration/_compat/`; `alembic.ini`; `docker-compose.yml`; `pyproject.toml` `compat-tests` and `docker` extras | Optional CI/dev test invocations | Test-only DB schema/migrations and compatibility repositories | integration fixtures; package extras; comments in compose/pyproject | Fact |
+| Compatibility Test Infrastructure | Generic / Compatibility | Keep optional SQLAlchemy/Postgres/Alembic coverage separate from supported local-first runtime. | compat-tests, Alembic, SQL compatibility | `tests/integration/_compat/`; `alembic.ini`; `pyproject.toml` `compat-tests` extra | Optional CI/dev test invocations | Test-only DB schema/migrations and compatibility repositories | integration fixtures; package extras | Fact |
 | Scratch Harness Scripts | Supporting / Verification | External scratch and brownfield E2E proof scripts that drive CES and collect evidence bundles. | scratch harness, command transcript, prompt answers, summary | `scripts/codex_scratch_harness.py`; `scripts/run_codex_scratch_e2e.py`; `scripts/run_codex_brownfield_e2e.py`; `docs/Codex_Scratch_Project_E2E.md` | Script CLIs and local `codex` availability | Evidence bundle files and preserved temp repos on failure | script tests; docs | Fact |
 
 ## Key Relationships
@@ -31,11 +31,11 @@ Purpose: show likely bounded contexts and dependencies so future agents keep cha
 | Builder Orchestration | Brownfield Governance | Anticorruption Layer | Operator prose and repo signals -> OLB entries/dispositions | Skipping brownfield review loses preserve/change/retire decisions. |
 | Control Plane | Local Store | Shared Kernel | Pydantic/enums <-> SQLite rows/repositories | Schema or enum changes can break existing `.ces/state.db`. |
 | Harness / Review | Control Plane | Customer/Supplier | Evidence/review depends on manifest risk, BC, class, and workflow state | Classification changes alter review routing and merge gates. |
-| Execution | External Agent CLIs | Anticorruption Layer | `AgentRuntimeProtocol`, runtime adapters, completion claim parser | External CLI behavior drifts; do not overstate sandbox/runtime guarantees. |
+| Execution | External Agent CLIs | Anticorruption Layer | `AgentRuntimeProtocol`, runtime adapters, completion claim parser | External CLI behavior drifts; do not overstate runtime-boundary guarantees. |
 | Spec Authoring | Control Plane | Customer/Supplier | Spec stories decompose into manifests with parent IDs and acceptance criteria | Spec file changes can break existing stories or generated manifests. |
 | Brownfield Governance | Control Plane | Published Language | OLB dispositions and PRL promotion | Docs/code vocabulary mismatch (`migrate/remove` vs `change/retire`) can become a compatibility bug. |
 | Packaging / Release / CI | CLI / Execution | Open Host Service | Console script and generated CI templates invoke `ces doctor` and `ces dogfood` | Tightening generated gates can break user CI. |
-| Compatibility Test Infrastructure | Product Runtime | Separate Ways | Root `alembic.ini` and compose file are compatibility-test helpers | Agents may copy Postgres/Docker paths into supported docs/code by mistake. |
+| Compatibility Test Infrastructure | Product Runtime | Separate Ways | Root `alembic.ini` is a compatibility-test helper | Agents may copy Postgres paths into supported docs/code by mistake. |
 | Examples | Tests / Compatibility | Boundary smell | `examples/freshcart/seed_data.py` imports test compatibility DB modules | Treat this as demo/test coupling, not a production dependency pattern. |
 
 ## Allowed Dependencies
@@ -45,7 +45,7 @@ Purpose: show likely bounded contexts and dependencies so future agents keep cha
 - Harness may consume control models/enums and execution/provider outputs, but should not mutate manifests/audit history directly.
 - Execution may consume manifest descriptions and completion models, but should not own governance decisions.
 - Local Store owns SQLite shape and repository adapters; domain services should not bypass it with ad hoc SQL.
-- Compatibility test infrastructure may depend on Docker/Postgres/Alembic, but production/default local-first flow should not.
+- Compatibility test infrastructure may depend on Postgres/Alembic, but production/default local-first flow should not.
 
 ## Forbidden Or High-Risk Dependencies
 

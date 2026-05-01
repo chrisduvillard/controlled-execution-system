@@ -52,7 +52,7 @@ def test_decompose_resolves_dependencies_by_story_id(decomposer: SpecDecomposer,
         "- **id:** ST-PROBE\n"
         "- **size:** XS\n"
         "- **depends_on:** [ST-01HXY]\n"
-        "- **description:** docker compose probe.\n"
+        "- **description:** service health probe.\n"
         "- **acceptance:**\n"
         "  - probe returns healthy\n\n"
         "## Rollback Plan",

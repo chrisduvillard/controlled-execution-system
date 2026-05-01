@@ -4,21 +4,17 @@ Orchestrates the complete agent execution flow:
 1. Kill switch check (KILL-04 hard enforcement)
 2. Manifest boundary validation (WORK-04 via PolicyEngine)
 3. LLM call with token budget enforcement
-4. Docker sandbox execution with secret stripping
-5. Output capture with size limits
-6. Chain of custody tracking (LLM-04)
+4. Local runtime adapter execution
+5. Chain of custody tracking (LLM-04)
 
 Threat mitigations:
-- T-04-05: Delegates to AgentSandbox for container isolation
-- T-04-06: Delegates to AgentSandbox._strip_secrets for env sanitization
-- T-04-07: Delegates to OutputCapture for size-limited output
 - T-04-08: PolicyEngine.check_tool_access validates command before execution
 - T-04-09: Kill switch can halt all task_issuance activity
 
 Exports:
     KillSwitchActiveError: Raised when kill switch blocks execution.
     AgentRunResult: Frozen result model with output, LLM response, custody, violations.
-    AgentRunner: Service orchestrating sandbox + LLM + policy enforcement.
+    AgentRunner: Service orchestrating LLM/runtime execution + policy enforcement.
 """
 
 from __future__ import annotations
@@ -31,14 +27,13 @@ from ces.control.models.manifest import TaskManifest
 from ces.control.services.kill_switch import KillSwitchProtocol
 from ces.control.services.policy_engine import PolicyEngine
 from ces.execution.completion_parser import parse_completion_claim
-from ces.execution.output_capture import CapturedOutput, OutputCapture
+from ces.execution.output_capture import CapturedOutput
 from ces.execution.providers.protocol import (
     ChainOfCustodyTracker,
     LLMProviderProtocol,
     LLMResponse,
 )
 from ces.execution.runtimes.protocol import AgentRuntimeProtocol, AgentRuntimeResult
-from ces.execution.sandbox import AgentSandbox, SandboxConfig
 from ces.shared.base import CESBaseModel
 from ces.shared.enums import WorkflowState
 
@@ -51,7 +46,7 @@ class AgentRunResult(CESBaseModel):
     """Result of an agent execution.
 
     Frozen model capturing the complete execution result:
-    - output: Captured stdout/stderr from sandbox (if command was run)
+    - output: Captured stdout/stderr from legacy direct command execution
     - llm_response: LLM provider response (if LLM was called)
     - chain_of_custody: All LLM call entries for audit trail
     - policy_violations: Any policy violations detected
@@ -73,28 +68,23 @@ class AgentRunner:
     1. Kill switch check (KILL-04 hard enforcement)
     2. Manifest boundary validation (WORK-04 via PolicyEngine)
     3. LLM call with token budget enforcement
-    4. Docker sandbox execution with secret stripping
-    5. Output capture with size limits
-    6. Chain of custody tracking (LLM-04)
+    4. Local runtime adapter execution
+    5. Chain of custody tracking (LLM-04)
     """
 
     def __init__(
         self,
         kill_switch: KillSwitchProtocol,
         provider: LLMProviderProtocol | None = None,
-        sandbox_config: SandboxConfig | None = None,
     ) -> None:
         """Initialize the agent runner.
 
         Args:
             provider: LLM provider for generate/stream calls.
             kill_switch: Kill switch for hard enforcement checks.
-            sandbox_config: Docker sandbox configuration. Defaults to
-                           SandboxConfig() with secure defaults.
         """
         self._provider = provider
         self._kill_switch = kill_switch
-        self._sandbox_config = sandbox_config or SandboxConfig()
         self._custody_tracker = ChainOfCustodyTracker()
 
     def _enforce_execution_preconditions(self, manifest: TaskManifest) -> None:
@@ -209,21 +199,19 @@ class AgentRunner:
         manifest: TaskManifest,
         command: str,
     ) -> AgentRunResult:
-        """Execute a sandboxed command within manifest boundaries.
+        """Reject legacy direct command execution after policy validation.
 
         Steps:
         1. Check kill switch -- abort if halted
         2. Validate command against manifest allowlist/blocklist
-        3. Create sandbox container
-        4. Run command and capture output
-        5. Destroy sandbox (always, even on error)
+        3. Fail closed and require a local runtime adapter
 
         Args:
             manifest: TaskManifest bounding the execution.
-            command: Shell command to run in the sandbox.
+            command: Shell command requested by legacy callers.
 
         Returns:
-            AgentRunResult with captured output and any policy violations.
+            AgentRunResult with policy violations for blocked or unsupported execution.
 
         Raises:
             KillSwitchActiveError: If kill switch is active for task_issuance.
@@ -236,21 +224,8 @@ class AgentRunner:
         if not PolicyEngine.check_tool_access(tool, manifest.allowed_tools, manifest.forbidden_tools):
             return AgentRunResult(policy_violations=[f"Tool '{tool}' not allowed by manifest"])
 
-        # 3. Sandbox execution with guaranteed cleanup
-        sandbox = AgentSandbox(self._sandbox_config)
-        try:
-            container = sandbox.create_container(command)
-            container.wait()
-
-            # 4. Output capture with size limit
-            capture = OutputCapture(self._sandbox_config.max_output_bytes)
-            captured = capture.capture(container)
-        finally:
-            # 5. Always destroy sandbox (T-04-05)
-            sandbox.destroy_container()
-
         return AgentRunResult(
-            output=captured,
-            chain_of_custody=self._custody_tracker.entries,
-            truncated_output=captured.truncated,
+            policy_violations=[
+                "Direct command execution is no longer supported; use execute_runtime() with a local runtime adapter"
+            ],
         )

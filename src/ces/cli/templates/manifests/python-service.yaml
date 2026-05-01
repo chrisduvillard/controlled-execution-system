@@ -19,7 +19,7 @@ forbidden_files:
   - ".env"
   - "secrets/"
 
-# Tool boundaries — allowlist enforced by the sandbox.
+# Tool boundaries — interpreted by the selected runtime boundary.
 allowed_tools:
   - "Read"
   - "Grep"

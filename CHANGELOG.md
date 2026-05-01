@@ -20,8 +20,8 @@ Public GitHub readiness hardening before making the repository visible.
 - `CONTRIBUTING.md` now consistently documents the 90% CI coverage gate.
 - `SECURITY.md` and the archival security audit wording were refreshed for the
   public repository surface.
-- Development-only Docker Compose services now bind Postgres and Redis to
-  localhost by default instead of all network interfaces.
+- Development-only service fixtures now bind Postgres and Redis to localhost
+  by default instead of all network interfaces.
 
 ## [0.1.4] - 2026-04-30
 
@@ -125,7 +125,7 @@ product-shape changes. Full remediation plan archived at
   to `.ces/state.db` and included in evidence packets. An agent that
   reads `.env`/`~/.aws/credentials` and echoes it no longer causes
   that material to land in CES persistence. Scrubber extracted as
-  `scrub_secrets_from_text` in `src/ces/execution/sandbox.py`.
+  `scrub_secrets_from_text` in `src/ces/execution/secrets.py`.
 - **`.ces/state.db` is created mode `0600`, parent dir `0700`.**
   Matches the pattern already used for runtime transcripts.
 - **CLI provider subprocess env is now allowlist-filtered** (new
@@ -147,11 +147,10 @@ product-shape changes. Full remediation plan archived at
   The corresponding `.py` source was deleted in 0.1.1; this release
   removes the stale `__pycache__` shells. Nothing in `src/` or
   `tests/` imports from these paths.
-- **`docker-compose.yml` narrowed to `postgres` + `redis`.** The
-  `api` and `celery-worker` services (whose backing code was removed
-  in 0.1.1) have been deleted; running `docker compose up` no longer
-  fails with `ModuleNotFoundError` or a dead health-probe URL. The
-  file retains its purpose as integration-test infrastructure.
+- **Service fixture narrowed to `postgres` + `redis`.** The `api` and
+  `celery-worker` services (whose backing code was removed in 0.1.1) have
+  been deleted; the retained fixture no longer fails with `ModuleNotFoundError`
+  or a dead health-probe URL.
 - **`.env.example` trimmed** to variables actually consumed by
   `CESSettings` (`CES_LOG_LEVEL`, `CES_LOG_FORMAT`,
   `CES_DEFAULT_RUNTIME`, `CES_DEMO_MODE`, and an optional
@@ -198,16 +197,16 @@ product-shape changes. Full remediation plan archived at
   modules, so the retained PostgreSQL compatibility tests run again.
 - Audit-ledger hash continuation and integrity verification are now correctly
   project-scoped across both PostgreSQL and local SQLite repositories.
-- PostgreSQL compatibility fixtures now wait for the containerized database to
-  accept connections before running Alembic, removing a startup timing race in
-  the Docker-backed integration suite.
+- PostgreSQL compatibility fixtures now wait for the database to accept
+  connections before running Alembic, removing a startup timing race in the
+  integration suite.
 - `LocalProjectStore`: `review_findings` now uses a synthetic primary key
   scoped to `(manifest_id, finding_id)` so findings from different manifests
   no longer collide, and `.ces/state.db` startup recovers cleanly from an
   interrupted migration left by a previous aborted process.
 - `ces status` no longer attempts telemetry/Postgres access for local-mode
-  builder-first projects, so the documented no-Docker/no-Postgres quickstart
-  path stays responsive.
+  builder-first projects, so the documented local SQLite quickstart path stays
+  responsive.
 - Publishing now runs a maintained builder-first smoke test before PyPI
   release, replacing the stale xfailed end-to-end coverage path with an
   exercised local workflow gate.
@@ -224,7 +223,7 @@ OSS-release artifacts only.
 - Pre-commit `mypy` hook so type errors are caught locally before CI.
 
 ### Changed
-- Dockerfile runtime image now runs as an unprivileged user (`ces`, UID 1000).
+- Runtime image build recipe now runs as an unprivileged user (`ces`, UID 1000).
 - Ruff configuration consolidated into `pyproject.toml` (removed `ruff.toml`).
 - README coverage badge set to `88%+` to match the enforced CI gate (temporary
   relaxation from the PRD-mandated 90%; see known follow-ups for restore plan).
@@ -257,7 +256,7 @@ Initial alpha release of the Controlled Execution System.
 
 - **Control Plane**: Manifest manager, audit ledger (HMAC-SHA256 chain), classification engine (deterministic TF-IDF), kill switch, policy engine, workflow state machine, gate evaluator, merge controller
 - **Harness Plane**: Evidence synthesizer, review router (3-tier), sensor orchestrator (7 sensors), trust manager (4-state transitions), guide pack builder, hidden check engine
-- **Execution Plane**: Agent runner with sandbox, runtime registry (Codex CLI, Claude Code), LLM provider abstraction (Anthropic, OpenAI), chain-of-custody tracker, secret stripping
+- **Execution Plane**: Agent runner with workspace-scoped runtime boundary, runtime registry (Codex CLI, Claude Code), LLM provider abstraction (Anthropic, OpenAI), chain-of-custody tracker, secret stripping
 - **CLI**: 25+ command groups including `ces build`, `ces init`, `ces continue`, `ces explain`, `ces status`, `ces manifest`, `ces classify`, `ces review`, `ces approve`, `ces audit`, and command groups for vault, emergency, brownfield, alerts, events, registry, release, admin, and project management
 - **Builder-first workflow**: `ces build` as default entrypoint with auto-bootstrap (creates `.ces/` on first run), interactive brief collection, local-mode SQLite persistence
 - **Demo mode**: `CES_DEMO_MODE=1` enables dry-run without LLM API keys
@@ -268,6 +267,6 @@ Initial alpha release of the Controlled Execution System.
 - **Cross-repo federation**: Polyrepo event bus, webhook delivery, federated bindings, dependency graph analysis
 - **Brownfield support**: Legacy behavior detection, registration, grouped review, disposition-to-PRL workflow
 - **Knowledge vault**: Zettelkasten-style notes with trust decay and ranking
-- **Security**: Ed25519 manifest signing, HMAC-SHA256 audit chain, no secrets in task packages, sandboxed agent commands
+- **Security**: Ed25519 manifest signing, HMAC-SHA256 audit chain, no secrets in task packages, workspace-scoped runtime execution
 - **Testing**: 3,000+ tests (3,066 unit + 21 integration), 90%+ branch coverage gate, CI with GitHub Actions (lint, typecheck, test, build)
 - **Documentation**: README, Getting Started guide, Operator Playbook, FreshCart worked example, Implementation Guide, Operations Runbook, Production Deployment Guide, Security doc, Quick Reference Card

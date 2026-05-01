@@ -19,7 +19,7 @@ from typing import TYPE_CHECKING, Any, Iterator
 
 from ces.brownfield.records import LegacyBehaviorRecord
 from ces.control.models.audit_entry_record import AuditEntryRecord
-from ces.execution.sandbox import scrub_secrets_from_text
+from ces.execution.secrets import scrub_secrets_from_text
 from ces.local_store.records import (
     LocalApprovalRecord,
     LocalBrownfieldSessionSummary,

@@ -58,7 +58,7 @@ signatures.
 
 ## Security Controls
 
-- **No secrets in task packages**: the sandbox environment is empty by default unless you explicitly extend it.
+- **No secrets in task packages**: runtime subprocess environments are allowlist-filtered by default.
 - **No secrets in guide packs**: `GuidePackBuilder` does not embed runtime credentials.
 - **No secrets in evidence packets**: evidence models do not carry secret fields.
 - **Audit HMAC default detection**: `ces doctor` warns when development defaults are still in use.

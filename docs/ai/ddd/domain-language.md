@@ -9,14 +9,14 @@ Purpose: give future coding agents a compact glossary grounded in current CES ev
 - Schemas and models: Pydantic models in `src/ces/control/models/` and `src/ces/harness/models/`, dataclass records in `src/ces/local_store/records.py` and `src/ces/brownfield/records.py`, spec templates in `src/ces/control/spec/templates/`, and starter manifest/CI templates in `src/ces/cli/templates/`.
 - APIs and public interfaces: Typer CLI in `src/ces/cli/__init__.py`, package exports in package `__init__.py` files, runtime protocol in `src/ces/execution/runtimes/protocol.py`, completion-claim fenced block parser in `src/ces/execution/completion_parser.py`, `CES_*` settings in `src/ces/shared/config.py`, and `.env.example`.
 - Persistence and migrations: SQLite schema plus in-app migrations in `src/ces/local_store/store.py`; compatibility Alembic revisions under `tests/integration/_compat/alembic/`; root `alembic.ini` points at that compatibility test tree.
-- Deployment units: package metadata and console entry point in `pyproject.toml`, CI/publish workflows under `.github/workflows/`, generated CI templates under `src/ces/cli/templates/ci/`, optional compatibility `docker-compose.yml`, and scratch harness scripts under `scripts/`.
+- Deployment units: package metadata and console entry point in `pyproject.toml`, CI/publish workflows under `.github/workflows/`, generated CI templates under `src/ces/cli/templates/ci/`, and scratch harness scripts under `scripts/`.
 
 ## Core Terms
 
 | Term | Context | Definition | Source Evidence | Confidence | Agent Guidance |
 |---|---|---|---|---|---|
 | CES | Whole product | Local builder-first CLI for governed AI-assisted software delivery. | `README.md`; `pyproject.toml`; `src/ces/cli/__init__.py` | Fact | Do not revive historical API/server-control-plane assumptions unless requested. |
-| Local-first | CLI / Local Store | Supported runtime and persistence posture: local CLI, `.ces/state.db`, `.ces/keys/`, local `codex` or `claude`. | `README.md`; `docs/Database_Operations.md`; `src/ces/cli/_factory.py`; `.env.example` | Fact | Treat Docker/Postgres as compatibility or test infrastructure, not the default product path. |
+| Local-first | CLI / Local Store | Supported runtime and persistence posture: local CLI, `.ces/state.db`, `.ces/keys/`, local `codex` or `claude`. | `README.md`; `docs/Database_Operations.md`; `src/ces/cli/_factory.py`; `.env.example` | Fact | Treat Postgres and server services as historical or test infrastructure, not the default product path. |
 | Builder-first flow | CLI / Builder Orchestration | Default operator path through `ces build`, `ces continue`, `ces explain`, `ces status`, and `ces report builder`. | `README.md`; `src/ces/cli/__init__.py`; `src/ces/cli/run_cmd.py`; `src/ces/cli/_builder_flow.py` | Fact | Prefer this path for user-facing docs and smoke tests. |
 | Expert workflow | CLI / Governance Operations | Direct lower-level commands for manifests, classification, execution, review, triage, approval, gates, audit, emergency, vault, spec, scan, baseline, and brownfield decisions. | `src/ces/cli/__init__.py`; `README.md`; `docs/Operator_Playbook.md` | Fact | Some commands are older or lower-priority; check tests before treating every command as equally central. |
 | Greenfield | Builder Orchestration | New or empty project mode where CES does not need to preserve existing system behavior. | `src/ces/cli/_builder_flow.py`; `tests/support/builder_scenarios.py`; `scripts/run_codex_scratch_e2e.py` | Fact | Do not ask brownfield preservation questions in forced greenfield mode. |
@@ -42,7 +42,7 @@ Purpose: give future coding agents a compact glossary grounded in current CES ev
 | Scan | CLI / Brownfield Support | Repository inventory command that can feed `.ces/brownfield/scan.json` and brownfield register import. | `src/ces/cli/scan_cmd.py`; `src/ces/cli/brownfield_cmd.py`; scan tests | Fact | Scan output is a potential contract; check tests before reshaping. |
 | Baseline | CLI / Harness Support | Day-0 sensor snapshot under `.ces/baseline/`. | `src/ces/cli/baseline_cmd.py`; CLI registration; tests | Fact | Do not confuse with manifest baseline or Git base ref. |
 | Dogfood | CLI / CI | CES reviewing its own or another repo's diff through `ces dogfood`, used by generated CI templates. | `src/ces/cli/dogfood_cmd.py`; `src/ces/cli/templates/ci/`; `README.md` | Fact | Generated workflow behavior is user-facing. |
-| Compatibility infrastructure | Tests / Packaging | Optional Docker/Postgres/Alembic/SQLAlchemy paths kept for compatibility tests, not supported default runtime. | `pyproject.toml`; `docker-compose.yml`; `alembic.ini`; `tests/integration/_compat/` | Fact | Future agents are likely to guess wrong here; keep docs explicit. |
+| Compatibility infrastructure | Tests / Packaging | Optional Postgres/Alembic/SQLAlchemy paths kept for compatibility tests, not supported default runtime. | `pyproject.toml`; `alembic.ini`; `tests/integration/_compat/` | Fact | Future agents are likely to guess wrong here; keep docs explicit. |
 
 ## Ambiguous Or Overloaded Terms
 
@@ -56,7 +56,7 @@ Purpose: give future coding agents a compact glossary grounded in current CES ev
 
 ## Likely Places Agents Guess Wrong
 
-- Treating `docker-compose.yml`, root `alembic.ini`, or `tests/integration/_compat/alembic/` as production deployment/migration surfaces.
+- Treating root `alembic.ini` or `tests/integration/_compat/alembic/` as production deployment/migration surfaces.
 - Changing public enum serialized values because Python identifiers look cleaner than wire values.
 - Treating `CES_DEMO_MODE` as enough to execute real builder work without a detected `codex` or `claude` runtime.
 - Collapsing `migrate/remove` docs wording into code without reconciling `change/retire` enum values.

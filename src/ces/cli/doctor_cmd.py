@@ -11,7 +11,7 @@ Checks:
     * Optional demo-helper availability: CES_DEMO_MODE=1. Demo mode helps
       LLM-backed helper flows but does not replace the required local runtime
       for ``ces build``.
-    * Optional extras groups relevant to local usage (docker).
+    * Optional compatibility extras relevant to local usage.
     * ``.ces/`` project directory — present or absent in cwd.
     * ``--security``: also runs security-posture checks against ``.ces/keys/``
       (key material present and mode 0600), ``.ces/state.db`` permissions,
@@ -28,7 +28,6 @@ Exports:
 
 from __future__ import annotations
 
-import importlib.util
 import json
 import os
 import shutil
@@ -48,9 +47,10 @@ from ces.shared.crypto import AUDIT_HMAC_FILENAME, DEV_DEFAULT_HMAC_MARKER
 
 _MIN_PYTHON = (3, 12)
 
-# Module → extras-group mapping used to detect whether an optional
-# dependency group is installed. We probe one canonical module per group.
-_EXTRAS_PROBES: tuple[tuple[str, str], ...] = (("docker", "docker"),)
+# Module -> extras-group mapping used to detect whether an optional dependency
+# group is installed. Empty by default because CES currently has no
+# runtime-critical optional extras.
+_EXTRAS_PROBES: tuple[tuple[str, str], ...] = ()
 
 
 def _check_python() -> tuple[bool, str]:
@@ -74,6 +74,8 @@ def _check_extras() -> dict[str, bool]:
     """Return a dict mapping extras-group name to installed flag."""
     result: dict[str, bool] = {}
     for group, probe_module in _EXTRAS_PROBES:
+        import importlib.util
+
         result[group] = importlib.util.find_spec(probe_module) is not None
     return result
 
@@ -85,6 +87,20 @@ def _check_project_dir() -> tuple[bool, Path]:
     except typer.BadParameter:
         path = Path.cwd() / ".ces"
     return path.is_dir(), path
+
+
+def _check_dependency_freshness(project_root: Path) -> dict[str, tuple[bool, str]]:
+    checks: dict[str, tuple[bool, str]] = {}
+    pyproject = project_root / "pyproject.toml"
+    uv_lock = project_root / "uv.lock"
+    if pyproject.exists():
+        if not uv_lock.exists():
+            checks["dependency lockfile"] = (False, "pyproject.toml present but uv.lock is missing")
+        elif uv_lock.stat().st_mtime < pyproject.stat().st_mtime:
+            checks["dependency lockfile"] = (False, "uv.lock is older than pyproject.toml")
+        else:
+            checks["dependency lockfile"] = (True, "uv.lock is present and newer than pyproject.toml")
+    return checks
 
 
 def _status_icon(ok: bool) -> str:
@@ -213,6 +229,11 @@ def run_doctor(
         "--expert",
         help="Show optional compatibility extras in the doctor table.",
     ),
+    runtime_safety_report: bool = typer.Option(
+        False,
+        "--runtime-safety",
+        help="Show runtime adapter safety, version, allowlist, and MCP grounding disclosures.",
+    ),
     compat: bool = typer.Option(
         False,
         "--compat",
@@ -245,6 +266,9 @@ def run_doctor(
         "claude": safety_profile_for_runtime("claude").model_dump(mode="json"),
         "codex": safety_profile_for_runtime("codex").model_dump(mode="json"),
     }
+    dependency_freshness = _check_dependency_freshness(
+        project_path.parent if project_path.name == ".ces" else Path.cwd()
+    )
     security_checks: dict[str, tuple[bool, str]] = {}
     security_ok = True
     if security:
@@ -278,6 +302,9 @@ def run_doctor(
             "any_provider": any_provider,
             "extras": extras,
             "runtime_safety": runtime_safety,
+            "dependency_freshness": {
+                name: {"ok": ok, "detail": detail} for name, (ok, detail) in dependency_freshness.items()
+            },
             "project_dir": {"exists": project_exists, "path": str(project_path)},
             "overall_ok": overall_ok,
         }
@@ -322,13 +349,29 @@ def run_doctor(
         "[yellow]NOTICE[/yellow]",
         "uses --sandbox workspace-write; manifest allowed_tools are not enforced by the adapter",
     )
-    if expert or compat:
-        for group, installed in extras.items():
+    if runtime_safety_report:
+        for runtime_name, profile in runtime_safety.items():
             table.add_row(
-                f"Extras: {group}",
-                _status_icon(installed),
-                "installed" if installed else f"pip install controlled-execution-system[{group}]",
+                f"Runtime adapter: {runtime_name}",
+                _status_icon(bool(profile.get("workspace_scoped"))),
+                (
+                    f"allowlist_enforced={profile.get('tool_allowlist_enforced')}; "
+                    f"mcp_grounding_supported={profile.get('mcp_grounding_supported')}; "
+                    f"{profile.get('mcp_grounding_notes')}"
+                ),
             )
+    for name, (ok, detail) in dependency_freshness.items():
+        table.add_row(f"Dependency freshness: {name}", _status_icon(ok), detail)
+    if expert or compat:
+        if extras:
+            for group, installed in extras.items():
+                table.add_row(
+                    f"Extras: {group}",
+                    _status_icon(installed),
+                    "installed" if installed else f"pip install controlled-execution-system[{group}]",
+                )
+        else:
+            table.add_row("Extras", _status_icon(True), "no optional runtime extras")
     table.add_row(
         ".ces/ project directory",
         _status_icon(project_exists),

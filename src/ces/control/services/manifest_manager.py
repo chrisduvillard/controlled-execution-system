@@ -157,6 +157,11 @@ class ManifestManager:
         max_retries: int = 3,
         acceptance_criteria: list[str] | None = None,
         verification_sensors: list[str] | None = None,
+        requires_exploration_evidence: bool = False,
+        requires_verification_commands: bool = False,
+        requires_impacted_flow_evidence: bool = False,
+        requires_docs_evidence_for_public_changes: bool = False,
+        accepted_runtime_side_effect_risk: bool = False,
     ) -> TaskManifest:
         """Create a new task manifest.
 
@@ -224,6 +229,11 @@ class ManifestManager:
             max_retries=max_retries,
             acceptance_criteria=tuple(acceptance_criteria) if acceptance_criteria else (),
             verification_sensors=tuple(verification_sensors) if verification_sensors else (),
+            requires_exploration_evidence=requires_exploration_evidence,
+            requires_verification_commands=requires_verification_commands,
+            requires_impacted_flow_evidence=requires_impacted_flow_evidence,
+            requires_docs_evidence_for_public_changes=requires_docs_evidence_for_public_changes,
+            accepted_runtime_side_effect_risk=accepted_runtime_side_effect_risk,
             # GovernedArtifactBase fields
             version=1,
             status=ArtifactStatus.DRAFT,

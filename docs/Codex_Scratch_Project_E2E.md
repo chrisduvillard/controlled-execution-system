@@ -2,7 +2,7 @@
 
 These smoke tests create external testing projects and drive CES through the
 local-first builder path as a user would. They do not add scratch projects to
-the CES package or require Docker, Postgres, Redis, or a hosted control plane.
+the CES package or require Postgres, Redis, or a hosted control plane.
 
 ## Fresh-Project Codex Run
 

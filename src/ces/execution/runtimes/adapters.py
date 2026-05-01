@@ -14,7 +14,7 @@ from pathlib import Path
 
 from ces.execution._subprocess_env import build_subprocess_env
 from ces.execution.runtimes.protocol import AgentRuntimeResult
-from ces.execution.sandbox import scrub_secrets_from_text
+from ces.execution.secrets import scrub_secrets_from_text
 
 _MAX_RUNTIME_OUTPUT_BYTES = 1_048_576
 _TRUNCATION_MARKER = "\n...[truncated]"

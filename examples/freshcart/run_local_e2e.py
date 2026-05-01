@@ -9,7 +9,7 @@ real local-mode CES pipeline:
 - Only the runtime adapter subprocess is mocked (Codex/Claude CLI
   won't be present in CI)
 
-Requires: no Docker, no Postgres, no Redis, no API keys.
+Requires: no Postgres, no Redis, no API keys.
 
 Usage:
     uv run python -m examples.freshcart.run_local_e2e

@@ -49,13 +49,14 @@ class TestCoverageSensorExecuteDispatch:
         assert sensor._skipped_flag is True
 
     @pytest.mark.asyncio
-    async def test_no_coverage_json_skips(self, tmp_path: Path) -> None:
+    async def test_no_coverage_json_fails_as_missing_artifact(self, tmp_path: Path) -> None:
         sensor = CoverageSensor()
         passed, score, details = await sensor._execute({"project_root": str(tmp_path)})
-        assert passed is True
-        assert score == 1.0
+        assert passed is False
+        assert score == 0.0
         assert "No coverage data" in details
-        assert sensor._skipped_flag is True
+        assert sensor._skipped_flag is False
+        assert sensor._findings[0].category == "missing_artifact"
 
     @pytest.mark.asyncio
     async def test_present_coverage_json_is_parsed(self, tmp_path: Path) -> None:
@@ -81,20 +82,20 @@ class TestCoverageSensorSeverityBands:
         assert "Coverage target met" in finding.suggestion
 
     @pytest.mark.asyncio
-    async def test_80_to_89_percent_is_info_with_increase_suggestion(self, tmp_path: Path) -> None:
+    async def test_80_to_89_percent_is_medium_with_increase_suggestion(self, tmp_path: Path) -> None:
         _write_coverage_json(tmp_path, {"percent_covered": 85.0, "num_statements": 100, "missing_lines": 15})
         sensor = CoverageSensor()
         await sensor._execute({"project_root": str(tmp_path)})
         (finding,) = sensor._findings
-        assert finding.severity == "info"
+        assert finding.severity == "medium"
         assert "Increase test coverage" in finding.suggestion
 
     @pytest.mark.asyncio
-    async def test_60_to_79_percent_is_medium(self, tmp_path: Path) -> None:
+    async def test_60_to_79_percent_is_medium_and_fails(self, tmp_path: Path) -> None:
         _write_coverage_json(tmp_path, {"percent_covered": 70.0, "num_statements": 100, "missing_lines": 30})
         sensor = CoverageSensor()
         passed, _, _ = await sensor._execute({"project_root": str(tmp_path)})
-        assert passed is True  # 70 >= 60 passing threshold
+        assert passed is False
         (finding,) = sensor._findings
         assert finding.severity == "medium"
 
@@ -109,12 +110,12 @@ class TestCoverageSensorSeverityBands:
         assert finding.severity == "high"
 
     @pytest.mark.asyncio
-    async def test_exactly_60_percent_is_passing_boundary(self, tmp_path: Path) -> None:
-        """60.0 is the threshold: passing=True, severity=medium."""
+    async def test_exactly_60_percent_fails_under_ninety_percent_boundary(self, tmp_path: Path) -> None:
+        """60.0 is now below the 90% passing threshold."""
         _write_coverage_json(tmp_path, {"percent_covered": 60.0, "num_statements": 100, "missing_lines": 40})
         sensor = CoverageSensor()
         passed, _, _ = await sensor._execute({"project_root": str(tmp_path)})
-        assert passed is True
+        assert passed is False
         assert sensor._findings[0].severity == "medium"
 
 

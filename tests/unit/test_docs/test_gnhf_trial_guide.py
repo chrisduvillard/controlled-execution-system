@@ -34,7 +34,6 @@ def test_gnhf_trial_guide_documents_guardrails() -> None:
         "manifest",
         "audit",
         "kill switch",
-        "sandbox",
         "runtime-boundary",
     ):
         assert phrase in lowered
@@ -55,7 +54,6 @@ def test_contributor_docs_point_to_gnhf_trial_workflow() -> None:
     assert "approval/triage/review" in readme.lower()
     assert "audit" in readme.lower()
     assert "kill-switch" in readme.lower()
-    assert "sandbox" in readme.lower()
     assert "runtime-boundary" in readme.lower()
     assert "review every generated branch manually" in readme.lower()
     assert "scripts/gnhf_trial.sh" in readme
@@ -66,7 +64,6 @@ def test_contributor_docs_point_to_gnhf_trial_workflow() -> None:
     assert "audit" in contributing.lower()
     assert "kill-switch" in contributing.lower()
     assert "policy" in contributing.lower()
-    assert "sandbox" in contributing.lower()
     assert "runtime-boundary" in contributing.lower()
     assert "review every generated branch manually" in contributing.lower()
     assert "scripts/gnhf_trial.sh" in contributing

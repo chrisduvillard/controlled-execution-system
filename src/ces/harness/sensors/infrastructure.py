@@ -1,7 +1,7 @@
 """Infrastructure sensor pack.
 
-Checks Dockerfile and docker-compose best practices using line-by-line
-parsing. No external tool dependencies.
+Checks repository infrastructure configuration using line-by-line parsing. No
+external tool dependencies.
 """
 
 from __future__ import annotations
@@ -12,21 +12,17 @@ from ces.harness.models.sensor_result import SensorFinding
 from ces.harness.sensors._file_reader import read_file_safe
 from ces.harness.sensors.base import BaseSensor
 
-_INFRA_FILE_PATTERNS = ("Dockerfile", "docker-compose.yml", "docker-compose.yaml")
-_INFRA_EXTENSIONS = (".dockerfile",)
-
-# Dockerfile lint rules
-# Note: pip/apt regexes use single-line lookahead. Multi-line RUN commands
-# with backslash continuation may produce false positives when the flag
-# appears on a subsequent line. This is a known limitation.
-_FROM_LATEST_RE = re.compile(r"^FROM\s+\S+:latest\b", re.IGNORECASE | re.MULTILINE)
-_COPY_ALL_RE = re.compile(r"^COPY\s+\.\s+\.", re.MULTILINE)
-_PIP_NO_CACHE_RE = re.compile(r"pip\s+install(?!.*--no-cache-dir)", re.MULTILINE)
-_APT_NO_RECOMMENDS_RE = re.compile(r"apt-get\s+install(?!.*--no-install-recommends)", re.MULTILINE)
+_INFRA_FILE_PATTERNS = (
+    ".github/workflows/",
+    "pyproject.toml",
+    "uv.lock",
+)
+_FLOATING_GITHUB_ACTION_RE = re.compile(r"uses:\s+[^@\s]+@(main|master|latest)\b", re.IGNORECASE)
+_UNPINNED_PYTHON_RE = re.compile(r"python-version:\s*['\"]?(3|3\.x)['\"]?\s*$", re.IGNORECASE | re.MULTILINE)
 
 
 class InfrastructureSensor(BaseSensor):
-    """Infrastructure sensor pack — checks Dockerfile best practices.
+    """Infrastructure sensor pack for repo configuration hygiene.
 
     Sensor ID: infra_check
     Sensor Pack: infrastructure
@@ -42,11 +38,7 @@ class InfrastructureSensor(BaseSensor):
         if not affected_files:
             return (True, 1.0, "No files in scope for infrastructure check")
 
-        infra_files = [
-            f
-            for f in affected_files
-            if any(f.endswith(p) for p in _INFRA_FILE_PATTERNS) or f.endswith(_INFRA_EXTENSIONS)
-        ]
+        infra_files = [f for f in affected_files if any(f == p or f.startswith(p) for p in _INFRA_FILE_PATTERNS)]
         if not infra_files:
             self._mark_skipped("No infrastructure files in scope")
             return (True, 1.0, "No infrastructure files in scope")
@@ -58,22 +50,18 @@ class InfrastructureSensor(BaseSensor):
             if content is None:
                 continue
 
-            is_dockerfile = "Dockerfile" in inf_file or inf_file.endswith(".dockerfile")
-
-            if is_dockerfile:
-                issues = self._lint_dockerfile(inf_file, content)
-                for issue in issues:
-                    severity = "high" if "secret" in issue.lower() or ":latest" in issue else "medium"
-                    self._findings.append(
-                        SensorFinding(
-                            category="dockerfile_issue",
-                            severity=severity,
-                            location=inf_file,
-                            message=issue,
-                            suggestion="Follow Dockerfile best practices",
-                        )
+            issues = self._lint_infrastructure_file(inf_file, content)
+            for issue in issues:
+                self._findings.append(
+                    SensorFinding(
+                        category="infrastructure_issue",
+                        severity="medium",
+                        location=inf_file,
+                        message=issue,
+                        suggestion="Pin infrastructure configuration to explicit versions",
                     )
-                findings.extend(issues)
+                )
+            findings.extend(issues)
 
         if findings:
             score = max(0.2, 1.0 - 0.15 * len(findings))
@@ -83,33 +71,20 @@ class InfrastructureSensor(BaseSensor):
         return (True, 1.0, f"Infrastructure files pass all checks ({len(infra_files)} file(s))")
 
     @staticmethod
-    def _lint_dockerfile(filepath: str, content: str) -> list[str]:
-        """Lint a Dockerfile for common issues."""
+    def _lint_infrastructure_file(filepath: str, content: str) -> list[str]:
+        """Lint repository infrastructure files for common drift risks."""
         issues: list[str] = []
 
-        if _FROM_LATEST_RE.search(content):
-            issues.append(f"{filepath}: uses :latest tag (pin image version)")
+        if filepath.startswith(".github/workflows/"):
+            if _FLOATING_GITHUB_ACTION_RE.search(content):
+                issues.append(f"{filepath}: action reference uses a floating ref")
+            if _UNPINNED_PYTHON_RE.search(content):
+                issues.append(f"{filepath}: Python version is not pinned to a minor release")
 
-        if "HEALTHCHECK" not in content:
-            issues.append(f"{filepath}: missing HEALTHCHECK instruction")
+        if filepath == "pyproject.toml" and "[project]" not in content:
+            issues.append(f"{filepath}: missing [project] metadata")
 
-        # Check for USER instruction (running as non-root)
-        has_user = False
-        for line in content.splitlines():
-            stripped = line.strip()
-            if stripped.startswith("USER ") and not stripped.startswith("USER root"):
-                has_user = True
-                break
-        if not has_user and "FROM" in content:
-            issues.append(f"{filepath}: no non-root USER instruction")
-
-        if _COPY_ALL_RE.search(content):
-            issues.append(f"{filepath}: 'COPY . .' may leak secrets (use .dockerignore)")
-
-        if _PIP_NO_CACHE_RE.search(content):
-            issues.append(f"{filepath}: pip install without --no-cache-dir")
-
-        if _APT_NO_RECOMMENDS_RE.search(content):
-            issues.append(f"{filepath}: apt-get install without --no-install-recommends")
+        if filepath == "uv.lock" and "[[package]]" not in content:
+            issues.append(f"{filepath}: lockfile has no package entries")
 
         return issues

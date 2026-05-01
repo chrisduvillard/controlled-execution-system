@@ -65,5 +65,5 @@ Do not delete `.ces/` if you still need prior audit history.
 ## Legacy Note
 
 Older CES revisions documented PostgreSQL schemas, Alembic migrations, and
-`docker compose` restore procedures. Those server-style database operations are
-no longer part of the supported public workflow.
+server-style restore procedures. Those database operations are no longer part
+of the supported public workflow.

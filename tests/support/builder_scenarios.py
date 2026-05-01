@@ -122,7 +122,14 @@ GREENFIELD_SCENARIO = BuilderScenario(
     name="greenfield-habit-tracker",
     request="Build a habit tracker",
     fixture_name=None,
-    build_args=("build", "Build a habit tracker", "--yes", "--acceptance", "Users can create and complete habits"),
+    build_args=(
+        "build",
+        "Build a habit tracker",
+        "--yes",
+        "--accept-runtime-side-effects",
+        "--acceptance",
+        "Users can create and complete habits",
+    ),
     prompt_responses=(
         "Expose an HTTP endpoint",
         "Users can create and complete habits",
@@ -160,6 +167,7 @@ BROWNFIELD_RETRY_SCENARIO = BuilderScenario(
         "build",
         "Modernize billing exports",
         "--yes",
+        "--accept-runtime-side-effects",
         "--acceptance",
         "Admins can still export billing rows",
         "--source-of-truth",
@@ -264,12 +272,12 @@ class BuilderScenarioHarness:
                         AssertionError("brownfield review should not rerun during runtime retry")
                     ),
                 )
-                continue_result = runner.invoke(app, ["continue", "--yes"])
+                continue_result = runner.invoke(app, ["continue", "--yes", "--accept-runtime-side-effects"])
                 retry_preserved_review_count = legacy_behavior_service.register_behavior.await_count == review_count
                 final_explain = runner.invoke(app, ["explain"])
                 final_status = runner.invoke(app, ["status"])
             else:
-                continue_result = runner.invoke(app, ["continue", "--yes"])
+                continue_result = runner.invoke(app, ["continue", "--yes", "--accept-runtime-side-effects"])
 
             latest_snapshot = store.get_latest_builder_session_snapshot()
 

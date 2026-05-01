@@ -429,7 +429,7 @@ ttl_hours: 48  # Tier A
 
 **Step 3 — Sensors:**
 - Unit tests: 14 passed, 0 failed
-- Integration tests (Stripe sandbox): 6 passed, 0 failed
+- Integration tests (Stripe test mode): 6 passed, 0 failed
 - Security sensor pack: SAST clean, secrets scan clean, no hardcoded keys
 - Resilience sensor pack: idempotency verified, retry backoff correct, timeout configured (30s)
 - Hidden check: Passed (injected Stripe 500 error — agent correctly retried)
@@ -800,7 +800,7 @@ classification: TierA  # emergency default
 
 **Step 4 — Fix.** Jordan implements the 3-line fix (adds the required field).
 
-**Step 5 — Minimum sensors:** Tests pass (including the Stripe sandbox integration test). Lint clean. Type check passes.
+**Step 5 — Minimum sensors:** Tests pass (including the Stripe test-mode integration test). Lint clean. Type check passes.
 
 **Step 6 — Expedited review.** Sam reviews the 3-line diff. Confirms: fix addresses the issue, no regressions, rollback plan viable. Approval time: 4 minutes.
 

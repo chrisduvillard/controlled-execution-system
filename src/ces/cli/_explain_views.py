@@ -17,6 +17,8 @@ from typing import Any
 
 import typer
 
+from ces.harness.services.evidence_quality import compute_evidence_quality_state
+
 
 def normalize_explain_view(view: str) -> str:
     normalized = view.strip().lower()
@@ -242,6 +244,7 @@ def build_decisioning_explanation_lines(
         lines.append(f"Evidence gathered: {evidence['summary']}")
     else:
         lines.append("Evidence gathered: CES has not recorded a detailed evidence packet yet.")
+    lines.append(f"Evidence quality: {compute_evidence_quality_state(evidence)}")
     challenge = evidence.get("challenge") if evidence is not None else None
     if challenge:
         lines.append(f"Main challenge: {challenge}")
@@ -251,15 +254,30 @@ def build_decisioning_explanation_lines(
             lines.append(f"Workflow state: {getattr(manifest, 'workflow_state', 'unknown')}")
             lines.append(f"Risk tier: {getattr(manifest, 'risk_tier', 'unknown')}")
             lines.append(f"Change class: {getattr(manifest, 'change_class', 'unknown')}")
+            if not getattr(manifest, "verification_sensors", ()):
+                lines.append("Verification sensors: none configured (expert opt-out)")
         if evidence is not None:
             if evidence.get("packet_id"):
                 lines.append(f"Evidence packet: {evidence['packet_id']}")
             lines.append(f"Triage color: {evidence.get('triage_color', 'unknown')}")
+            runtime_safety = _evidence_content(evidence).get("runtime_safety", {})
+            if isinstance(runtime_safety, dict):
+                if "tool_allowlist_enforced" in runtime_safety:
+                    lines.append(f"Runtime tool allowlist enforced: {runtime_safety['tool_allowlist_enforced']}")
+                if runtime_safety.get("accepted_runtime_side_effect_risk"):
+                    lines.append("Runtime side-effect waiver: accepted by operator")
+                if "mcp_grounding_supported" in runtime_safety:
+                    lines.append(f"MCP grounding supported: {runtime_safety['mcp_grounding_supported']}")
         if session is not None:
             lines.append(f"Session next action: {getattr(session, 'next_action', 'unknown')}")
             if getattr(session, "recovery_reason", None):
                 lines.append(f"Recovery reason: {session.recovery_reason}")
     return lines
+
+
+def _evidence_content(evidence: dict[str, Any]) -> dict[str, Any]:
+    content = evidence.get("content")
+    return content if isinstance(content, dict) else evidence
 
 
 def build_brownfield_explanation_lines(
