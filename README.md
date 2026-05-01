@@ -6,6 +6,10 @@
 [![Python](https://img.shields.io/pypi/pyversions/controlled-execution-system.svg)](https://pypi.org/project/controlled-execution-system/)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
+<p align="center">
+  <img src="docs/assets/ces-avatar.png" alt="Controlled Execution System project avatar" width="320">
+</p>
+
 Local-first governance for AI agent-driven software delivery.
 
 CES is a command-line tool that keeps AI-assisted changes inside an auditable
