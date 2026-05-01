@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import tomllib
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -50,3 +51,11 @@ def test_readme_documents_repo_self_dogfooding() -> None:
 
     assert "ces dogfood" in readme
     assert ".ces/" in readme
+
+
+def test_readme_pinned_install_example_matches_project_version() -> None:
+    """README should not point users at an older pinned package release."""
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    project = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))["project"]
+
+    assert f"controlled-execution-system=={project['version']}" in readme
