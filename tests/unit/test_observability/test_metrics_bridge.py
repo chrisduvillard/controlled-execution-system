@@ -10,6 +10,7 @@ Tests verify that:
 
 from __future__ import annotations
 
+from collections.abc import Generator
 from unittest.mock import patch
 
 import pytest
@@ -19,10 +20,10 @@ from ces.observability.counters import get_counters
 
 
 @pytest.fixture(autouse=True)
-def _reset_counters() -> None:
+def _reset_counters() -> Generator[None, None, None]:
     """Reset TelemetryCounters between tests to avoid state leakage."""
     get_counters().snapshot_and_reset()
-    yield  # type: ignore[misc]
+    yield
     get_counters().snapshot_and_reset()
 
 
@@ -230,8 +231,11 @@ class TestOtelUnavailableFallbacks:
         """The no-op shims never raise (lines 133, 140)."""
         from ces.observability.metrics_bridge import _NoOpCounter, _NoOpHistogram
 
-        assert _NoOpCounter().add(7, {"k": "v"}) is None
-        assert _NoOpHistogram().record(1.5, {"k": "v"}) is None
+        counter = _NoOpCounter()
+        histogram = _NoOpHistogram()
+
+        counter.add(7, {"k": "v"})
+        histogram.record(1.5, {"k": "v"})
 
     def test_register_ces_metrics_returns_noop_dataclass_without_otel(self, monkeypatch) -> None:
         """register_ces_metrics with OTel disabled returns no-op shim instruments (line 159)."""

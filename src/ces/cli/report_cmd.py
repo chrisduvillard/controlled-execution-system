@@ -14,7 +14,7 @@ from ces.cli._builder_report import export_builder_run_report, serialize_builder
 from ces.cli._context import find_project_root
 from ces.cli._errors import handle_error
 from ces.cli._factory import get_services
-from ces.cli._output import console
+from ces.cli._output import console, set_json_mode
 
 report_app = typer.Typer(help="Export concise CES reports.")
 
@@ -27,8 +27,15 @@ async def export_builder_report(
         "--output-dir",
         help="Directory where the builder run report artifacts should be written.",
     ),
+    json_output: bool = typer.Option(
+        False,
+        "--json",
+        help="Output report metadata as JSON. Equivalent to `ces --json report builder`.",
+    ),
 ) -> None:
     """Export a concise report for the latest builder run."""
+    if json_output:
+        set_json_mode(True)
     try:
         project_root = find_project_root()
         resolved_output_dir = output_dir if output_dir.is_absolute() else project_root / output_dir

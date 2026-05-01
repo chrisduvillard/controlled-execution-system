@@ -21,10 +21,10 @@ Use the builder-first flow when you want CES to keep the operator context togeth
 
 ```bash
 # First run in a repo is enough; CES bootstraps local state if `.ces/` is missing
-ces build "Add invoice notes to billing exports" --yes
+ces build "Add invoice notes to billing exports"
 
 # Resume or retry the same request
-ces continue --yes
+ces continue
 
 # Explain the latest request in plain language
 ces explain --view decisioning
@@ -40,6 +40,11 @@ Builder-first is the default for most day-to-day operator work because it keeps 
 - whether the repo is being treated as greenfield or brownfield
 - what evidence exists already
 - what the next action should be
+
+For governed builder-first runs, evidence includes the runtime's `ces:completion`
+claim, the actual workspace delta, runtime safety disclosure, configured sensor
+results, and any scope or verification blockers. `--yes` skips the interactive
+prompt only when that evidence is clean enough for unattended approval.
 
 For day-to-day brownfield delivery, stay builder-first with `ces build`, `ces continue`, and `ces explain --view brownfield`. Switch into the expert brownfield commands only when you need to make a named legacy-behavior decision such as `ces brownfield review OLB-<entry-id> --disposition preserve`. The [Brownfield Guide](Brownfield_Guide.md) covers that handoff in more detail.
 

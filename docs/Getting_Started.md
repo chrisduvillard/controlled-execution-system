@@ -28,7 +28,7 @@ runtime requirement for `ces build` or `ces execute`.
 
 ```bash
 mkdir freshcart && cd freshcart
-ces build "Fix null pointer in product search when category is empty" --yes
+ces build "Fix null pointer in product search when category is empty"
 ```
 
 `ces build` is the default entrypoint. It creates or resumes the local builder
@@ -44,7 +44,7 @@ ces init freshcart
 ## 4. Continue the Builder-First Flow
 
 ```bash
-ces continue --yes
+ces continue
 ces explain
 ces explain --view decisioning
 ces explain --view brownfield
@@ -237,4 +237,4 @@ Local State: `.ces/config.yaml` + `.ces/state.db`
 - Read the [Production Deployment Guide](Production_Deployment_Guide.md) for workstation/CI rollout guidance
 - Read the [Operations Runbook](Operations_Runbook.md) for emergency procedures
 - Read the [Operator Playbook](Operator_Playbook.md) for builder-first vs expert workflow guidance
-- Read the [PRD](PRD.md) for the full specification
+- Read the historical [PRD](historical/PRD.md) for the archived specification

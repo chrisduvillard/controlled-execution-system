@@ -27,6 +27,23 @@ runner = CliRunner()
 _FIXTURE_ROOT = Path(__file__).resolve().parents[1] / "fixtures" / "builder_scenarios"
 
 
+def _completion_stdout(*, criterion: str) -> str:
+    return (
+        "Done\n"
+        "```ces:completion\n"
+        "{"
+        '"task_id": "M-001", '
+        '"summary": "did it", '
+        '"files_changed": [], '
+        f'"criteria_satisfied": [{{"criterion": "{criterion}", "evidence": "scenario evidence", '
+        '"evidence_kind": "manual_inspection"}], '
+        '"open_questions": [], '
+        '"scope_deviations": []'
+        "}\n"
+        "```"
+    )
+
+
 @dataclass(frozen=True)
 class _FakeManifest:
     manifest_id: str
@@ -105,7 +122,7 @@ GREENFIELD_SCENARIO = BuilderScenario(
     name="greenfield-habit-tracker",
     request="Build a habit tracker",
     fixture_name=None,
-    build_args=("build", "Build a habit tracker", "--yes"),
+    build_args=("build", "Build a habit tracker", "--yes", "--acceptance", "Users can create and complete habits"),
     prompt_responses=(
         "Expose an HTTP endpoint",
         "Users can create and complete habits",
@@ -127,7 +144,7 @@ GREENFIELD_SCENARIO = BuilderScenario(
             "reported_model": "gpt-5.4",
             "invocation_ref": "run-greenfield-1",
             "exit_code": 0,
-            "stdout": "Done",
+            "stdout": _completion_stdout(criterion="Users can create and complete habits"),
             "stderr": "",
             "duration_seconds": 0.5,
         },
@@ -139,7 +156,17 @@ BROWNFIELD_RETRY_SCENARIO = BuilderScenario(
     name="brownfield-billing-retry",
     request="Modernize billing exports",
     fixture_name="brownfield-billing",
-    build_args=("build", "Modernize billing exports", "--yes"),
+    build_args=(
+        "build",
+        "Modernize billing exports",
+        "--yes",
+        "--acceptance",
+        "Admins can still export billing rows",
+        "--source-of-truth",
+        "README and exported CSV samples",
+        "--critical-flow",
+        "Billing export",
+    ),
     prompt_responses=(
         "Keep the existing CSV export intact",
         "Admins can still export billing rows",
@@ -182,7 +209,7 @@ BROWNFIELD_RETRY_SCENARIO = BuilderScenario(
             "reported_model": "gpt-5.4",
             "invocation_ref": "run-brownfield-2",
             "exit_code": 0,
-            "stdout": "Recovered",
+            "stdout": _completion_stdout(criterion="Admins can still export billing rows"),
             "stderr": "",
             "duration_seconds": 0.5,
         },

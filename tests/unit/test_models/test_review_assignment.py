@@ -16,9 +16,9 @@ class TestReviewerRole:
     """ReviewerRole enum tests."""
 
     def test_values(self) -> None:
-        assert ReviewerRole.STRUCTURAL == "structural"
-        assert ReviewerRole.SEMANTIC == "semantic"
-        assert ReviewerRole.RED_TEAM == "red_team"
+        assert ReviewerRole.STRUCTURAL.value == "structural"
+        assert ReviewerRole.SEMANTIC.value == "semantic"
+        assert ReviewerRole.RED_TEAM.value == "red_team"
 
 
 class TestReviewAssignment:

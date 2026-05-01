@@ -33,6 +33,23 @@ def _patch_services(mock_services: dict[str, Any]):
     return patch("ces.cli.run_cmd.get_services", new=_fake_get_services)
 
 
+def _completion_stdout(task_id: str, criterion: str = "Portfolio site renders") -> str:
+    return (
+        "Done\n"
+        "```ces:completion\n"
+        "{"
+        f'"task_id": "{task_id}", '
+        '"summary": "did it", '
+        '"files_changed": [], '
+        f'"criteria_satisfied": [{{"criterion": "{criterion}", "evidence": "manual inspection", '
+        '"evidence_kind": "manual_inspection"}], '
+        '"open_questions": [], '
+        '"scope_deviations": []'
+        "}\n"
+        "```"
+    )
+
+
 def test_brownfield_prompt_pack_includes_promoted_prl_statements() -> None:
     from ces.cli._builder_flow import BuilderBriefDraft
     from ces.cli.run_cmd import _prompt_pack
@@ -55,7 +72,98 @@ def test_brownfield_prompt_pack_includes_promoted_prl_statements() -> None:
     assert "- Preserve legacy tax rounding" in prompt
 
 
+def test_builder_prompt_pack_attaches_engineering_charter() -> None:
+    from ces.cli._builder_flow import BuilderBriefDraft
+    from ces.cli.run_cmd import _prompt_pack
+
+    prompt = _prompt_pack(
+        BuilderBriefDraft(
+            request="Add discounts",
+            project_mode="greenfield",
+            constraints=[],
+            acceptance_criteria=["Discounts apply at checkout"],
+            must_not_break=[],
+            open_questions={},
+            source_of_truth=None,
+            critical_flows=[],
+        ),
+    )
+
+    assert "Explore first" in prompt
+    assert "clarify or block" in prompt
+    assert "ces:completion" in prompt
+    assert "Discounts apply at checkout" in prompt
+
+
 class TestRunCommand:
+    def test_build_yes_with_description_requires_acceptance_context(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.chdir(tmp_path)
+        ces_dir = tmp_path / ".ces"
+        ces_dir.mkdir()
+        (ces_dir / "config.yaml").write_text("project_id: local-proj\npreferred_runtime: codex\n")
+
+        mock_services = {
+            "settings": MagicMock(default_runtime="codex"),
+            "manifest_manager": AsyncMock(),
+            "runtime_registry": MagicMock(resolve_runtime=MagicMock(side_effect=RuntimeError("should not run"))),
+            "agent_runner": AsyncMock(),
+            "local_store": MagicMock(),
+            "evidence_synthesizer": MagicMock(),
+            "audit_ledger": AsyncMock(),
+            "sensor_orchestrator": MagicMock(run_all=AsyncMock(return_value=[])),
+            "legacy_behavior_service": AsyncMock(),
+        }
+
+        with _patch_services(mock_services):
+            app = _get_app()
+            result = runner.invoke(app, ["build", "Build a habit tracker", "--yes"])
+
+        assert result.exit_code != 0
+        assert "--acceptance" in result.stdout
+        mock_services["runtime_registry"].resolve_runtime.assert_not_called()
+
+    def test_brownfield_yes_requires_explicit_preservation_context(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / "app.py").write_text("print('existing')\n", encoding="utf-8")
+        ces_dir = tmp_path / ".ces"
+        ces_dir.mkdir()
+        (ces_dir / "config.yaml").write_text("project_id: local-proj\npreferred_runtime: codex\n")
+
+        mock_services = {
+            "settings": MagicMock(default_runtime="codex"),
+            "manifest_manager": AsyncMock(),
+            "runtime_registry": MagicMock(resolve_runtime=MagicMock(side_effect=RuntimeError("should not run"))),
+            "agent_runner": AsyncMock(),
+            "local_store": MagicMock(),
+            "evidence_synthesizer": MagicMock(),
+            "audit_ledger": AsyncMock(),
+            "sensor_orchestrator": MagicMock(run_all=AsyncMock(return_value=[])),
+            "legacy_behavior_service": AsyncMock(),
+        }
+
+        with _patch_services(mock_services):
+            app = _get_app()
+            result = runner.invoke(
+                app,
+                [
+                    "build",
+                    "Change existing app",
+                    "--brownfield",
+                    "--yes",
+                    "--acceptance",
+                    "Existing app still starts",
+                ],
+            )
+
+        assert result.exit_code != 0
+        assert "--source-of-truth" in result.stdout
+        assert "--critical-flow" in result.stdout
+        mock_services["runtime_registry"].resolve_runtime.assert_not_called()
+
     def test_build_reports_demo_mode_does_not_replace_runtime(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
@@ -74,12 +182,15 @@ class TestRunCommand:
         )
         monkeypatch.setattr("ces.cli.run_cmd.typer.prompt", lambda *args, **kwargs: next(prompts))
 
+        mock_store = MagicMock()
+        mock_store.save_builder_brief.return_value = "BB-runtime-missing"
+        mock_store.save_builder_session.return_value = "BS-runtime-missing"
         mock_services = {
             "settings": MagicMock(default_runtime="codex"),
             "manifest_manager": AsyncMock(),
             "runtime_registry": MagicMock(resolve_runtime=MagicMock(side_effect=RuntimeError("no runtime detected"))),
             "agent_runner": AsyncMock(),
-            "local_store": MagicMock(),
+            "local_store": mock_store,
             "evidence_synthesizer": MagicMock(),
             "audit_ledger": AsyncMock(),
             "sensor_orchestrator": MagicMock(run_all=AsyncMock(return_value=[])),
@@ -94,6 +205,12 @@ class TestRunCommand:
         assert "No agent runtime found" in result.stdout
         assert "does not replace the required runtime" in result.stdout
         assert "ces doctor" in result.stdout
+        mock_store.save_builder_brief.assert_called_once()
+        mock_store.save_builder_session.assert_called_once()
+        mock_store.update_builder_session.assert_called_once()
+        assert mock_store.update_builder_session.call_args.args[0] == "BS-runtime-missing"
+        assert mock_store.update_builder_session.call_args.kwargs["stage"] == "blocked"
+        assert mock_store.update_builder_session.call_args.kwargs["next_action"] == "install_runtime"
 
     def test_build_auto_bootstraps_local_project_when_ces_dir_is_missing(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -146,7 +263,7 @@ class TestRunCommand:
             "reported_model": None,
             "invocation_ref": "run-123",
             "exit_code": 0,
-            "stdout": "Done",
+            "stdout": _completion_stdout("M-run-merge"),
             "stderr": "",
             "duration_seconds": 0.5,
         }
@@ -181,7 +298,10 @@ class TestRunCommand:
 
         with _patch_services(mock_services):
             app = _get_app()
-            result = runner.invoke(app, ["build", "Build a habit tracker", "--yes"])
+            result = runner.invoke(
+                app,
+                ["build", "Build a habit tracker", "--yes", "--acceptance", "User can create and complete habits"],
+            )
 
         assert result.exit_code == 0, f"stdout={result.stdout}"
         assert (tmp_path / ".ces").is_dir()
@@ -236,7 +356,7 @@ class TestRunCommand:
             "reported_model": None,
             "invocation_ref": "run-123",
             "exit_code": 0,
-            "stdout": "Done",
+            "stdout": _completion_stdout("M-run-merge-blocked"),
             "stderr": "",
             "duration_seconds": 0.5,
         }
@@ -314,7 +434,7 @@ class TestRunCommand:
             "reported_model": None,
             "invocation_ref": "run-123",
             "exit_code": 0,
-            "stdout": "Done",
+            "stdout": _completion_stdout("M-run-merge"),
             "stderr": "",
             "duration_seconds": 0.5,
         }
@@ -344,7 +464,10 @@ class TestRunCommand:
         monkeypatch.setattr("ces.cli.run_cmd.typer.prompt", lambda *args, **kwargs: "")
         with _patch_services(mock_services):
             app = _get_app()
-            result = runner.invoke(app, ["build", "Build portfolio site", "--yes"])
+            result = runner.invoke(
+                app,
+                ["build", "Build portfolio site", "--yes", "--acceptance", "Portfolio site renders"],
+            )
 
         assert result.exit_code == 0, f"stdout={result.stdout}"
         mock_manager.create_manifest.assert_awaited_once()
@@ -404,7 +527,7 @@ class TestRunCommand:
             "reported_model": None,
             "invocation_ref": "run-root",
             "exit_code": 0,
-            "stdout": "Done",
+            "stdout": _completion_stdout("M-run-merge"),
             "stderr": "",
             "duration_seconds": 0.5,
         }
@@ -479,7 +602,7 @@ class TestRunCommand:
             "reported_model": None,
             "invocation_ref": "run-123",
             "exit_code": 0,
-            "stdout": "Done",
+            "stdout": _completion_stdout("M-run-merge-blocked"),
             "stderr": "",
             "duration_seconds": 0.5,
         }
@@ -509,7 +632,10 @@ class TestRunCommand:
         monkeypatch.setattr("ces.cli.run_cmd.typer.prompt", lambda *args, **kwargs: "")
         with _patch_services(mock_services):
             app = _get_app()
-            result = runner.invoke(app, ["run", "Build portfolio site", "--yes"])
+            result = runner.invoke(
+                app,
+                ["run", "Build portfolio site", "--yes", "--acceptance", "Portfolio site renders"],
+            )
 
         assert result.exit_code == 0, f"stdout={result.stdout}"
         mock_manager.create_manifest.assert_awaited_once()
@@ -564,7 +690,7 @@ class TestRunCommand:
             "reported_model": None,
             "invocation_ref": "run-123",
             "exit_code": 0,
-            "stdout": "Done",
+            "stdout": _completion_stdout("M-run-sign"),
             "stderr": "",
             "duration_seconds": 0.5,
         }
@@ -602,7 +728,10 @@ class TestRunCommand:
         monkeypatch.setattr("ces.cli.run_cmd.typer.prompt", lambda *args, **kwargs: "")
         with _patch_services(mock_services), patch("ces.cli.run_cmd.WorkflowEngine", return_value=mock_workflow):
             app = _get_app()
-            result = runner.invoke(app, ["build", "Build portfolio site", "--yes"])
+            result = runner.invoke(
+                app,
+                ["build", "Build portfolio site", "--yes", "--acceptance", "Portfolio site renders"],
+            )
 
         assert result.exit_code == 0, f"stdout={result.stdout}"
         mock_workflow.submit_for_review.assert_awaited_once()
@@ -664,7 +793,7 @@ class TestRunCommand:
             "reported_model": None,
             "invocation_ref": "run-123",
             "exit_code": 0,
-            "stdout": "Done",
+            "stdout": _completion_stdout("M-run-merge-blocked"),
             "stderr": "",
             "duration_seconds": 0.5,
         }
@@ -705,7 +834,10 @@ class TestRunCommand:
         monkeypatch.setattr("ces.cli.run_cmd.typer.prompt", lambda *args, **kwargs: "")
         with _patch_services(mock_services), patch("ces.cli.run_cmd.WorkflowEngine", return_value=mock_workflow):
             app = _get_app()
-            result = runner.invoke(app, ["build", "Build portfolio site", "--yes"])
+            result = runner.invoke(
+                app,
+                ["build", "Build portfolio site", "--yes", "--acceptance", "Portfolio site renders"],
+            )
 
         assert result.exit_code == 0, f"stdout={result.stdout}"
         mock_workflow.submit_for_review.assert_awaited_once()
@@ -776,7 +908,7 @@ class TestRunCommand:
             "reported_model": None,
             "invocation_ref": "run-123",
             "exit_code": 0,
-            "stdout": "Done",
+            "stdout": _completion_stdout("M-run-sign"),
             "stderr": "",
             "duration_seconds": 0.5,
         }
@@ -814,7 +946,10 @@ class TestRunCommand:
         monkeypatch.setattr("ces.cli.run_cmd.typer.prompt", lambda *args, **kwargs: "")
         with _patch_services(mock_services), patch("ces.cli.run_cmd.WorkflowEngine", return_value=mock_workflow):
             app = _get_app()
-            result = runner.invoke(app, ["build", "Build portfolio site", "--yes"])
+            result = runner.invoke(
+                app,
+                ["build", "Build portfolio site", "--yes", "--acceptance", "Portfolio site renders"],
+            )
 
         assert result.exit_code == 0, f"stdout={result.stdout}"
         mock_manager.sign_manifest.assert_awaited_once_with(manifest)
@@ -888,7 +1023,10 @@ class TestRunCommand:
         monkeypatch.setattr("ces.cli.run_cmd.typer.prompt", lambda *args, **kwargs: "")
         with _patch_services(mock_services):
             app = _get_app()
-            result = runner.invoke(app, ["run", "Build portfolio site", "--yes"])
+            result = runner.invoke(
+                app,
+                ["run", "Build portfolio site", "--yes", "--acceptance", "Portfolio site renders"],
+            )
 
         assert result.exit_code == 0, f"stdout={result.stdout}"
         assert "Plan For Your Request" in result.stdout
@@ -990,14 +1128,26 @@ class TestRunCommand:
 
         with _patch_services(mock_services):
             app = _get_app()
-            result = runner.invoke(app, ["build", "Add invoice notes", "--yes"])
+            result = runner.invoke(
+                app,
+                [
+                    "build",
+                    "Add invoice notes",
+                    "--yes",
+                    "--acceptance",
+                    "Invoice notes are saved",
+                    "--source-of-truth",
+                    "legacy_app.py",
+                    "--critical-flow",
+                    "Invoice editing",
+                ],
+            )
 
         assert result.exit_code == 0, f"stdout={result.stdout}"
         brief_kwargs = mock_store.save_builder_brief.call_args.kwargs
         assert brief_kwargs["project_mode"] == "brownfield"
-        # With --yes + description, optional prompts return defaults (empty)
-        assert brief_kwargs["source_of_truth"] == ""
-        assert brief_kwargs["critical_flows"] == []
+        assert brief_kwargs["source_of_truth"] == "legacy_app.py"
+        assert brief_kwargs["critical_flows"] == ["Invoice editing"]
 
     def test_build_can_export_prl_draft(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.chdir(tmp_path)
@@ -1077,7 +1227,14 @@ class TestRunCommand:
             app = _get_app()
             result = runner.invoke(
                 app,
-                ["build", "Build a habit tracker", "--yes", "--export-prl-draft"],
+                [
+                    "build",
+                    "Build a habit tracker",
+                    "--yes",
+                    "--acceptance",
+                    "User can create and complete habits",
+                    "--export-prl-draft",
+                ],
             )
 
         assert result.exit_code == 0, f"stdout={result.stdout}"
@@ -1214,7 +1371,7 @@ class TestRunCommand:
             app = _get_app()
             result = runner.invoke(app, ["continue", "--yes"])
 
-        assert result.exit_code != 0
+        assert result.exit_code == 0
         assert "already completed" in result.stdout.lower()
         assert "ces explain" in result.stdout
 

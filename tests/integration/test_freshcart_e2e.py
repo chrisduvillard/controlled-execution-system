@@ -36,7 +36,13 @@ FRESHCART_BUILDER_SCENARIO = BuilderScenario(
     name="freshcart-local-quickstart",
     request="Build a FreshCart order summary service",
     fixture_name=None,
-    build_args=("build", "Build a FreshCart order summary service", "--yes"),
+    build_args=(
+        "build",
+        "Build a FreshCart order summary service",
+        "--yes",
+        "--acceptance",
+        "Shoppers can see item counts plus subtotal, tax, and shipping",
+    ),
     prompt_responses=(
         "Expose an HTTP endpoint",
         "Shoppers can see item counts plus subtotal, tax, and shipping",
@@ -279,7 +285,7 @@ class TestBuilderFirstE2EPipeline:
         assert result.status.exit_code == 0, f"stdout={result.status.stdout}"
         assert "Build a FreshCart order summary service" in result.status.stdout
         assert "Start a new task with `ces build`" in result.status.stdout
-        assert result.continue_.exit_code != 0
+        assert result.continue_.exit_code == 0
         assert "already completed" in result.continue_.stdout.lower()
         assert result.latest_snapshot is not None
         assert result.latest_snapshot.is_chain_complete is True

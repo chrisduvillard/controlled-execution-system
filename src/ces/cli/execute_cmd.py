@@ -22,13 +22,15 @@ from ces.cli._errors import EXIT_SERVICE_ERROR, handle_error
 from ces.cli._factory import get_services
 from ces.cli._legacy_config import reject_server_mode
 from ces.cli._output import console
+from ces.cli.ownership import resolve_actor
 from ces.control.services.workflow_engine import WorkflowEngine
 from ces.harness.models.completion_claim import VerificationResult
 from ces.harness.models.tool_call_signature import ToolCallSignature
+from ces.harness.prompts.engineering_charter import attach_engineering_charter
 from ces.shared.base import CESBaseModel
 from ces.shared.enums import ActorType, WorkflowState
 
-_COMPLETION_CLAIM_INSTRUCTIONS = """\
+COMPLETION_CLAIM_INSTRUCTIONS = """\
 
 ## Completion Gate
 
@@ -47,6 +49,9 @@ Schema (emit one such block, no markdown wrapping the JSON):
   "criteria_satisfied": [
     {"criterion": "<exact text from acceptance_criteria>", "evidence": "<command output, file path, or other concrete proof>", "evidence_kind": "command_output | file_artifact | manual_inspection"}
   ],
+  "dependency_changes": [
+    {"file_path": "<dependency file>", "package": "<dependency/package name>", "rationale": "<why it is needed>", "existing_alternative_considered": "<stdlib or existing dependency considered>", "lockfile_evidence": "<lockfile/check evidence>", "audit_evidence": "<audit/check evidence>"}
+  ],
   "open_questions": ["<anything you are unsure about>"],
   "scope_deviations": ["<anything you changed beyond the stated scope>"]
 }
@@ -56,6 +61,7 @@ Rules:
 - The `task_id` must equal the manifest id printed below.
 - `files_changed` must list every file you edited; out-of-scope files fail the gate.
 - Every entry in this manifest's `acceptance_criteria` MUST appear once in `criteria_satisfied` with concrete evidence (a command you ran and its output, or a file artifact you produced).
+- If you changed dependency files, include one `dependency_changes` entry per dependency file.
 - Surface uncertainty in `open_questions` rather than hide it.
 - Disclose scope deviations in `scope_deviations`.
 """
@@ -74,7 +80,7 @@ def _build_prompt_pack(manifest: object) -> str:
     sensors = getattr(manifest, "verification_sensors", ())
     gate_active = isinstance(sensors, tuple) and len(sensors) > 0
     if not gate_active:
-        return base
+        return attach_engineering_charter(base)
 
     criteria = getattr(manifest, "acceptance_criteria", ())
     if isinstance(criteria, tuple) and criteria:
@@ -86,7 +92,7 @@ def _build_prompt_pack(manifest: object) -> str:
         f"- {s}" for s in sensors
     )
 
-    return base + criteria_block + sensor_block + _COMPLETION_CLAIM_INSTRUCTIONS
+    return attach_engineering_charter(base + criteria_block + sensor_block + COMPLETION_CLAIM_INSTRUCTIONS)
 
 
 def _normalize_runtime_execution(result: Any) -> dict[str, Any]:
@@ -131,8 +137,9 @@ async def _mark_execution_failed(
     manager: Any,
     engine: WorkflowEngine,
     manifest: object,
+    actor: str,
 ) -> object:
-    failed_state = await engine.fail(actor="cli-user", actor_type=ActorType.HUMAN)
+    failed_state = await engine.fail(actor=actor, actor_type=ActorType.HUMAN)
     manifest = _with_workflow_state(manifest, failed_state)
     await manager.save_manifest(manifest)
     return manifest
@@ -189,6 +196,7 @@ async def execute_task(
         reject_server_mode(project_config)
 
         async with get_services() as services:
+            actor = resolve_actor()
             settings = services["settings"]
             manager = services["manifest_manager"]
             manifest = await manager.get_manifest(manifest_id)
@@ -205,7 +213,7 @@ async def execute_task(
                 initial_state=initial_state,
             )
             if initial_state == WorkflowState.QUEUED.value:
-                await engine.start(actor="cli-user", actor_type=ActorType.HUMAN)
+                await engine.start(actor=actor, actor_type=ActorType.HUMAN)
                 manifest = _with_workflow_state(manifest, WorkflowState.IN_FLIGHT)
                 await manager.save_manifest(manifest)
             elif initial_state != WorkflowState.IN_FLIGHT.value:
@@ -242,6 +250,7 @@ async def execute_task(
                         manager=manager,
                         engine=engine,
                         manifest=manifest,
+                        actor=actor,
                     )
                     raise
                 execution = _normalize_runtime_execution(run_result)
@@ -261,6 +270,7 @@ async def execute_task(
                         manager=manager,
                         engine=engine,
                         manifest=manifest,
+                        actor=actor,
                     )
                     if _output_mod._json_mode:
                         typer.echo(
@@ -304,22 +314,23 @@ async def execute_task(
                         manager=manager,
                         engine=engine,
                         manifest=manifest,
+                        actor=actor,
                     )
                     break
 
-                await engine.submit_for_verification(actor="cli-user", actor_type=ActorType.HUMAN)
+                await engine.submit_for_verification(actor=actor, actor_type=ActorType.HUMAN)
                 manifest = _with_workflow_state(manifest, WorkflowState.VERIFYING)
                 verification = await verifier.verify(manifest, claim, project_root)
 
                 if verification.passed:
-                    await engine.verification_passed(actor="cli-user", actor_type=ActorType.CONTROL_PLANE)
+                    await engine.verification_passed(actor=actor, actor_type=ActorType.CONTROL_PLANE)
                     manifest = _with_workflow_state(manifest, WorkflowState.UNDER_REVIEW)
                     await manager.save_manifest(manifest)
                     break
 
                 rationale = f"{len(verification.findings)} verification finding(s); see ces audit ledger"
                 await engine.verification_failed(
-                    actor="cli-user",
+                    actor=actor,
                     actor_type=ActorType.CONTROL_PLANE,
                     rationale=rationale,
                 )
@@ -335,7 +346,7 @@ async def execute_task(
                     break
                 repair_context = correction.build_repair_prompt(verification.findings)
                 try:
-                    await engine.retry(actor="cli-user", actor_type=ActorType.CONTROL_PLANE)
+                    await engine.retry(actor=actor, actor_type=ActorType.CONTROL_PLANE)
                 except Exception:
                     # Workflow refused (max_retries reached); honor it as terminal.
                     break
@@ -352,6 +363,7 @@ async def execute_task(
                         manager=manager,
                         engine=engine,
                         manifest=manifest,
+                        actor=actor,
                     )
                 payload: dict[str, Any] = dict(execution)
                 if verification is not None:
@@ -396,6 +408,7 @@ async def execute_task(
                     manager=manager,
                     engine=engine,
                     manifest=manifest,
+                    actor=actor,
                 )
                 console.print(
                     Panel(

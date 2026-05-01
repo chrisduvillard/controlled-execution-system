@@ -22,11 +22,11 @@ from ces.cli._context import find_project_root, get_project_config
 from ces.cli._errors import handle_error
 from ces.cli._factory import get_services
 from ces.cli._output import console, output_dict
+from ces.cli.ownership import resolve_actor
 from ces.shared.enums import BehaviorConfidence, ChangeClass, RiskTier
 
 # Default values for manifest fields not yet specified by the user
 _DEFAULT_TOKEN_BUDGET = 100_000
-_DEFAULT_OWNER = "cli-user"
 
 
 @run_async
@@ -85,6 +85,7 @@ async def create_manifest(
 
         async with get_services() as services:
             manager = services["manifest_manager"]
+            actor = resolve_actor()
 
             if auto:
                 runtime_registry = services["runtime_registry"]
@@ -126,7 +127,7 @@ async def create_manifest(
                     change_class=change_class,
                     affected_files=affected_files,
                     token_budget=token_budget,
-                    owner=_DEFAULT_OWNER,
+                    owner=actor,
                     acceptance_criteria=acceptance_criterion or None,
                     verification_sensors=verification_sensor or None,
                 )
@@ -167,7 +168,7 @@ async def create_manifest(
                         else "No confident match - using highest risk defaults"
                     ),
                     "token_budget": _DEFAULT_TOKEN_BUDGET,
-                    "owner": _DEFAULT_OWNER,
+                    "owner": actor,
                 }
 
                 # Display proposed manifest
@@ -185,7 +186,7 @@ async def create_manifest(
                     change_class=change_class,
                     affected_files=[],
                     token_budget=_DEFAULT_TOKEN_BUDGET,
-                    owner=_DEFAULT_OWNER,
+                    owner=actor,
                     acceptance_criteria=acceptance_criterion or None,
                     verification_sensors=verification_sensor or None,
                 )

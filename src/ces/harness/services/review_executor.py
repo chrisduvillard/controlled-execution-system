@@ -193,7 +193,7 @@ def _parse_findings(
     Tries three strategies in order:
     1. Direct JSON parse of the entire content
     2. Extract JSON from markdown code blocks
-    3. Fallback: wrap raw text as a single INFO finding
+    3. Fallback: wrap raw text as a single HIGH finding
 
     Args:
         content: Raw LLM response text.
@@ -223,13 +223,13 @@ def _parse_findings(
         if findings is not None:
             return findings
 
-    # Strategy 4: fallback -- wrap raw text as INFO finding
+    # Strategy 4: fallback -- wrap raw text as a blocking finding
     logger.warning("Could not parse review findings as JSON; using fallback")
     return [
         ReviewFinding(
             finding_id=str(uuid.uuid4()),
             reviewer_role=role,
-            severity=ReviewFindingSeverity.INFO,
+            severity=ReviewFindingSeverity.HIGH,
             category="unparsed_review",
             title="Review output (unparsed)",
             description=content[:2000],

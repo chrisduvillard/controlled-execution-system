@@ -13,6 +13,7 @@ Exports:
 from __future__ import annotations
 
 import json
+from typing import Any
 
 import typer
 from rich.panel import Panel
@@ -27,8 +28,9 @@ from ces.cli._builder_report import (
 )
 from ces.cli._context import find_project_root, get_project_id
 from ces.cli._errors import handle_error
+from ces.cli._evidence_handoff import load_persisted_evidence_view
 from ces.cli._factory import get_services
-from ces.cli._output import console
+from ces.cli._output import console, set_json_mode
 
 # Color mapping for triage display
 _TRIAGE_COLOR_STYLES = {
@@ -44,12 +46,24 @@ async def triage_evidence(
         None,
         help="Evidence packet ID to triage. Defaults to the current builder session evidence when omitted.",
     ),
+    refresh: bool = typer.Option(
+        False,
+        "--refresh",
+        help="Rerun sensors instead of reading the persisted evidence packet.",
+    ),
+    json_output: bool = typer.Option(
+        False,
+        "--json",
+        help="Output triage as JSON. Equivalent to `ces --json triage`.",
+    ),
 ) -> None:
     """Pre-screen evidence and display triage color.
 
     Shows the triage color (green/yellow/red), reasoning, and
     whether the evidence is eligible for auto-approval.
     """
+    if json_output:
+        set_json_mode(True)
     try:
         find_project_root()
         project_id = get_project_id()
@@ -72,6 +86,49 @@ async def triage_evidence(
                 local_store,
                 manifest_id=resolved_manifest_id,
             )
+
+            persisted_evidence = None
+            if not refresh:
+                persisted_evidence = load_persisted_evidence_view(
+                    local_store=local_store,
+                    manifest_id=resolved_manifest_id,
+                    evidence_packet_id=resolved_evidence_packet_id,
+                )
+            if persisted_evidence is not None:
+                color_value = persisted_evidence.triage_color
+                data = {
+                    "evidence_packet_id": persisted_evidence.packet_id or resolved_evidence_packet_id,
+                    "manifest_id": persisted_evidence.manifest_id,
+                    "color": color_value,
+                    "risk_tier": "unknown",
+                    "trust_status": "unknown",
+                    "sensor_pass_rate": None,
+                    "reason": persisted_evidence.reason,
+                    "auto_approve_eligible": False,
+                    "source": "persisted",
+                }
+                if builder_run is not None:
+                    data["builder_run"] = serialize_builder_run_report(builder_run)
+                if _output_mod._json_mode:
+                    typer.echo(json.dumps(data, indent=2))
+                    return
+
+                color_display = _TRIAGE_COLOR_STYLES.get(color_value, f"[bold]{color_value.upper()}[/bold]")
+                content_lines = [
+                    f"Triage Color: {color_display}",
+                    f"Reasoning: {data['reason']}",
+                    "Source: persisted evidence packet",
+                ]
+                if builder_run is not None:
+                    content_lines.extend(["", *summarize_builder_run(builder_run)])
+                console.print(
+                    Panel(
+                        "\n".join(content_lines),
+                        title=f"Triage Result: {color_display}",
+                        border_style=color_value if color_value in ("green", "yellow", "red") else "white",
+                    )
+                )
+                return
 
             # Look up evidence packet and associated manifest
             manifest = await manager.get_manifest(resolved_manifest_id)
@@ -113,7 +170,7 @@ async def triage_evidence(
 
             # JSON mode
             if _output_mod._json_mode:
-                data = {
+                live_data: dict[str, Any] = {
                     "evidence_packet_id": resolved_evidence_packet_id,
                     "color": triage_result.color.value,
                     "risk_tier": triage_result.risk_tier.value,
@@ -123,8 +180,8 @@ async def triage_evidence(
                     "auto_approve_eligible": triage_result.auto_approve_eligible,
                 }
                 if builder_run is not None:
-                    data["builder_run"] = serialize_builder_run_report(builder_run)
-                typer.echo(json.dumps(data, indent=2))
+                    live_data["builder_run"] = serialize_builder_run_report(builder_run)
+                typer.echo(json.dumps(live_data, indent=2))
                 return
 
             # Rich mode: display triage result

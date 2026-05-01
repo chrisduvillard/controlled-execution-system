@@ -236,7 +236,7 @@ class _StubVerifier:
     def __init__(self, result_payload=None, payloads: list | None = None):
         self.result_payload = result_payload
         self._payloads = list(payloads) if payloads is not None else None
-        self.verify_calls = []
+        self.verify_calls: list[tuple[Any, Any, Path]] = []
 
     async def verify(self, manifest, claim, project_root):
         self.verify_calls.append((manifest, claim, project_root))
@@ -465,7 +465,7 @@ class TestCompletionGateWiring:
 class TestPromptPackBuilder:
     """_build_prompt_pack must instruct the agent to emit ces:completion when the gate is on."""
 
-    def test_no_sensors_keeps_prompt_minimal(self) -> None:
+    def test_no_sensors_still_includes_charter_but_not_completion_gate(self) -> None:
         from ces.cli.execute_cmd import _build_prompt_pack
 
         manifest = MagicMock(
@@ -475,6 +475,7 @@ class TestPromptPackBuilder:
         )
         prompt = _build_prompt_pack(manifest)
         assert "Build a thing" in prompt
+        assert "Explore first" in prompt
         assert "ces:completion" not in prompt
         # Gate-only sections must be absent
         assert "Completion Gate" not in prompt

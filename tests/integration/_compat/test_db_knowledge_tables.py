@@ -9,7 +9,7 @@ LegacyBehaviorRepository using mock AsyncSession.
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Any, Optional
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -26,13 +26,13 @@ from tests.integration._compat.control_db.base import Base
 
 def _column_names(model: type) -> set[str]:
     """Extract column names from an ORM model class."""
-    mapper = sa_inspect(model)
+    mapper: Any = sa_inspect(model)
     return {col.key for col in mapper.columns}
 
 
-def _column_by_name(model: type, name: str):
+def _column_by_name(model: type, name: str) -> Any:
     """Get a specific column object from an ORM model."""
-    mapper = sa_inspect(model)
+    mapper: Any = sa_inspect(model)
     return mapper.columns[name]
 
 

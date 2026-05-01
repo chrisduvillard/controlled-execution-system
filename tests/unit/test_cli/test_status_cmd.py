@@ -223,6 +223,19 @@ class TestStatusView:
         assert "trust_profiles" in data
         assert "active_manifests" in data
 
+    def test_status_accepts_command_local_json_flag(self, ces_project: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """ces status --json is accepted for operator ergonomics."""
+        monkeypatch.chdir(ces_project)
+        mock_services = _make_mock_services()
+
+        with _patch_services(mock_services):
+            app = _get_app()
+            result = runner.invoke(app, ["status", "--json"])
+
+        assert result.exit_code == 0, f"stdout={result.stdout}"
+        data = json.loads(result.stdout.strip())
+        assert "builder_run" in data
+
     def test_status_json_includes_structured_builder_run_truth(
         self, ces_project: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:

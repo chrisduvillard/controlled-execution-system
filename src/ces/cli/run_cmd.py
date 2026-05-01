@@ -13,6 +13,13 @@ from rich.table import Table
 
 from ces.cli import _explain_views, _wizard_helpers
 from ces.cli._async import run_async
+from ces.cli._builder_evidence import (
+    missing_completion_result,
+    serialize_model,
+)
+from ces.cli._builder_evidence import (
+    workspace_scope_violations as collect_workspace_scope_violations,
+)
 from ces.cli._builder_flow import BuilderBriefDraft, BuilderFlowOrchestrator
 from ces.cli._context import find_project_root, get_project_config
 from ces.cli._errors import handle_error
@@ -20,12 +27,19 @@ from ces.cli._factory import get_services
 from ces.cli._legacy_config import reject_server_mode
 from ces.cli._output import console
 from ces.cli._wizard_helpers import WIZARD_STEPS
+from ces.cli.execute_cmd import COMPLETION_CLAIM_INSTRUCTIONS
 from ces.cli.init_cmd import derive_project_name, initialize_local_project
+from ces.cli.ownership import resolve_actor
 from ces.control.models.manifest import TaskManifest
 from ces.control.services.workflow_engine import WorkflowEngine
 from ces.control.spec.parser import SpecParser
 from ces.control.spec.template_loader import TemplateLoader
+from ces.execution.completion_parser import parse_completion_claim
 from ces.execution.providers.bootstrap import resolve_primary_provider
+from ces.execution.runtime_safety import safety_profile_for_runtime
+from ces.execution.workspace_delta import WorkspaceSnapshot
+from ces.harness.prompts.engineering_charter import attach_engineering_charter
+from ces.harness.services.risk_sensor_policy import evaluate_sensor_policy
 from ces.shared.enums import (
     ActorType,
     BehaviorConfidence,
@@ -45,6 +59,24 @@ SENSOR_MAX_FILES = 500
 def _default_prompt_fn(_prompt: str, default: str = "") -> str:
     """Stub for ``typer.prompt`` that returns the default in non-interactive runs."""
     return default
+
+
+def _normalize_option_values(values: list[str] | None) -> list[str]:
+    return [value.strip() for value in values or [] if value.strip()]
+
+
+def _validate_noninteractive_brief(brief: BuilderBriefDraft) -> None:
+    """Fail closed when unattended mode lacks the governance context it skips."""
+    if not brief.acceptance_criteria:
+        raise typer.BadParameter(
+            "Non-interactive `--yes` builds with a description require at least one "
+            "`--acceptance` value so CES can judge what done means."
+        )
+    if brief.project_mode == "brownfield" and (not brief.source_of_truth or not brief.critical_flows):
+        raise typer.BadParameter(
+            "Non-interactive brownfield `--yes` builds require `--source-of-truth` "
+            "and at least one `--critical-flow` so CES does not silently preserve inferred behavior."
+        )
 
 
 def _required_gate_type_for_risk(risk_tier_value: str) -> GateType:
@@ -134,7 +166,19 @@ def _prompt_pack(brief: BuilderBriefDraft, *, promoted_prl_statements: list[str]
             lines.extend(["Critical Flows:", *[f"- {item}" for item in brief.critical_flows]])
         if promoted_prl_statements:
             lines.extend(["", "Promoted Legacy Requirements:", *[f"- {item}" for item in promoted_prl_statements]])
-    return "\n".join(lines)
+    criteria = brief.acceptance_criteria
+    if criteria:
+        lines.extend(
+            [
+                "",
+                "Acceptance criteria you must address in the ces:completion claim:",
+                *[f"- {item}" for item in criteria],
+            ]
+        )
+    else:
+        lines.append("\nAcceptance criteria: (none declared; emit an empty criteria_satisfied list)")
+    lines.append(COMPLETION_CLAIM_INSTRUCTIONS)
+    return attach_engineering_charter("\n".join(lines))
 
 
 def _ensure_builder_project() -> tuple[Path, dict[str, Any], bool]:
@@ -367,6 +411,30 @@ async def _run_brief_flow(
     sensor_orchestrator = services["sensor_orchestrator"]
     legacy_behavior_service = services.get("legacy_behavior_service")
     builder_flow = BuilderFlowOrchestrator(project_root)
+    brief_id = existing_brief_id
+    session_id = existing_session_id
+    if brief_id is None:
+        brief_id = local_store.save_builder_brief(
+            request=brief_draft.request,
+            project_mode=brief_draft.project_mode,
+            constraints=brief_draft.constraints,
+            acceptance_criteria=brief_draft.acceptance_criteria,
+            must_not_break=brief_draft.must_not_break,
+            open_questions=brief_draft.open_questions,
+            source_of_truth=brief_draft.source_of_truth,
+            critical_flows=brief_draft.critical_flows or [],
+        )
+    if session_id is None and hasattr(local_store, "save_builder_session"):
+        session_id = local_store.save_builder_session(
+            brief_id=brief_id,
+            request=brief_draft.request,
+            project_mode=brief_draft.project_mode,
+            stage="ready_to_run",
+            next_action="run_continue",
+            last_action="brief_captured",
+            source_of_truth=brief_draft.source_of_truth,
+            critical_flows=brief_draft.critical_flows or [],
+        )
     current_session = None
     if existing_session_id is not None and hasattr(local_store, "get_builder_session"):
         current_session = local_store.get_builder_session(existing_session_id)
@@ -377,13 +445,22 @@ async def _run_brief_flow(
             preferred_runtime=project_config.get("preferred_runtime") or getattr(settings, "default_runtime", "codex"),
         )
     except RuntimeError:
+        if session_id is not None and hasattr(local_store, "update_builder_session"):
+            local_store.update_builder_session(
+                session_id,
+                stage="blocked",
+                next_action="install_runtime",
+                last_action="runtime_missing",
+                recovery_reason="install_runtime",
+                last_error="No supported local runtime detected.",
+            )
         console.print(
             Panel(
                 "[bold]No agent runtime found.[/bold]\n\n"
                 "CES needs a local agent runtime to execute tasks.\n"
                 "Install one of:\n"
-                "  - [bold]Claude Code[/bold]: set CLAUDECODE or CLAUDE_CODE env var\n"
-                "  - [bold]Codex CLI[/bold]: set CODEX_HOME or CODEX_SANDBOX env var\n\n"
+                "  - [bold]Claude Code[/bold]: install and authenticate `claude` so it is on PATH\n"
+                "  - [bold]Codex CLI[/bold]: install and authenticate `codex` so it is on PATH\n\n"
                 "CES_DEMO_MODE does not replace the required runtime for `ces build`.\n"
                 "Run [bold]ces doctor[/bold] after installing a supported runtime.",
                 title="[yellow]Runtime Not Found[/yellow]",
@@ -393,6 +470,7 @@ async def _run_brief_flow(
         raise typer.Exit(code=1)
 
     runtime_name = getattr(runtime_adapter, "runtime_name", runtime)
+    actor = resolve_actor()
     proposal = builder_flow.propose_manifest(
         brief=brief_draft,
         runtime_adapter=runtime_adapter,
@@ -408,30 +486,6 @@ async def _run_brief_flow(
             proposal["risk_tier"] = rule.risk_tier.value
             proposal["behavior_confidence"] = rule.behavior_confidence.value
             proposal["change_class"] = rule.change_class.value
-    brief_id = existing_brief_id
-    if brief_id is None:
-        brief_id = local_store.save_builder_brief(
-            request=brief_draft.request,
-            project_mode=brief_draft.project_mode,
-            constraints=brief_draft.constraints,
-            acceptance_criteria=brief_draft.acceptance_criteria,
-            must_not_break=brief_draft.must_not_break,
-            open_questions=brief_draft.open_questions,
-            source_of_truth=brief_draft.source_of_truth,
-            critical_flows=brief_draft.critical_flows or [],
-        )
-    session_id = existing_session_id
-    if session_id is None and hasattr(local_store, "save_builder_session"):
-        session_id = local_store.save_builder_session(
-            brief_id=brief_id,
-            request=brief_draft.request,
-            project_mode=brief_draft.project_mode,
-            stage="ready_to_run",
-            next_action="run_continue",
-            last_action="brief_captured",
-            source_of_truth=brief_draft.source_of_truth,
-            critical_flows=brief_draft.critical_flows or [],
-        )
     prl_draft_path: str | None = None
     if export_prl_draft:
         prl_draft = builder_flow.export_prl_draft(
@@ -474,7 +528,7 @@ async def _run_brief_flow(
             affected_files=proposal.get("affected_files", []),
             acceptance_criteria=brief_draft.acceptance_criteria,
             token_budget=proposal.get("token_budget", 100_000),
-            owner="cli-user",
+            owner=actor,
         )
         local_store.update_builder_brief_artifacts(
             brief_id,
@@ -538,6 +592,7 @@ async def _run_brief_flow(
     manifest = _with_workflow_state(manifest, WorkflowState.IN_FLIGHT)
     await manager.save_manifest(manifest)
 
+    workspace_before = WorkspaceSnapshot.capture(project_root)
     run_result = await agent_runner.execute_runtime(
         manifest=manifest,
         runtime=runtime_adapter,
@@ -547,7 +602,24 @@ async def _run_brief_flow(
         ),
         working_dir=project_root,
     )
+    workspace_delta = workspace_before.diff(WorkspaceSnapshot.capture(project_root))
     execution = _normalize_runtime_execution(run_result)
+    runtime_safety = safety_profile_for_runtime(
+        execution.get("runtime_name", getattr(runtime_adapter, "runtime_name", "unknown")),
+        allowed_tools=tuple(getattr(manifest, "allowed_tools", ()) or ()),
+    )
+    runtime_result = getattr(run_result, "runtime_result", None)
+    completion_claim = getattr(runtime_result, "completion_claim", None)
+    if completion_claim is None:
+        completion_claim = parse_completion_claim(str(execution.get("stdout", "")))
+    completion_verification = None
+    if execution["exit_code"] == 0:
+        verifier = services.get("completion_verifier")
+        if completion_claim is None:
+            completion_verification = missing_completion_result()
+        elif verifier is not None:
+            completion_verification = await verifier.verify(manifest, completion_claim, project_root)
+    workspace_scope_violations = collect_workspace_scope_violations(manifest, workspace_delta)
     local_store.save_runtime_execution(manifest.manifest_id, execution)
 
     # When manifest has no affected_files, discover Python files from project root
@@ -576,6 +648,7 @@ async def _run_brief_flow(
         }
     )
     sensor_results = [result for pack in pack_results for result in getattr(pack, "results", ())]
+    sensor_policy = evaluate_sensor_policy(manifest.risk_tier, sensor_results)
 
     summary_text = ""
     challenge_text = ""
@@ -623,6 +696,12 @@ async def _run_brief_flow(
         content={
             "execution": execution,
             "sensors": [getattr(sensor, "model_dump", lambda **_: sensor)() for sensor in sensor_results],
+            "completion_claim": serialize_model(completion_claim),
+            "verification_result": serialize_model(completion_verification),
+            "workspace_delta": serialize_model(workspace_delta),
+            "workspace_scope_violations": list(workspace_scope_violations),
+            "runtime_safety": serialize_model(runtime_safety),
+            "sensor_policy": serialize_model(sensor_policy),
             "triage_reason": triage.reason,
         },
     )
@@ -675,15 +754,36 @@ async def _run_brief_flow(
         audit_ledger=services["audit_ledger"],
         initial_state="in_flight",
     )
-    review_state = await workflow_engine.submit_for_review(actor="cli-user", actor_type=ActorType.HUMAN)
+    review_state = await workflow_engine.submit_for_review(actor=actor, actor_type=ActorType.HUMAN)
     manifest = _with_workflow_state(manifest, review_state)
     await manager.save_manifest(manifest)
 
-    approved = yes
+    auto_blockers: list[str] = []
+    if completion_verification is not None and not completion_verification.passed:
+        auto_blockers.append("completion evidence failed verification")
+    if workspace_scope_violations:
+        auto_blockers.append("workspace changes exceeded manifest scope")
+    if sensor_policy.blocking:
+        auto_blockers.append("risk-aware sensor policy found blocking issues")
+
+    approved = yes and not auto_blockers
     if not yes:
+        if auto_blockers:
+            console.print(
+                Panel(
+                    "\n".join(f"- {item}" for item in auto_blockers),
+                    title="[yellow]Approval Requires Explicit Review[/yellow]",
+                    border_style="yellow",
+                )
+            )
         approved = typer.confirm("Ship this change?", default=execution["exit_code"] == 0)
     decision = "approve" if approved else "reject"
-    rationale = "Auto-approved by the builder flow" if yes else f"User selected {decision} after evidence review"
+    if yes and auto_blockers:
+        rationale = "Auto-approval blocked: " + "; ".join(auto_blockers)
+    elif yes:
+        rationale = "Auto-approved by the builder flow"
+    else:
+        rationale = f"User selected {decision} after evidence review"
     local_store.save_approval(
         manifest.manifest_id,
         decision=decision,
@@ -692,7 +792,7 @@ async def _run_brief_flow(
 
     await services["audit_ledger"].record_approval(
         manifest_id=manifest.manifest_id,
-        actor="cli-user",
+        actor=actor,
         decision=decision,
         rationale=rationale,
     )
@@ -701,7 +801,7 @@ async def _run_brief_flow(
         from ces.shared.enums import ReviewSubState
 
         workflow_engine._review_sub_state = ReviewSubState.DECISION
-        approved_state = await workflow_engine.complete_review(actor="cli-user", actor_type=ActorType.HUMAN)
+        approved_state = await workflow_engine.complete_review(actor=actor, actor_type=ActorType.HUMAN)
         manifest = _with_workflow_state(manifest, approved_state)
         await manager.save_manifest(manifest)
 
@@ -726,12 +826,12 @@ async def _run_brief_flow(
                 workflow_state=WorkflowState.APPROVED.value,
             )
             if merge_decision.allowed:
-                merged_state = await workflow_engine.approve_merge(actor="cli-user", actor_type=ActorType.HUMAN)
+                merged_state = await workflow_engine.approve_merge(actor=actor, actor_type=ActorType.HUMAN)
                 manifest = _with_workflow_state(manifest, merged_state)
                 await manager.save_manifest(manifest)
     else:
         rejected_state = await workflow_engine.reject(
-            actor="cli-user",
+            actor=actor,
             actor_type=ActorType.HUMAN,
             rationale=rationale,
         )
@@ -810,7 +910,7 @@ async def run_task(
         False,
         "--yes",
         "-y",
-        help="Auto-approve after successful review summary",
+        help="Run non-interactively and approve only after explicit acceptance context is supplied.",
     ),
     brief: bool = typer.Option(
         False,
@@ -836,6 +936,31 @@ async def run_task(
         False,
         "--brownfield",
         help="Force the build flow to treat this repo as a brownfield project.",
+    ),
+    constraints: list[str] | None = typer.Option(
+        None,
+        "--constraint",
+        help="Constraint to include in a non-interactive builder brief. Repeatable.",
+    ),
+    acceptance: list[str] | None = typer.Option(
+        None,
+        "--acceptance",
+        help="Acceptance criterion required for non-interactive `--yes` builds. Repeatable.",
+    ),
+    must_not_break: list[str] | None = typer.Option(
+        None,
+        "--must-not-break",
+        help="Behavior that must keep working. Repeatable.",
+    ),
+    source_of_truth: str | None = typer.Option(
+        None,
+        "--source-of-truth",
+        help="Brownfield source of truth required for non-interactive brownfield `--yes` builds.",
+    ),
+    critical_flows: list[str] | None = typer.Option(
+        None,
+        "--critical-flow",
+        help="Brownfield workflow that must keep working. Repeatable.",
     ),
     export_prl_draft: bool = typer.Option(
         False,
@@ -877,7 +1002,6 @@ async def run_task(
 
         async with get_services() as services:
             if yes:
-                # Existing path: auto-approve with defaults
                 builder_flow = BuilderFlowOrchestrator(project_root)
                 if description:
                     prompt_fn = _default_prompt_fn
@@ -888,7 +1012,14 @@ async def run_task(
                     prompt_fn=prompt_fn,
                     force_greenfield=greenfield,
                     force_brownfield=brownfield,
+                    provided_constraints=_normalize_option_values(constraints),
+                    provided_acceptance_criteria=_normalize_option_values(acceptance),
+                    provided_must_not_break=_normalize_option_values(must_not_break),
+                    provided_source_of_truth=source_of_truth,
+                    provided_critical_flows=_normalize_option_values(critical_flows),
                 )
+                if description:
+                    _validate_noninteractive_brief(brief_draft)
                 await _run_brief_flow(
                     brief_draft=brief_draft,
                     services=services,
@@ -935,7 +1066,7 @@ async def continue_task(
         False,
         "--yes",
         "-y",
-        help="Auto-approve after successful review summary",
+        help="Run non-interactively and approve after the saved brief's review summary.",
     ),
     brief: bool = typer.Option(
         False,
@@ -968,11 +1099,16 @@ async def continue_task(
             local_store = services.get("local_store")
             session = _load_latest_builder_session(local_store)
             if session is not None and session.stage == "completed":
-                raise RuntimeError(
-                    "The latest builder session is already completed. "
-                    "Start a new task with `ces build`, or run `ces explain` "
-                    "or `ces status` to review the finished request."
+                console.print(
+                    Panel(
+                        "The latest builder session is already completed.\n"
+                        "Start a new task with `ces build`, or run `ces explain` "
+                        "or `ces status` to review the finished request.",
+                        title="[cyan]Nothing To Resume[/cyan]",
+                        border_style="cyan",
+                    )
                 )
+                return
             record = None
             if session is not None and getattr(session, "brief_id", None) and hasattr(local_store, "get_builder_brief"):
                 record = local_store.get_builder_brief(session.brief_id)

@@ -19,17 +19,27 @@ cd controlled-execution-system
 uv sync
 ```
 
-Or from PyPI once published:
+Or install the published package from PyPI:
 
 ```bash
 uv tool install controlled-execution-system
 ```
 
-## 2. Run your first governed build
+## 2. Verify your runtime
+
+```bash
+ces doctor
+```
+
+`ces build` and `ces execute` require a supported local runtime. `CES_DEMO_MODE=1`
+only affects optional LLM-backed helper steps; it does not replace Codex CLI or
+Claude Code for local execution.
+
+## 3. Run your first governed build
 
 ```bash
 mkdir my-project && cd my-project
-ces build "Add a healthcheck endpoint that returns JSON status" --yes
+ces build "Add a healthcheck endpoint that returns JSON status"
 ```
 
 CES will:
@@ -39,23 +49,13 @@ CES will:
 4. Execute the change through a local runtime
 5. Show the review result and next step
 
-## 3. Check your project status
+## 4. Check your project status
 
 ```bash
 ces status
 ```
 
 This shows the current builder session, evidence, and next action.
-
-## 4. Verify your runtime
-
-```bash
-ces doctor
-```
-
-`ces build` and `ces execute` require a supported local runtime. `CES_DEMO_MODE=1`
-only affects optional LLM-backed helper steps; it does not replace Codex CLI or
-Claude Code for local execution.
 
 ## What just happened?
 
@@ -67,7 +67,7 @@ Everything is local. No Postgres, Redis, or external services were needed.
 
 ## Next steps
 
-- **Resume a session:** `ces continue --yes`
+- **Resume a session:** `ces continue`
 - **Explain the latest state:** `ces explain`
 - **Read the fuller setup guide:** [Getting Started](Getting_Started.md)
 - **Read the workflow boundary guide:** [Operator Playbook](Operator_Playbook.md)

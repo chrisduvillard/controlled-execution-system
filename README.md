@@ -22,6 +22,11 @@ The default product shape is deliberately small:
 | Repo-local SQLite state under `.ces/` | A required Postgres or Redis service |
 | Local runtime execution through Codex CLI or Claude Code | A replacement for your runtime credentials |
 
+CES is trying to make AI coding accountable, not just smarter. Tools such as
+GSD, BMAD Method, and Superpowers can improve how an agent plans, reasons, or
+follows engineering habits; CES wraps the resulting work in a local execution
+contract with saved state, evidence, review, approval, and audit history.
+
 [Quickstart](docs/Quickstart.md) |
 [Getting Started](docs/Getting_Started.md) |
 [Operator Playbook](docs/Operator_Playbook.md) |
@@ -74,12 +79,13 @@ use `uv run ces ...`.
 Run CES from the project you want to govern:
 
 ```bash
-ces build "Add a healthcheck endpoint that returns JSON status" --yes
+ces build "Add a healthcheck endpoint that returns JSON status"
 ```
 
 On first use, CES creates `.ces/` in that project. It then gathers missing
 context, drafts the governance contract, executes through the local runtime,
-reviews the result, and records the evidence trail.
+requires completion evidence for the acceptance criteria, reviews the result,
+checks the actual workspace delta, and records the evidence trail.
 
 If you want to initialize local state explicitly:
 
@@ -115,6 +121,10 @@ Start with the builder-first loop for normal work:
 | `ces status` | Show concise builder-first project status |
 | `ces report builder` | Export a markdown and JSON handoff report under `.ces/exports/` |
 
+Unattended `--yes` runs are still evidence-gated: CES blocks auto-approval if
+the runtime omits the `ces:completion` claim, changes files outside the manifest
+scope, or trips a blocking sensor policy finding.
+
 Use the [Operator Playbook](docs/Operator_Playbook.md) when you need the full
 builder-first versus expert workflow boundary for a single request.
 
@@ -130,9 +140,9 @@ CES supports both empty projects and existing codebases.
 For day-to-day brownfield work, stay in the builder-first loop:
 
 ```bash
-ces build "Add input validation to the billing API" --yes
+ces build "Add input validation to the billing API"
 ces explain --view brownfield
-ces continue --yes
+ces continue
 ```
 
 Use explicit brownfield governance surfaces only when you need to decide the
@@ -165,8 +175,9 @@ you need direct artifact control, audit inspection, or incident response.
 | `setup-ci` | Generate GitHub or GitLab CI gating workflow templates |
 | `dogfood` | Use CES to review changes to this repository; for example, `ces dogfood --base origin/master` |
 
-All commands support the global `--json` option where that command has a
-machine-readable output path. The [Operations Runbook](docs/Operations_Runbook.md)
+Commands with machine-readable output support the global JSON form
+(`ces --json status`) and the command-local form where exposed
+(`ces status --json`). The [Operations Runbook](docs/Operations_Runbook.md)
 covers system-wide visibility and incident response.
 
 ## Local State

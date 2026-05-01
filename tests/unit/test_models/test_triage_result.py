@@ -22,9 +22,9 @@ class TestTriageColor:
     """TriageColor enum tests."""
 
     def test_values(self) -> None:
-        assert TriageColor.GREEN == "green"
-        assert TriageColor.YELLOW == "yellow"
-        assert TriageColor.RED == "red"
+        assert TriageColor.GREEN.value == "green"
+        assert TriageColor.YELLOW.value == "yellow"
+        assert TriageColor.RED.value == "red"
 
 
 class TestTriageMatrix:

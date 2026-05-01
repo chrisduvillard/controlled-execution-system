@@ -16,7 +16,7 @@ When you run `ces build`, CES automatically detects whether the project is green
 ```bash
 # Auto-detection: CES sees existing files and enters brownfield mode
 cd my-existing-project
-ces build "Add input validation to the API" --yes
+ces build "Add input validation to the API"
 ```
 
 CES will ask additional questions in brownfield mode:
@@ -27,10 +27,10 @@ CES will ask additional questions in brownfield mode:
 
 ```bash
 # Force brownfield mode (useful for repos with only config files)
-ces build "Add monitoring" --brownfield --yes
+ces build "Add monitoring" --brownfield
 
 # Force greenfield mode (useful when you want to ignore existing code)
-ces build "Rewrite from scratch" --greenfield --yes
+ces build "Rewrite from scratch" --greenfield
 ```
 
 ## The Brownfield Review Flow
@@ -106,10 +106,10 @@ ces brownfield discard OLB-<entry-id>
 ```bash
 # 1. Start with a builder-first run — CES auto-detects brownfield
 cd my-existing-project
-ces build "Add feature X" --yes
+ces build "Add feature X"
 
 # 2. Resume the same builder-first request if CES paused for grouped review
-ces continue --yes
+ces continue
 
 # 3. After the first run, use expert workflow commands for any critical
 #    behaviors CES should track explicitly
@@ -122,7 +122,7 @@ ces brownfield review OLB-<entry-id> --disposition preserve
 ces brownfield promote OLB-<entry-id>
 
 # 5. Future builds will include these as constraints
-ces build "Change session handling" --yes
+ces build "Change session handling"
 ```
 
 ### Ongoing brownfield governance

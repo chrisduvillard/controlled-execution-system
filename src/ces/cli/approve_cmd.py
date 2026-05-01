@@ -4,7 +4,7 @@ Shows triage color and evidence summary, then prompts for interactive
 approval/rejection. Records the decision in the audit ledger.
 
 Threat mitigations:
-- T-06-09: Approval actor recorded as "cli-user" (cannot impersonate)
+- T-06-09: Approval actor recorded from local CES/git/OS identity
 - T-06-10: Approval recorded in append-only HMAC-chained audit ledger
 - T-06-11: Every approval/rejection logged with timestamp, actor, evidence ID
 
@@ -31,8 +31,10 @@ from ces.cli._builder_report import (
 )
 from ces.cli._context import find_project_root, get_project_id
 from ces.cli._errors import GovernanceViolationError, handle_error
+from ces.cli._evidence_handoff import load_persisted_evidence_view
 from ces.cli._factory import get_services
-from ces.cli._output import console
+from ces.cli._output import console, set_json_mode
+from ces.cli.ownership import resolve_actor
 from ces.control.models.manifest import TaskManifest
 from ces.control.services.workflow_engine import WorkflowEngine
 from ces.execution.providers.bootstrap import resolve_primary_provider
@@ -91,6 +93,7 @@ async def _advance_builder_handoff_to_review(
     manager: object,
     workflow_engine: WorkflowEngine,
     manifest_state: str,
+    actor: str,
 ) -> tuple[object, str]:
     """Recover queued/in_flight builder handoffs before approval.
 
@@ -103,7 +106,7 @@ async def _advance_builder_handoff_to_review(
     current_state = manifest_state
 
     if current_state == WorkflowState.QUEUED.value:
-        started_state = await workflow_engine.start(actor="cli-user", actor_type=ActorType.HUMAN)
+        started_state = await workflow_engine.start(actor=actor, actor_type=ActorType.HUMAN)
         if _coerce_workflow_state_value(started_state) == WorkflowState.QUEUED.value:
             started_state = WorkflowState.IN_FLIGHT
         current_manifest = _with_workflow_state(current_manifest, started_state)
@@ -111,7 +114,7 @@ async def _advance_builder_handoff_to_review(
         current_state = _coerce_workflow_state_value(started_state)
 
     if current_state == WorkflowState.IN_FLIGHT.value:
-        review_state = await workflow_engine.submit_for_review(actor="cli-user", actor_type=ActorType.HUMAN)
+        review_state = await workflow_engine.submit_for_review(actor=actor, actor_type=ActorType.HUMAN)
         if _coerce_workflow_state_value(review_state) != WorkflowState.UNDER_REVIEW.value:
             review_state = WorkflowState.UNDER_REVIEW
         current_manifest = _with_workflow_state(current_manifest, review_state)
@@ -139,17 +142,30 @@ async def approve_evidence(
         "-r",
         help="Rejection reason (used when rejecting)",
     ),
+    refresh: bool = typer.Option(
+        False,
+        "--refresh",
+        help="Rerun sensors/provider summary instead of reading persisted evidence where available.",
+    ),
+    json_output: bool = typer.Option(
+        False,
+        "--json",
+        help="Output approval result as JSON. Equivalent to `ces --json approve`.",
+    ),
 ) -> None:
     """Review and approve or reject evidence.
 
     Shows the triage color, evidence summary, and prompts for
     approval. Records the decision in the audit ledger.
     """
+    if json_output:
+        set_json_mode(True)
     try:
         find_project_root()
         project_id = get_project_id()
 
         async with get_services() as services:
+            actor = resolve_actor()
             manager = services["manifest_manager"]
             evidence_synthesizer = services["evidence_synthesizer"]
             audit_ledger = services.get("audit_ledger")
@@ -180,6 +196,13 @@ async def approve_evidence(
             if manifest is None:
                 raise typer.BadParameter(f"Evidence packet not found: {resolved_evidence_packet_id}")
             manifest = await _ensure_signed_manifest(manager, manifest)
+            manifest_state = _coerce_workflow_state_value(getattr(manifest, "workflow_state", None))
+            if manifest_state == WorkflowState.MERGED.value:
+                raise ValueError(
+                    "Manifest is already merged; approval has already completed for this builder run. "
+                    "Use ces report builder for historical evidence; use ces status for current state; "
+                    "use ces audit for the governance ledger."
+                )
 
             # Run triage for color display
             risk_tier = manifest.risk_tier
@@ -189,66 +212,78 @@ async def approve_evidence(
 
                 trust_status = TrustStatus.CANDIDATE
 
-            # Run sensors for triage input (EVID-06 fix)
-            sensor_orchestrator = services["sensor_orchestrator"]
-            project_root = find_project_root()
-            sensor_context = {
-                "manifest_id": manifest.manifest_id,
-                "risk_tier": risk_tier.value if hasattr(risk_tier, "value") else str(risk_tier),
-                "affected_files": getattr(manifest, "affected_files", []) or [],
-                "project_root": str(project_root),
-                "description": getattr(manifest, "description", ""),
-                "change_class": str(getattr(manifest.change_class, "value", ""))
-                if hasattr(manifest, "change_class")
-                else "",
-            }
-            try:
-                pack_results = await sensor_orchestrator.run_all(sensor_context)
-                sensor_results: list = []
-                for pack in pack_results:
-                    sensor_results.extend(pack.results)
-            except RuntimeError:
-                # Kill switch active -- fall back to empty sensor results
-                sensor_results = []
+            persisted_evidence = None
+            if not refresh:
+                persisted_evidence = load_persisted_evidence_view(
+                    local_store=local_store,
+                    manifest_id=manifest.manifest_id,
+                    evidence_packet_id=resolved_evidence_packet_id,
+                )
 
-            triage_result = await evidence_synthesizer.triage(
-                risk_tier=risk_tier,
-                trust_status=trust_status,
-                sensor_results=sensor_results,
-            )
+            if persisted_evidence is not None:
+                color_value = persisted_evidence.triage_color
+                summary_preview = persisted_evidence.summary
+            else:
+                # Run sensors for triage input (EVID-06 fix)
+                sensor_orchestrator = services["sensor_orchestrator"]
+                project_root = find_project_root()
+                sensor_context = {
+                    "manifest_id": manifest.manifest_id,
+                    "risk_tier": risk_tier.value if hasattr(risk_tier, "value") else str(risk_tier),
+                    "affected_files": getattr(manifest, "affected_files", []) or [],
+                    "project_root": str(project_root),
+                    "description": getattr(manifest, "description", ""),
+                    "change_class": str(getattr(manifest.change_class, "value", ""))
+                    if hasattr(manifest, "change_class")
+                    else "",
+                }
+                try:
+                    pack_results = await sensor_orchestrator.run_all(sensor_context)
+                    sensor_results: list = []
+                    for pack in pack_results:
+                        sensor_results.extend(pack.results)
+                except RuntimeError:
+                    # Kill switch active -- fall back to empty sensor results
+                    sensor_results = []
 
-            # Resolve LLM provider for summary generation (EVID-04 fix)
-            provider_registry = services.get("provider_registry")
-            settings = services["settings"]
-            llm_provider = (
-                resolve_primary_provider(provider_registry, settings.default_model_id)
-                if provider_registry is not None
-                else None
-            )
+                triage_result = await evidence_synthesizer.triage(
+                    risk_tier=risk_tier,
+                    trust_status=trust_status,
+                    sensor_results=sensor_results,
+                )
 
-            evidence_context: dict = {
-                "manifest_id": manifest.manifest_id,
-                "description": getattr(manifest, "description", "N/A"),
-                "risk_tier": risk_tier.value if hasattr(risk_tier, "value") else str(risk_tier),
-                "triage_color": triage_result.color.value,
-            }
-            # Enrich evidence context with review findings
-            if review_data is not None:
-                evidence_context["review_findings"] = review_data["findings"]
-                evidence_context["critical_count"] = review_data["critical_count"]
-                evidence_context["high_count"] = review_data["high_count"]
+                # Resolve LLM provider for summary generation (EVID-04 fix)
+                provider_registry = services.get("provider_registry")
+                settings = services["settings"]
+                llm_provider = (
+                    resolve_primary_provider(provider_registry, settings.default_model_id)
+                    if provider_registry is not None
+                    else None
+                )
 
-            # Get evidence summary
-            summary_slots = await evidence_synthesizer.format_summary_slots(
-                provider=llm_provider,
-                model_id=settings.default_model_id,
-                evidence_context=evidence_context,
-            )
-            summary_lines = summary_slots.summary.strip().split("\n")
-            summary_preview = "\n".join(summary_lines[:5])
+                evidence_context: dict = {
+                    "manifest_id": manifest.manifest_id,
+                    "description": getattr(manifest, "description", "N/A"),
+                    "risk_tier": risk_tier.value if hasattr(risk_tier, "value") else str(risk_tier),
+                    "triage_color": triage_result.color.value,
+                }
+                # Enrich evidence context with review findings
+                if review_data is not None:
+                    evidence_context["review_findings"] = review_data["findings"]
+                    evidence_context["critical_count"] = review_data["critical_count"]
+                    evidence_context["high_count"] = review_data["high_count"]
+
+                # Get evidence summary
+                summary_slots = await evidence_synthesizer.format_summary_slots(
+                    provider=llm_provider,
+                    model_id=settings.default_model_id,
+                    evidence_context=evidence_context,
+                )
+                summary_lines = summary_slots.summary.strip().split("\n")
+                summary_preview = "\n".join(summary_lines[:5])
+                color_value = triage_result.color.value
 
             # Triage color display
-            color_value = triage_result.color.value
             color_display = _TRIAGE_COLOR_STYLES.get(color_value, f"[bold]{color_value.upper()}[/bold]")
 
             manifest_id = manifest.manifest_id
@@ -327,7 +362,6 @@ async def approve_evidence(
             # Resolve workflow state before recording any irreversible audit decision.
             decision_str = "approved" if approved else "rejected"
             rationale = reason if not approved and reason else ("Approved via CLI" if approved else "Rejected via CLI")
-            manifest_state = _coerce_workflow_state_value(getattr(manifest, "workflow_state", None))
             engine = WorkflowEngine(
                 manifest_id=manifest_id,
                 audit_ledger=audit_ledger,
@@ -345,6 +379,7 @@ async def approve_evidence(
                         manager=manager,
                         workflow_engine=engine,
                         manifest_state=manifest_state,
+                        actor=actor,
                     )
                 if manifest_state == WorkflowState.MERGED.value:
                     raise ValueError(
@@ -366,6 +401,7 @@ async def approve_evidence(
                         manager=manager,
                         workflow_engine=engine,
                         manifest_state=manifest_state,
+                        actor=actor,
                     )
                 if manifest_state == WorkflowState.APPROVED.value:
                     raise ValueError(f"Manifest must be under_review to reject via CLI approval; got {manifest_state}")
@@ -375,7 +411,7 @@ async def approve_evidence(
             # Record decision in audit ledger (T-06-09, T-06-10, T-06-11)
             await audit_ledger.record_approval(
                 manifest_id=manifest_id,
-                actor="cli-user",
+                actor=actor,
                 decision=decision_str,
                 rationale=rationale,
                 project_id=project_id,
@@ -389,7 +425,7 @@ async def approve_evidence(
                     from ces.shared.enums import ReviewSubState
 
                     engine._review_sub_state = ReviewSubState.DECISION
-                    approved_state = await engine.complete_review(actor="cli-user", actor_type=ActorType.HUMAN)
+                    approved_state = await engine.complete_review(actor=actor, actor_type=ActorType.HUMAN)
                     manifest = _with_workflow_state(manifest, approved_state)
                     await manager.save_manifest(manifest)
 
@@ -424,12 +460,12 @@ async def approve_evidence(
 
                 if merge_decision.allowed:
                     # Transition approved -> merged
-                    merged_state = await engine.approve_merge(actor="cli-user", actor_type=ActorType.HUMAN)
+                    merged_state = await engine.approve_merge(actor=actor, actor_type=ActorType.HUMAN)
                     manifest = _with_workflow_state(manifest, merged_state)
                     await manager.save_manifest(manifest)
             else:
                 rejected_state = await engine.reject(
-                    actor="cli-user",
+                    actor=actor,
                     actor_type=ActorType.HUMAN,
                     rationale=rationale,
                 )

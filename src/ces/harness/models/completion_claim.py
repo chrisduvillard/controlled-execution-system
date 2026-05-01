@@ -48,6 +48,17 @@ class CriterionEvidence(CESBaseModel):
     evidence_kind: EvidenceKind
 
 
+class DependencyChangeEvidence(CESBaseModel):
+    """Justification and verification evidence for a dependency file change."""
+
+    file_path: str = Field(min_length=1)
+    package: str = Field(min_length=1)
+    rationale: str = Field(min_length=1)
+    existing_alternative_considered: str = Field(min_length=1)
+    lockfile_evidence: str = Field(min_length=1)
+    audit_evidence: str = Field(min_length=1)
+
+
 class CompletionClaim(CESBaseModel):
     """The structured 'I'm done' payload an agent must emit before exit.
 
@@ -64,6 +75,7 @@ class CompletionClaim(CESBaseModel):
     criteria_satisfied: tuple[CriterionEvidence, ...] = ()
     open_questions: tuple[str, ...] = ()
     scope_deviations: tuple[str, ...] = ()
+    dependency_changes: tuple[DependencyChangeEvidence, ...] = ()
 
 
 class VerificationFinding(CESBaseModel):

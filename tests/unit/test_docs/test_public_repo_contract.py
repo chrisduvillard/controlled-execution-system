@@ -17,6 +17,16 @@ def test_readme_uses_local_first_contract_and_avoids_stale_numeric_badges() -> N
     assert "X-API-Key" not in readme
     assert "tests-3087" not in readme
     assert "coverage-91%25" not in readme
+    assert "ces:completion" in readme
+    assert "workspace delta" in readme.lower()
+
+
+def test_security_docs_distinguish_codex_and_claude_runtime_boundaries() -> None:
+    security = (ROOT / "SECURITY.md").read_text(encoding="utf-8")
+
+    assert "Claude runs with `--allowedTools`" in security
+    assert "Codex runs under `--sandbox workspace-write`" in security
+    assert "not manifest-tool-allowlist-enforced" in security
 
 
 def test_production_deployment_guide_uses_real_package_name() -> None:
@@ -59,3 +69,26 @@ def test_readme_pinned_install_example_matches_project_version() -> None:
     project = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))["project"]
 
     assert f"controlled-execution-system=={project['version']}" in readme
+
+
+def test_quickstart_treats_pypi_as_published() -> None:
+    quickstart = (ROOT / "docs" / "Quickstart.md").read_text(encoding="utf-8")
+
+    assert "once published" not in quickstart
+    assert "uv tool install controlled-execution-system" in quickstart
+
+
+def test_troubleshooting_uses_current_coverage_floor_and_runtime_guidance() -> None:
+    troubleshooting = (ROOT / "docs" / "Troubleshooting.md").read_text(encoding="utf-8")
+
+    assert "coverage below 90%" in troubleshooting
+    assert "--cov-fail-under=90" in troubleshooting
+    assert "install and authenticate `codex` so it is on `PATH`" in troubleshooting
+    assert "Set `CODEX_HOME`" not in troubleshooting
+
+
+def test_getting_started_links_existing_prd_target() -> None:
+    getting_started = (ROOT / "docs" / "Getting_Started.md").read_text(encoding="utf-8")
+
+    assert "(historical/PRD.md)" in getting_started
+    assert (ROOT / "docs" / "historical" / "PRD.md").is_file()

@@ -4,12 +4,19 @@ from __future__ import annotations
 
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Any
 from unittest.mock import AsyncMock
 
 import pytest
 
 from ces.cli._builder_flow import BuilderBriefDraft, BuilderFlowOrchestrator
 from ces.shared.enums import LegacyDisposition
+
+
+def _record_review(review_calls: list[str], kwargs: dict[str, Any]) -> SimpleNamespace:
+    disposition = kwargs["disposition"].value
+    review_calls.append(disposition)
+    return SimpleNamespace(entry_id=kwargs["entry_id"], disposition=disposition)
 
 
 class TestBrownfieldCandidateDiscovery:
@@ -152,12 +159,7 @@ class TestBrownfieldBehaviorCapture:
                     SimpleNamespace(entry_id="OLB-4"),
                 ]
             ),
-            review_behavior=AsyncMock(
-                side_effect=lambda **kwargs: (
-                    review_calls.append(kwargs["disposition"].value)
-                    or SimpleNamespace(entry_id=kwargs["entry_id"], disposition=kwargs["disposition"].value)
-                )
-            ),
+            review_behavior=AsyncMock(side_effect=lambda **kwargs: _record_review(review_calls, kwargs)),
         )
 
         decisions = await orchestrator.capture_brownfield_behaviors(

@@ -21,6 +21,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from statemachine.exceptions import TransitionNotAllowed
 
+from ces.harness.models.harness_profile import HarnessProfile
 from ces.shared.enums import (
     BehaviorConfidence,
     ChangeClass,
@@ -223,8 +224,6 @@ class TestTrustEventRepository:
 
 def _make_promotable_profile() -> HarnessProfile:
     """Create a HarnessProfile that meets all TRUST-02 promotion criteria."""
-    from ces.harness.models.harness_profile import HarnessProfile
-
     return HarnessProfile(
         profile_id="prof-001",
         agent_id="agent-001",
@@ -244,8 +243,6 @@ def _make_promotable_profile() -> HarnessProfile:
 
 def _make_non_promotable_profile() -> HarnessProfile:
     """Create a HarnessProfile that does NOT meet promotion criteria."""
-    from ces.harness.models.harness_profile import HarnessProfile
-
     return HarnessProfile(
         profile_id="prof-002",
         agent_id="agent-002",

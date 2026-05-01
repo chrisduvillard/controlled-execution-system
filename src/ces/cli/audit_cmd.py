@@ -25,7 +25,7 @@ from ces.cli._async import run_async
 from ces.cli._context import find_project_root, get_project_id
 from ces.cli._errors import handle_error
 from ces.cli._factory import get_services
-from ces.cli._output import console
+from ces.cli._output import console, set_json_mode
 
 
 @run_async
@@ -64,6 +64,11 @@ async def query_audit(
         "-o",
         help="Skip entries",
     ),
+    json_output: bool = typer.Option(
+        False,
+        "--json",
+        help="Output audit entries as JSON. Equivalent to `ces --json audit`.",
+    ),
 ) -> None:
     """Query audit ledger entries with optional filters and pagination.
 
@@ -71,6 +76,8 @@ async def query_audit(
     and action summary. Supports --event-type, --actor, --after,
     --before filters, and --limit/--offset pagination.
     """
+    if json_output:
+        set_json_mode(True)
     try:
         find_project_root()
         project_id = get_project_id()

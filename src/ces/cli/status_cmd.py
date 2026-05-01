@@ -34,7 +34,7 @@ from ces.cli._builder_report import build_builder_run_report, serialize_builder_
 from ces.cli._context import find_project_root, get_project_config, get_project_id
 from ces.cli._errors import handle_error
 from ces.cli._factory import get_services
-from ces.cli._output import console
+from ces.cli._output import console, set_json_mode
 
 
 def _load_builder_snapshot(local_store: Any) -> Any | None:
@@ -52,6 +52,7 @@ def _describe_builder_next_step(session: Any | None) -> str | None:
     next_action = getattr(session, "next_action", "")
     mapping = {
         "run_continue": "Run `ces continue` to start the next execution pass.",
+        "install_runtime": "Install and authenticate `codex` or `claude`, then run `ces continue`.",
         "retry_runtime": "Retry the last runtime execution with `ces continue`.",
         "review_evidence": "Review the evidence and decide whether to ship the change.",
         "review_brownfield": "Run `ces continue` to resume grouped brownfield review.",
@@ -513,11 +514,18 @@ async def show_status(
         "--expert",
         help="Show the detailed expert view instead of the concise builder view.",
     ),
+    json_output: bool = typer.Option(
+        False,
+        "--json",
+        help="Output status as JSON. Equivalent to `ces --json status`.",
+    ),
 ) -> None:
     """Show project status with trust, manifests, reviews, and audit context.
 
     T-06-18: --watch uses configurable interval (min 0.5s).
     """
+    if json_output:
+        set_json_mode(True)
     try:
         find_project_root()
         project_id = get_project_id()

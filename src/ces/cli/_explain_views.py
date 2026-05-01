@@ -109,6 +109,7 @@ def describe_latest_activity(session: Any | None, evidence: dict[str, Any] | Non
         "brownfield_review_in_progress": "CES paused during grouped brownfield review.",
         "brownfield_review_completed": "CES finished grouped brownfield review and returned to the main flow.",
         "evidence_ready": "CES gathered runtime evidence and synthesized a review summary.",
+        "runtime_missing": "CES could not find a supported local runtime.",
         "runtime_failed": "The last runtime execution failed before CES could finish the flow.",
         "approval_recorded": "CES recorded the latest review decision.",
         "approval_rejected": "CES recorded that the last review did not pass.",
@@ -130,6 +131,8 @@ def describe_blocker(session: Any | None, pending_count: int) -> str:
     stage = getattr(session, "stage", "")
     if recovery_reason == "retry_execution":
         return "Waiting for a runtime retry."
+    if recovery_reason == "install_runtime":
+        return "Waiting for a supported local runtime on PATH."
     if recovery_reason == "needs_review":
         return "Waiting for another review pass."
     if recovery_reason == "needs_input":
@@ -155,6 +158,7 @@ def describe_next_step(session: Any | None, pending_count: int) -> str:
     next_action = getattr(session, "next_action", "")
     mapping = {
         "run_continue": "Run `ces continue` to start the next execution pass.",
+        "install_runtime": "Install and authenticate `codex` or `claude`, then run `ces continue`.",
         "retry_runtime": "Retry the last runtime execution with `ces continue`.",
         "review_evidence": "Review the evidence and decide whether to ship the change.",
         "review_brownfield": "Run `ces continue` to resume grouped brownfield review.",

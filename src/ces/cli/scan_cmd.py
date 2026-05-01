@@ -31,6 +31,7 @@ from rich.panel import Panel
 
 from ces.cli._output import console
 from ces.cli.init_cmd import derive_project_name, initialize_local_project
+from ces.cli.ownership import parse_codeowners
 
 # Directories skipped during the walk — vendor / build / VCS noise that
 # would otherwise swamp the scan results and slow the command down.
@@ -100,17 +101,7 @@ def _parse_codeowners(content: str) -> list[dict[str, object]]:
     ``{pattern, owners}``. Owners may be GitHub/GitLab handles (``@name``)
     or email addresses; we store them as-is.
     """
-    entries: list[dict[str, object]] = []
-    for raw_line in content.splitlines():
-        line = raw_line.strip()
-        if not line or line.startswith("#"):
-            continue
-        parts = line.split()
-        if len(parts) < 2:
-            continue
-        pattern, *owners = parts
-        entries.append({"pattern": pattern, "owners": owners})
-    return entries
+    return [{"pattern": entry.pattern, "owners": list(entry.owners)} for entry in parse_codeowners(content)]
 
 
 def _find_codeowners(root: Path) -> list[dict[str, object]]:

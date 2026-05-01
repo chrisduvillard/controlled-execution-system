@@ -85,13 +85,20 @@ class TestCesDoctor:
         result = runner.invoke(app, ["doctor"])
         assert result.exit_code != 0
 
-    def test_reports_extras_status(self, tmp_path: Path, monkeypatch: object) -> None:
-        """ces doctor reports install state of each optional extras group."""
+    def test_reports_extras_status_in_expert_mode(self, tmp_path: Path, monkeypatch: object) -> None:
+        """ces doctor --expert reports install state of each optional extras group."""
+        monkeypatch.chdir(tmp_path)  # type: ignore[attr-defined]
+        app = _get_app()
+        result = runner.invoke(app, ["doctor", "--expert"])
+        # Should name the optional extras groups explicitly.
+        assert "docker" in result.stdout
+
+    def test_default_doctor_hides_optional_compat_extras(self, tmp_path: Path, monkeypatch: object) -> None:
+        """Default doctor keeps Docker out of the local-first path."""
         monkeypatch.chdir(tmp_path)  # type: ignore[attr-defined]
         app = _get_app()
         result = runner.invoke(app, ["doctor"])
-        # Should name the optional extras groups explicitly.
-        assert "docker" in result.stdout
+        assert "Extras: docker" not in result.stdout
 
     def test_reports_ces_directory_status(self, tmp_path: Path, monkeypatch: object) -> None:
         """ces doctor mentions whether a .ces/ project directory exists."""
@@ -124,6 +131,8 @@ class TestCesDoctor:
         assert "providers" in payload
         assert "runtime_available" in payload
         assert "extras" in payload
+        assert "runtime_safety" in payload
+        assert payload["runtime_safety"]["codex"]["tool_allowlist_enforced"] is False
 
     def test_strict_providers_passes_when_threshold_met(self, tmp_path: Path, monkeypatch: object) -> None:
         """``--strict-providers 1`` passes when a single CLI runtime is on PATH."""

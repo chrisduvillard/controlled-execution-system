@@ -20,14 +20,13 @@ ces emergency declare "Security incident detected" \
   --file src/payments/checkout.py \
   --yes
 
-# Via direct DB (only if the CLI/service path is unavailable)
-psql -U ces -d ces_dev -c \
-  "UPDATE control.kill_switch_state SET halted=true, \
-   halted_by='ops-admin', reason='Manual emergency halt', \
-   halted_at=now() WHERE activity_class='task_issuance'"
+# If the CLI is unavailable, stop the local runtime process and preserve
+# `.ces/state.db` plus `.ces/keys/` for post-incident audit reconciliation.
 ```
 
-The direct DB path bypasses the normal emergency-service audit trail, so use it only as a last resort and reconcile the incident notes once CES services are healthy again.
+Avoid editing `.ces/state.db` directly during normal incidents. Direct database
+changes bypass the normal emergency-service audit trail and should be treated as
+manual forensic recovery, not the supported operator path.
 
 **Activity classes:** `task_issuance`, `merges`, `deploys`, `spawning`, `tool_classes`, `truth_writes`, `registry_writes`
 

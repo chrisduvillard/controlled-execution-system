@@ -9,7 +9,6 @@ Validates:
 from __future__ import annotations
 
 from collections.abc import AsyncIterator
-from typing import runtime_checkable
 
 import pytest
 
@@ -64,7 +63,7 @@ class TestLLMProviderProtocol:
 
     def test_protocol_is_runtime_checkable(self) -> None:
         """LLMProviderProtocol has @runtime_checkable decorator."""
-        assert hasattr(LLMProviderProtocol, "__protocol_attrs__") or runtime_checkable
+        assert getattr(LLMProviderProtocol, "_is_runtime_protocol", False) is True
 
     def test_mock_class_passes_isinstance_check(self) -> None:
         """A class implementing all protocol methods passes isinstance check."""

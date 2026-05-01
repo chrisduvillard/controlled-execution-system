@@ -42,7 +42,8 @@ from rich.table import Table
 
 import ces.cli._output as _output_mod
 from ces.cli._context import find_project_root
-from ces.cli._output import console
+from ces.cli._output import console, set_json_mode
+from ces.execution.runtime_safety import safety_profile_for_runtime
 from ces.shared.crypto import AUDIT_HMAC_FILENAME, DEV_DEFAULT_HMAC_MARKER
 
 _MIN_PYTHON = (3, 12)
@@ -207,22 +208,43 @@ def run_doctor(
         ),
         min=0,
     ),
+    expert: bool = typer.Option(
+        False,
+        "--expert",
+        help="Show optional compatibility extras in the doctor table.",
+    ),
+    compat: bool = typer.Option(
+        False,
+        "--compat",
+        help="Alias for --expert when checking optional compatibility extras.",
+    ),
+    json_output: bool = typer.Option(
+        False,
+        "--json",
+        help="Output doctor results as JSON. Equivalent to `ces --json doctor`.",
+    ),
 ) -> None:
     """Run pre-flight diagnostics for the CES installation.
 
     Validates Python version, local runtime availability, optional
-    LLM helper availability, extras install state, and .ces/ project
-    status. With ``--security``, also checks file-permission and
+    LLM helper availability, and .ces/ project status. With ``--security``, also checks file-permission and
     secret-material posture for the current ``.ces/`` directory.
     With ``--strict-providers N``, fails unless N distinct LLM providers
     are registered (verifies the Tier-A diversity claim).
+    Use ``--expert`` or ``--compat`` to show optional compatibility extras.
     Prints a Rich table (or JSON when ``--json`` is set at the root).
     Exits 0 on full pass; 1 otherwise with remediation hints.
     """
+    if json_output:
+        set_json_mode(True)
     python_ok, python_version = _check_python()
     providers = _check_providers()
     extras = _check_extras()
     project_exists, project_path = _check_project_dir()
+    runtime_safety = {
+        "claude": safety_profile_for_runtime("claude").model_dump(mode="json"),
+        "codex": safety_profile_for_runtime("codex").model_dump(mode="json"),
+    }
     security_checks: dict[str, tuple[bool, str]] = {}
     security_ok = True
     if security:
@@ -255,6 +277,7 @@ def run_doctor(
             "runtime_available": runtime_available,
             "any_provider": any_provider,
             "extras": extras,
+            "runtime_safety": runtime_safety,
             "project_dir": {"exists": project_exists, "path": str(project_path)},
             "overall_ok": overall_ok,
         }
@@ -289,12 +312,23 @@ def run_doctor(
         else:
             detail = "set" if ok else "not set"
         table.add_row(f"Provider: {name}", _status_icon(ok), detail)
-    for group, installed in extras.items():
-        table.add_row(
-            f"Extras: {group}",
-            _status_icon(installed),
-            "installed" if installed else f"pip install controlled-execution-system[{group}]",
-        )
+    table.add_row(
+        "Runtime safety: Claude",
+        _status_icon(True),
+        "enforces CES --allowedTools allowlist",
+    )
+    table.add_row(
+        "Runtime safety: Codex",
+        "[yellow]NOTICE[/yellow]",
+        "uses --sandbox workspace-write; manifest allowed_tools are not enforced by the adapter",
+    )
+    if expert or compat:
+        for group, installed in extras.items():
+            table.add_row(
+                f"Extras: {group}",
+                _status_icon(installed),
+                "installed" if installed else f"pip install controlled-execution-system[{group}]",
+            )
     table.add_row(
         ".ces/ project directory",
         _status_icon(project_exists),

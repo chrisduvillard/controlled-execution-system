@@ -6,6 +6,7 @@ import asyncio
 import gc
 import os
 import sys
+from collections.abc import Generator
 
 import pytest
 import pytest_asyncio.plugin as pytest_asyncio_plugin
@@ -43,7 +44,7 @@ pytest_asyncio_plugin._get_event_loop_no_warn = _get_existing_event_loop_no_warn
 
 
 @pytest.fixture(scope="session", autouse=True)
-def _close_implicit_event_loop() -> None:
+def _close_implicit_event_loop() -> Generator[None, None, None]:
     """Close any policy-managed default loop left behind by async test plugins."""
     yield
 

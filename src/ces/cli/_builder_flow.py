@@ -65,6 +65,11 @@ class BuilderFlowOrchestrator:
         prompt_fn: PromptFn,
         force_greenfield: bool = False,
         force_brownfield: bool = False,
+        provided_constraints: list[str] | None = None,
+        provided_acceptance_criteria: list[str] | None = None,
+        provided_must_not_break: list[str] | None = None,
+        provided_source_of_truth: str | None = None,
+        provided_critical_flows: list[str] | None = None,
     ) -> BuilderBriefDraft:
         request = description.strip() if description else ""
         if not request:
@@ -75,18 +80,27 @@ class BuilderFlowOrchestrator:
             force_brownfield=force_brownfield,
         )
 
-        constraints_raw = prompt_fn(
-            "Any stack or constraint I should respect?",
-            default="",
-        ).strip()
-        acceptance_raw = prompt_fn(
-            "What should be true when this is done?",
-            default="",
-        ).strip()
-        must_not_break_raw = prompt_fn(
-            "What should definitely stay working?",
-            default="",
-        ).strip()
+        if provided_constraints:
+            constraints_raw = "\n".join(provided_constraints)
+        else:
+            constraints_raw = prompt_fn(
+                "Any stack or constraint I should respect?",
+                default="",
+            ).strip()
+        if provided_acceptance_criteria:
+            acceptance_raw = "\n".join(provided_acceptance_criteria)
+        else:
+            acceptance_raw = prompt_fn(
+                "What should be true when this is done?",
+                default="",
+            ).strip()
+        if provided_must_not_break:
+            must_not_break_raw = "\n".join(provided_must_not_break)
+        else:
+            must_not_break_raw = prompt_fn(
+                "What should definitely stay working?",
+                default="",
+            ).strip()
 
         source_of_truth = ""
         critical_flows: list[str] = []
@@ -97,14 +111,20 @@ class BuilderFlowOrchestrator:
         }
 
         if project_mode == "brownfield":
-            source_of_truth = prompt_fn(
-                "What best reflects today's behavior?",
-                default="",
-            ).strip()
-            critical_flows_raw = prompt_fn(
-                "Which workflows matter most to keep working?",
-                default="",
-            ).strip()
+            if provided_source_of_truth is not None:
+                source_of_truth = provided_source_of_truth.strip()
+            else:
+                source_of_truth = prompt_fn(
+                    "What best reflects today's behavior?",
+                    default="",
+                ).strip()
+            if provided_critical_flows:
+                critical_flows_raw = "\n".join(provided_critical_flows)
+            else:
+                critical_flows_raw = prompt_fn(
+                    "Which workflows matter most to keep working?",
+                    default="",
+                ).strip()
             critical_flows = _split_flows(critical_flows_raw)
             open_questions["source_of_truth"] = source_of_truth
             open_questions["critical_flows"] = critical_flows_raw

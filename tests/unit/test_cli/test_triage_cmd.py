@@ -218,3 +218,62 @@ class TestTriageJsonMode:
         assert isinstance(parsed, dict)
         assert parsed["color"] == "green"
         assert parsed["auto_approve_eligible"] is True
+
+    def test_command_local_json_flag(self, ces_project: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """ces triage --json outputs triage result as JSON."""
+        monkeypatch.chdir(ces_project)
+
+        mock_manifest = _make_mock_manifest()
+        mock_manager = AsyncMock()
+        mock_manager.get_manifest = AsyncMock(return_value=mock_manifest)
+        mock_synth = MagicMock()
+        mock_synth.triage = AsyncMock(return_value=_make_triage_decision(TriageColor.YELLOW, False))
+        mock_sensor_orch = AsyncMock()
+        mock_sensor_orch.run_all = AsyncMock(return_value=[])
+
+        with _patch_services(
+            {
+                "manifest_manager": mock_manager,
+                "evidence_synthesizer": mock_synth,
+                "sensor_orchestrator": mock_sensor_orch,
+            }
+        ):
+            app = _get_app()
+            result = runner.invoke(app, ["triage", "EP-json", "--json"])
+
+        assert result.exit_code == 0, f"stdout={result.stdout}"
+        parsed = json.loads(result.stdout)
+        assert parsed["color"] == "yellow"
+
+    def test_triage_uses_persisted_evidence_by_default(
+        self, ces_project: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Persisted evidence is the default handoff source unless --refresh is used."""
+        monkeypatch.chdir(ces_project)
+
+        mock_store = MagicMock()
+        mock_store.get_latest_builder_session_snapshot.return_value = None
+        mock_store.get_evidence_by_packet_id.return_value = {
+            "manifest_id": "M-triage123",
+            "packet_id": "EP-saved",
+            "triage_color": "yellow",
+            "summary": "Saved evidence summary",
+            "challenge": "Saved challenge",
+        }
+        mock_sensor_orch = AsyncMock()
+        mock_sensor_orch.run_all = AsyncMock(side_effect=AssertionError("sensors should not refresh"))
+
+        with _patch_services(
+            {
+                "local_store": mock_store,
+                "manifest_manager": AsyncMock(),
+                "evidence_synthesizer": MagicMock(),
+                "sensor_orchestrator": mock_sensor_orch,
+            }
+        ):
+            app = _get_app()
+            result = runner.invoke(app, ["triage", "EP-saved"])
+
+        assert result.exit_code == 0, f"stdout={result.stdout}"
+        assert "yellow" in result.stdout.lower()
+        mock_sensor_orch.run_all.assert_not_called()

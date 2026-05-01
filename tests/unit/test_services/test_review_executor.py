@@ -163,7 +163,7 @@ class TestParseFindings:
     def test_fallback_on_unparseable_text(self) -> None:
         findings = _parse_findings("I found some issues but forgot JSON.", ReviewerRole.RED_TEAM)
         assert len(findings) == 1
-        assert findings[0].severity == ReviewFindingSeverity.INFO
+        assert findings[0].severity == ReviewFindingSeverity.HIGH
         assert findings[0].category == "unparsed_review"
 
     def test_invalid_severity_defaults_to_info(self) -> None:
@@ -303,7 +303,7 @@ class TestExecuteCodeReview:
         )
 
         assert len(result.findings) == 1
-        assert result.findings[0].severity == ReviewFindingSeverity.INFO
+        assert result.findings[0].severity == ReviewFindingSeverity.HIGH
         assert result.findings[0].category == "unparsed_review"
 
 

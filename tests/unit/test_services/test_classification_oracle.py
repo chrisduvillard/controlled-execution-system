@@ -61,7 +61,7 @@ class TestOracleClassificationResult:
     def test_oracle_result_stores_all_fields(self) -> None:
         """OracleClassificationResult stores matched_rule, confidence, top_matches, action."""
         rule = _make_rule()
-        top = [(rule, 0.95), (_make_rule(description="Other"), 0.80)]
+        top = ((rule, 0.95), (_make_rule(description="Other"), 0.80))
         result = OracleClassificationResult(
             matched_rule=rule,
             confidence=0.95,

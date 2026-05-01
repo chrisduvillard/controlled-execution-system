@@ -176,6 +176,41 @@ class TestApproveWithYesFlag:
         assert "Cannot use --yes" in result.stdout
         mock_services["audit_ledger"].record_approval.assert_not_called()
 
+    def test_command_local_json_flag(self, ces_project: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """ces approve --json emits JSON without requiring the root-global flag."""
+        monkeypatch.chdir(ces_project)
+
+        mock_services = _make_mock_services()
+
+        with _patch_services(mock_services), patch("ces.cli.approve_cmd.WorkflowEngine", return_value=AsyncMock()):
+            app = _get_app()
+            result = runner.invoke(app, ["approve", "EP-json", "--yes", "--json"])
+
+        assert result.exit_code == 0, f"stdout={result.stdout}"
+        parsed = json.loads(result.stdout)
+        assert parsed["decision"] == "approved"
+
+    def test_merged_manifest_short_circuits_before_refresh_work(
+        self, ces_project: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Completed builder runs should not rerun sensors/providers before refusing approval."""
+        monkeypatch.chdir(ces_project)
+
+        mock_services = _make_mock_services()
+        mock_manifest = _make_mock_manifest(workflow_state=WorkflowState.MERGED)
+        mock_services["manifest_manager"].get_manifest = AsyncMock(return_value=mock_manifest)
+        mock_services["sensor_orchestrator"].run_all = AsyncMock(
+            side_effect=AssertionError("sensors should not run for merged manifests")
+        )
+
+        with _patch_services(mock_services):
+            app = _get_app()
+            result = runner.invoke(app, ["approve", "EP-merged", "--yes"])
+
+        assert result.exit_code != 0
+        assert "already merged" in result.stdout
+        mock_services["sensor_orchestrator"].run_all.assert_not_called()
+
 
 class TestApproveRejection:
     """Tests for rejection flow."""

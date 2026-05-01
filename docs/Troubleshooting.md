@@ -46,8 +46,8 @@ CES_DEMO_MODE=1 ces doctor
 **Cause:** `ces build` could not find a local agent runtime (Codex CLI or Claude Code). `CES_DEMO_MODE` does not replace this requirement.
 
 **Fix:** Install one of the supported runtimes:
-- **Codex CLI**: Set `CODEX_HOME` or `CODEX_SANDBOX` environment variable
-- **Claude Code**: Set `CLAUDECODE` or `CLAUDE_CODE` environment variable
+- **Codex CLI**: install and authenticate `codex` so it is on `PATH`
+- **Claude Code**: install and authenticate `claude` so it is on `PATH`
 
 You can verify which runtime CES detects with:
 ```bash
@@ -118,15 +118,14 @@ git config core.longpaths true
 
 ---
 
-## Tests failing with coverage below 88%
+## Tests failing with coverage below 90%
 
-**Cause:** The CI enforces 88% branch coverage. The floor is temporarily
-below the long-term 90% target while alpha hardening continues, so new code
-without tests will still drop coverage below the threshold.
+**Cause:** The CI enforces the 90% coverage floor, so new code without tests
+will still drop coverage below the threshold.
 
 **Fix:** Add tests for all new code. Run locally to check before pushing:
 ```bash
-uv run pytest tests/ -m "not integration" --cov=ces --cov-fail-under=88 -q
+uv run pytest tests/ -m "not integration" --cov=ces --cov-fail-under=90 -q
 ```
 
 ---

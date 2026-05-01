@@ -7,6 +7,8 @@ These are structural assertions on the SQLAlchemy metadata.
 
 from __future__ import annotations
 
+from typing import Any
+
 import pytest
 from sqlalchemy import inspect as sa_inspect
 
@@ -35,13 +37,13 @@ from tests.integration._compat.control_db.tables import (
 
 def _column_names(model: type) -> set[str]:
     """Extract column names from an ORM model class."""
-    mapper = sa_inspect(model)
+    mapper: Any = sa_inspect(model)
     return {col.key for col in mapper.columns}
 
 
-def _column_by_name(model: type, name: str):
+def _column_by_name(model: type, name: str) -> Any:
     """Get a specific column object from an ORM model."""
-    mapper = sa_inspect(model)
+    mapper: Any = sa_inspect(model)
     return mapper.columns[name]
 
 

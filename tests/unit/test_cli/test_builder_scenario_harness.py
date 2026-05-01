@@ -44,7 +44,7 @@ def test_greenfield_scenario_exercises_full_builder_loop(tmp_path: Path, monkeyp
     assert "Start a new task with `ces build`" in result.explain.stdout
     assert result.status.exit_code == 0, f"stdout={result.status.stdout}"
     assert "Start a new task with `ces build`" in result.status.stdout
-    assert result.continue_.exit_code != 0
+    assert result.continue_.exit_code == 0
     assert "already completed" in result.continue_.stdout.lower()
 
 

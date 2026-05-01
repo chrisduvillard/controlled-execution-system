@@ -38,7 +38,7 @@ class TestBuilderFirstDogfooding:
         assert result.status.exit_code == 0, f"stdout={result.status.stdout}"
         assert "Build a habit tracker" in result.status.stdout
         assert "Start a new task with `ces build`" in result.status.stdout
-        assert result.continue_.exit_code != 0
+        assert result.continue_.exit_code == 0
         assert "already completed" in result.continue_.stdout.lower()
         assert "Start a new task" in result.continue_.stdout
 

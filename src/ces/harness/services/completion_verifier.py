@@ -73,6 +73,7 @@ class CompletionVerifier:
         findings.extend(_check_schema(manifest, claim))
         findings.extend(_check_criteria(manifest, claim))
         findings.extend(_check_scope(manifest, claim))
+        findings.extend(_check_dependency_evidence(claim))
 
         sensor_results = await self._run_sensors(manifest, project_root, findings)
 
@@ -225,3 +226,49 @@ def _check_scope(manifest: TaskManifest, claim: CompletionClaim) -> list[Verific
                 )
             )
     return findings
+
+
+_DEPENDENCY_FILE_NAMES = {
+    "pyproject.toml",
+    "requirements.txt",
+    "requirements-dev.txt",
+    "requirements-test.txt",
+    "requirements_dev.txt",
+    "requirements_test.txt",
+    "package.json",
+    "Cargo.toml",
+    "go.mod",
+}
+
+_DEPENDENCY_LOCKFILE_NAMES = {
+    "uv.lock",
+    "poetry.lock",
+    "package-lock.json",
+    "pnpm-lock.yaml",
+    "yarn.lock",
+    "Cargo.lock",
+    "go.sum",
+}
+
+
+def _check_dependency_evidence(claim: CompletionClaim) -> list[VerificationFinding]:
+    dep_files = [path for path in claim.files_changed if path.rsplit("/", 1)[-1] in _DEPENDENCY_FILE_NAMES]
+    if not dep_files:
+        return []
+
+    evidence_files = {entry.file_path for entry in claim.dependency_changes}
+    missing = [path for path in dep_files if path not in evidence_files]
+    if not missing:
+        return []
+
+    return [
+        VerificationFinding(
+            kind=VerificationFindingKind.EVIDENCE_MISMATCH,
+            severity="high",
+            message=f"Dependency file changes require dependency evidence: {', '.join(missing)}",
+            hint=(
+                "Add dependency_changes entries with package, rationale, existing alternative, "
+                "lockfile evidence, and audit evidence."
+            ),
+        )
+    ]

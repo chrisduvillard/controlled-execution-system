@@ -81,11 +81,11 @@ class TestReviewFinding:
             )
 
     def test_severity_enum_values(self) -> None:
-        assert ReviewFindingSeverity.CRITICAL == "critical"
-        assert ReviewFindingSeverity.HIGH == "high"
-        assert ReviewFindingSeverity.MEDIUM == "medium"
-        assert ReviewFindingSeverity.LOW == "low"
-        assert ReviewFindingSeverity.INFO == "info"
+        assert ReviewFindingSeverity.CRITICAL.value == "critical"
+        assert ReviewFindingSeverity.HIGH.value == "high"
+        assert ReviewFindingSeverity.MEDIUM.value == "medium"
+        assert ReviewFindingSeverity.LOW.value == "low"
+        assert ReviewFindingSeverity.INFO.value == "info"
 
     def test_finding_optional_fields_default_to_none(self) -> None:
         finding = ReviewFinding(

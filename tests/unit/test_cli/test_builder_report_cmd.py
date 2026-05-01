@@ -77,3 +77,35 @@ def test_report_builder_exports_latest_snapshot(tmp_path: Path, monkeypatch) -> 
     assert payload["manifest_id"] == "M-123"
     assert payload["evidence_packet_id"] == "EP-123"
     assert payload["latest_outcome"] == "approved"
+
+
+def test_report_builder_accepts_command_local_json_flag(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    ces_dir = tmp_path / ".ces"
+    ces_dir.mkdir()
+    (ces_dir / "config.yaml").write_text("project_id: local-proj\npreferred_runtime: codex\n")
+
+    mock_store = MagicMock()
+    mock_store.get_latest_builder_session_snapshot.return_value = SimpleNamespace(
+        request="Modernize billing exports",
+        project_mode="brownfield",
+        stage="completed",
+        next_action="start_new_session",
+        next_step="Start a new task with `ces build` when you're ready for the next request.",
+        latest_activity="CES recorded the latest review decision.",
+        latest_artifact="approval",
+        brief=SimpleNamespace(prl_draft_path=None),
+        manifest=SimpleNamespace(manifest_id="M-123", workflow_state="approved"),
+        runtime_execution=SimpleNamespace(exit_code=0, reported_model="gpt-5.4"),
+        evidence={"packet_id": "EP-123", "triage_color": "green"},
+        approval=SimpleNamespace(decision="approve"),
+        session=SimpleNamespace(session_id="BS-123"),
+        brownfield=SimpleNamespace(reviewed_count=3, remaining_count=0),
+    )
+
+    with _patch_services({"local_store": mock_store}):
+        result = runner.invoke(_get_app(), ["report", "builder", "--json"])
+
+    assert result.exit_code == 0, f"stdout={result.stdout}"
+    payload = json.loads(result.stdout)
+    assert payload["builder_run"]["request"] == "Modernize billing exports"
