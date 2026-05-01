@@ -41,7 +41,7 @@ EXCLUDED_DIRS = {
 EXCLUDED_FILES = {
     Path(__file__).resolve(),
 }
-EXCLUDED_PREFIXES = (Path("docs/historical"),)
+EXCLUDED_PREFIXES = (Path("docs/audits"), Path("docs/historical"))
 TEXT_SUFFIXES = {
     ".ini",
     ".md",

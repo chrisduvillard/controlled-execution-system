@@ -14,7 +14,8 @@ from __future__ import annotations
 from pathlib import Path
 
 import typer
-import yaml
+
+from ces.cli._project_config import load_project_config_dict
 
 
 def find_project_root(start: Path | None = None) -> Path:
@@ -57,25 +58,11 @@ def get_project_id(start: Path | None = None) -> str:
         The project_id string.
     """
     root = find_project_root(start)
-    config_path = root / ".ces" / "config.yaml"
-    if config_path.is_file():
-        try:
-            with open(config_path) as f:
-                config = yaml.safe_load(f) or {}
-            return config.get("project_id", "default")
-        except (OSError, yaml.YAMLError):
-            pass
-    return "default"
+    config = load_project_config_dict(root / ".ces" / "config.yaml")
+    return config.get("project_id", "default")
 
 
 def get_project_config(start: Path | None = None) -> dict:
     """Read the full CES project config from `.ces/config.yaml`."""
     root = find_project_root(start)
-    config_path = root / ".ces" / "config.yaml"
-    if not config_path.is_file():
-        return {}
-    try:
-        with open(config_path) as f:
-            return yaml.safe_load(f) or {}
-    except (OSError, yaml.YAMLError):
-        return {}
+    return load_project_config_dict(root / ".ces" / "config.yaml")

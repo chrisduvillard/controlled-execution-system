@@ -20,6 +20,33 @@ from typing import TYPE_CHECKING, Any, Iterator
 from ces.brownfield.records import LegacyBehaviorRecord
 from ces.control.models.audit_entry_record import AuditEntryRecord
 from ces.execution.secrets import scrub_secrets_from_text
+from ces.local_store.codecs import (
+    row_to_approval,
+    row_to_audit_entry,
+    row_to_builder_brief,
+    row_to_builder_session,
+    row_to_legacy_behavior,
+    row_to_manifest_record,
+    row_to_runtime_execution,
+)
+from ces.local_store.queries import (
+    fetch_active_manifests,
+    fetch_all_manifests,
+    fetch_approval,
+    fetch_audit,
+    fetch_builder_brief,
+    fetch_builder_session,
+    fetch_evidence_by_manifest,
+    fetch_evidence_by_packet,
+    fetch_latest_builder_brief,
+    fetch_latest_builder_session,
+    fetch_legacy_behavior,
+    fetch_legacy_behaviors_by_system,
+    fetch_manifest,
+    fetch_pending_legacy_behaviors,
+    fetch_promoted_prl_items,
+    fetch_runtime_execution,
+)
 from ces.local_store.records import (
     LocalApprovalRecord,
     LocalBrownfieldSessionSummary,
@@ -28,6 +55,11 @@ from ces.local_store.records import (
     LocalBuilderSessionSnapshot,
     LocalManifestRow,
     LocalRuntimeExecutionRecord,
+)
+from ces.local_store.schema import initialize_schema
+from ces.local_store.writes import (
+    insert_builder_session,
+    update_builder_session,
 )
 
 if TYPE_CHECKING:
@@ -101,276 +133,7 @@ class LocalProjectStore:
 
     def initialize(self) -> None:
         with self._connect() as conn:
-            # Defensive recovery: if a previous initialize() was interrupted
-            # mid-migration (process kill, disk full, power loss), a temp
-            # `review_findings_new` table can strand. Reconcile based on
-            # which side of the rename completed:
-            #   - both tables exist  → crash before DROP; main is the source
-            #     of truth, drop the temp.
-            #   - only temp exists   → crash after DROP, before RENAME; the
-            #     temp holds the data and just needs renaming.
-            # Doing this BEFORE the CREATE-IF-NOT-EXISTS below matters: that
-            # statement would otherwise create a fresh empty `review_findings`
-            # in the temp-only case and silently abandon the user's data.
-            has_temp = bool(
-                conn.execute(
-                    "SELECT name FROM sqlite_master WHERE type='table' AND name='review_findings_new'"
-                ).fetchone()
-            )
-            if has_temp:
-                has_main = bool(
-                    conn.execute(
-                        "SELECT name FROM sqlite_master WHERE type='table' AND name='review_findings'"
-                    ).fetchone()
-                )
-                if has_main:
-                    conn.execute("DROP TABLE review_findings_new")
-                else:
-                    conn.execute("ALTER TABLE review_findings_new RENAME TO review_findings")
-
-            conn.executescript(
-                """
-                CREATE TABLE IF NOT EXISTS project_settings (
-                    key TEXT PRIMARY KEY,
-                    value TEXT NOT NULL
-                );
-                CREATE TABLE IF NOT EXISTS manifests (
-                    manifest_id TEXT PRIMARY KEY,
-                    project_id TEXT NOT NULL,
-                    description TEXT NOT NULL,
-                    risk_tier TEXT NOT NULL,
-                    behavior_confidence TEXT NOT NULL,
-                    change_class TEXT NOT NULL,
-                    status TEXT NOT NULL,
-                    workflow_state TEXT NOT NULL,
-                    content_hash TEXT,
-                    expires_at TEXT NOT NULL,
-                    created_at TEXT NOT NULL,
-                    updated_at TEXT NOT NULL,
-                    content TEXT NOT NULL
-                );
-                CREATE TABLE IF NOT EXISTS audit_entries (
-                    entry_id TEXT PRIMARY KEY,
-                    project_id TEXT NOT NULL,
-                    timestamp TEXT NOT NULL,
-                    event_type TEXT NOT NULL,
-                    actor TEXT NOT NULL,
-                    actor_type TEXT NOT NULL,
-                    action_summary TEXT NOT NULL,
-                    decision TEXT NOT NULL,
-                    rationale TEXT NOT NULL,
-                    scope TEXT NOT NULL,
-                    metadata_extra TEXT,
-                    prev_hash TEXT NOT NULL,
-                    entry_hash TEXT
-                );
-                CREATE TRIGGER IF NOT EXISTS audit_entries_no_update
-                    BEFORE UPDATE ON audit_entries
-                    BEGIN
-                        SELECT RAISE(ABORT, 'audit_entries are append-only');
-                    END;
-                CREATE TRIGGER IF NOT EXISTS audit_entries_no_delete
-                    BEFORE DELETE ON audit_entries
-                    BEGIN
-                        SELECT RAISE(ABORT, 'audit_entries are append-only');
-                    END;
-                CREATE TABLE IF NOT EXISTS runtime_executions (
-                    manifest_id TEXT PRIMARY KEY,
-                    project_id TEXT NOT NULL,
-                    runtime_name TEXT NOT NULL,
-                    runtime_version TEXT NOT NULL,
-                    reported_model TEXT,
-                    invocation_ref TEXT NOT NULL,
-                    exit_code INTEGER NOT NULL,
-                    stdout TEXT NOT NULL,
-                    stderr TEXT NOT NULL,
-                    duration_seconds REAL NOT NULL,
-                    transcript_path TEXT,
-                    created_at TEXT NOT NULL
-                );
-                CREATE TABLE IF NOT EXISTS evidence_packets (
-                    manifest_id TEXT PRIMARY KEY,
-                    project_id TEXT NOT NULL,
-                    packet_id TEXT NOT NULL,
-                    summary TEXT NOT NULL,
-                    challenge TEXT NOT NULL,
-                    triage_color TEXT NOT NULL,
-                    content TEXT NOT NULL,
-                    created_at TEXT NOT NULL
-                );
-                CREATE TABLE IF NOT EXISTS approvals (
-                    manifest_id TEXT PRIMARY KEY,
-                    project_id TEXT NOT NULL,
-                    decision TEXT NOT NULL,
-                    rationale TEXT NOT NULL,
-                    created_at TEXT NOT NULL
-                );
-                CREATE TABLE IF NOT EXISTS builder_briefs (
-                    brief_id TEXT PRIMARY KEY,
-                    project_id TEXT NOT NULL,
-                    request TEXT NOT NULL,
-                    project_mode TEXT NOT NULL,
-                    constraints TEXT NOT NULL,
-                    acceptance_criteria TEXT NOT NULL,
-                    must_not_break TEXT NOT NULL,
-                    open_questions TEXT NOT NULL,
-                    source_of_truth TEXT NOT NULL,
-                    critical_flows TEXT NOT NULL,
-                    manifest_id TEXT,
-                    evidence_packet_id TEXT,
-                    prl_draft_path TEXT,
-                    created_at TEXT NOT NULL,
-                    updated_at TEXT NOT NULL
-                );
-                CREATE TABLE IF NOT EXISTS builder_sessions (
-                    session_id TEXT PRIMARY KEY,
-                    project_id TEXT NOT NULL,
-                    brief_id TEXT,
-                    request TEXT NOT NULL,
-                    project_mode TEXT NOT NULL,
-                    stage TEXT NOT NULL,
-                    next_action TEXT NOT NULL,
-                    last_action TEXT NOT NULL,
-                    recovery_reason TEXT,
-                    last_error TEXT,
-                    attempt_count INTEGER NOT NULL DEFAULT 0,
-                    manifest_id TEXT,
-                    runtime_manifest_id TEXT,
-                    evidence_packet_id TEXT,
-                    approval_manifest_id TEXT,
-                    source_of_truth TEXT NOT NULL,
-                    critical_flows TEXT NOT NULL,
-                    brownfield_review_state TEXT,
-                    brownfield_entry_ids TEXT,
-                    brownfield_reviewed_count INTEGER NOT NULL DEFAULT 0,
-                    brownfield_remaining_count INTEGER NOT NULL DEFAULT 0,
-                    created_at TEXT NOT NULL,
-                    updated_at TEXT NOT NULL
-                );
-                CREATE TABLE IF NOT EXISTS legacy_behaviors (
-                    entry_id TEXT PRIMARY KEY,
-                    project_id TEXT NOT NULL,
-                    system TEXT NOT NULL,
-                    behavior_description TEXT NOT NULL,
-                    inferred_by TEXT NOT NULL,
-                    inferred_at TEXT NOT NULL,
-                    confidence REAL NOT NULL,
-                    disposition TEXT,
-                    reviewed_by TEXT,
-                    reviewed_at TEXT,
-                    promoted_to_prl_id TEXT,
-                    discarded INTEGER NOT NULL DEFAULT 0,
-                    source_manifest_id TEXT,
-                    created_at TEXT NOT NULL,
-                    updated_at TEXT NOT NULL
-                );
-                CREATE TABLE IF NOT EXISTS prl_items (
-                    prl_id TEXT PRIMARY KEY,
-                    project_id TEXT NOT NULL,
-                    statement TEXT NOT NULL,
-                    content TEXT NOT NULL,
-                    created_at TEXT NOT NULL
-                );
-                CREATE TABLE IF NOT EXISTS review_findings (
-                    id INTEGER PRIMARY KEY,
-                    finding_id TEXT NOT NULL,
-                    manifest_id TEXT NOT NULL,
-                    project_id TEXT NOT NULL,
-                    reviewer_role TEXT NOT NULL,
-                    severity TEXT NOT NULL,
-                    category TEXT NOT NULL,
-                    file_path TEXT,
-                    line_number INTEGER,
-                    title TEXT NOT NULL,
-                    description TEXT NOT NULL,
-                    recommendation TEXT NOT NULL,
-                    confidence REAL NOT NULL,
-                    created_at TEXT NOT NULL
-                );
-                CREATE INDEX IF NOT EXISTS idx_review_findings_manifest
-                    ON review_findings (manifest_id);
-                CREATE TABLE IF NOT EXISTS review_aggregates (
-                    manifest_id TEXT PRIMARY KEY,
-                    project_id TEXT NOT NULL,
-                    critical_count INTEGER NOT NULL DEFAULT 0,
-                    high_count INTEGER NOT NULL DEFAULT 0,
-                    disagreements TEXT NOT NULL DEFAULT '[]',
-                    unanimous_zero_findings INTEGER NOT NULL DEFAULT 0,
-                    created_at TEXT NOT NULL
-                );
-                """
-            )
-            # Migration: review_findings should have a synthetic INTEGER PK,
-            # not a uniqueness constraint on finding_id. Earlier schemas
-            # promoted finding_id (a free-form label the reviewer attaches)
-            # to the actual primary key — first as `finding_id PRIMARY KEY`
-            # alone, briefly as `(manifest_id, finding_id)` composite. Both
-            # caused IntegrityError when reviewers hard-coded duplicate IDs
-            # (across manifests, or — for the composite version — across
-            # reviewers within a single Tier A triad). The fresh-DB CREATE
-            # above already uses the synthetic PK. This block detects either
-            # legacy shape and rebuilds the table, preserving every row.
-            #
-            # Atomicity: every statement runs as conn.execute() inside the
-            # surrounding `with conn:` block, so the whole migration commits
-            # as a single transaction. (executescript() would commit
-            # mid-migration and could leave the table half-renamed on error.)
-            existing_columns = [row["name"] for row in conn.execute("PRAGMA table_info(review_findings)").fetchall()]
-            needs_migration = existing_columns and "id" not in existing_columns
-            if needs_migration:
-                conn.execute(
-                    """
-                    CREATE TABLE review_findings_new (
-                        id INTEGER PRIMARY KEY,
-                        finding_id TEXT NOT NULL,
-                        manifest_id TEXT NOT NULL,
-                        project_id TEXT NOT NULL,
-                        reviewer_role TEXT NOT NULL,
-                        severity TEXT NOT NULL,
-                        category TEXT NOT NULL,
-                        file_path TEXT,
-                        line_number INTEGER,
-                        title TEXT NOT NULL,
-                        description TEXT NOT NULL,
-                        recommendation TEXT NOT NULL,
-                        confidence REAL NOT NULL,
-                        created_at TEXT NOT NULL
-                    )
-                    """
-                )
-                conn.execute(
-                    """
-                    INSERT INTO review_findings_new (
-                        finding_id, manifest_id, project_id, reviewer_role,
-                        severity, category, file_path, line_number, title,
-                        description, recommendation, confidence, created_at
-                    )
-                    SELECT
-                        finding_id, manifest_id, project_id, reviewer_role,
-                        severity, category, file_path, line_number, title,
-                        description, recommendation, confidence, created_at
-                    FROM review_findings
-                    """
-                )
-                conn.execute("DROP TABLE review_findings")
-                conn.execute("ALTER TABLE review_findings_new RENAME TO review_findings")
-                conn.execute("CREATE INDEX IF NOT EXISTS idx_review_findings_manifest ON review_findings (manifest_id)")
-
-            builder_session_columns = {
-                row["name"] for row in conn.execute("PRAGMA table_info(builder_sessions)").fetchall()
-            }
-            if "brownfield_review_state" not in builder_session_columns:
-                conn.execute("ALTER TABLE builder_sessions ADD COLUMN brownfield_review_state TEXT")
-            if "brownfield_entry_ids" not in builder_session_columns:
-                conn.execute("ALTER TABLE builder_sessions ADD COLUMN brownfield_entry_ids TEXT")
-            if "brownfield_reviewed_count" not in builder_session_columns:
-                conn.execute(
-                    "ALTER TABLE builder_sessions ADD COLUMN brownfield_reviewed_count INTEGER NOT NULL DEFAULT 0"
-                )
-            if "brownfield_remaining_count" not in builder_session_columns:
-                conn.execute(
-                    "ALTER TABLE builder_sessions ADD COLUMN brownfield_remaining_count INTEGER NOT NULL DEFAULT 0"
-                )
+            initialize_schema(conn)
 
     def save_project_settings(self, settings: dict[str, Any]) -> None:
         with self._connect() as conn:
@@ -462,19 +225,13 @@ class LocalProjectStore:
 
     def get_builder_brief(self, brief_id: str) -> LocalBuilderBriefRecord | None:
         with self._connect() as conn:
-            row = conn.execute(
-                "SELECT * FROM builder_briefs WHERE brief_id = ? AND project_id = ?",
-                (brief_id, self._project_id),
-            ).fetchone()
-        return self._row_to_builder_brief(row) if row else None
+            row = fetch_builder_brief(conn, self._project_id, brief_id)
+        return row_to_builder_brief(row) if row else None
 
     def get_latest_builder_brief(self) -> LocalBuilderBriefRecord | None:
         with self._connect() as conn:
-            row = conn.execute(
-                "SELECT * FROM builder_briefs WHERE project_id = ? ORDER BY created_at DESC LIMIT 1",
-                (self._project_id,),
-            ).fetchone()
-        return self._row_to_builder_brief(row) if row else None
+            row = fetch_latest_builder_brief(conn, self._project_id)
+        return row_to_builder_brief(row) if row else None
 
     def save_builder_session(
         self,
@@ -502,42 +259,30 @@ class LocalProjectStore:
         session_id = f"BS-{uuid.uuid4().hex[:12]}"
         now = datetime.now(timezone.utc).isoformat()
         with self._connect() as conn:
-            conn.execute(
-                """
-                INSERT INTO builder_sessions(
-                    session_id, project_id, brief_id, request, project_mode, stage,
-                    next_action, last_action, recovery_reason, last_error, attempt_count,
-                    manifest_id, runtime_manifest_id, evidence_packet_id, approval_manifest_id,
-                    source_of_truth, critical_flows, brownfield_review_state,
-                    brownfield_entry_ids, brownfield_reviewed_count, brownfield_remaining_count,
-                    created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    session_id,
-                    self._project_id,
-                    brief_id,
-                    request,
-                    project_mode,
-                    stage,
-                    next_action,
-                    last_action,
-                    recovery_reason,
-                    last_error,
-                    attempt_count,
-                    manifest_id,
-                    runtime_manifest_id,
-                    evidence_packet_id,
-                    approval_manifest_id,
-                    source_of_truth,
-                    json.dumps(critical_flows or []),
-                    json.dumps(brownfield_review_state) if brownfield_review_state is not None else None,
-                    json.dumps(brownfield_entry_ids or []),
-                    brownfield_reviewed_count,
-                    brownfield_remaining_count,
-                    now,
-                    now,
-                ),
+            insert_builder_session(
+                conn,
+                project_id=self._project_id,
+                session_id=session_id,
+                brief_id=brief_id,
+                request=request,
+                project_mode=project_mode,
+                stage=stage,
+                next_action=next_action,
+                last_action=last_action,
+                recovery_reason=recovery_reason,
+                last_error=last_error,
+                attempt_count=attempt_count,
+                manifest_id=manifest_id,
+                runtime_manifest_id=runtime_manifest_id,
+                evidence_packet_id=evidence_packet_id,
+                approval_manifest_id=approval_manifest_id,
+                source_of_truth=source_of_truth,
+                critical_flows=critical_flows,
+                brownfield_review_state=brownfield_review_state,
+                brownfield_entry_ids=brownfield_entry_ids,
+                brownfield_reviewed_count=brownfield_reviewed_count,
+                brownfield_remaining_count=brownfield_remaining_count,
+                now=now,
             )
         return session_id
 
@@ -564,70 +309,53 @@ class LocalProjectStore:
         if current is None:
             return None
         with self._connect() as conn:
-            conn.execute(
-                """
-                UPDATE builder_sessions
-                SET stage = ?, next_action = ?, last_action = ?, recovery_reason = ?,
-                    last_error = ?, attempt_count = ?, manifest_id = ?,
-                    runtime_manifest_id = ?, evidence_packet_id = ?,
-                    approval_manifest_id = ?, brownfield_review_state = ?,
-                    brownfield_entry_ids = ?, brownfield_reviewed_count = ?,
-                    brownfield_remaining_count = ?, updated_at = ?
-                WHERE session_id = ? AND project_id = ?
-                """,
-                (
-                    current.stage if stage is _UNSET else stage,
-                    current.next_action if next_action is _UNSET else next_action,
-                    current.last_action if last_action is _UNSET else last_action,
-                    current.recovery_reason if recovery_reason is _UNSET else recovery_reason,
-                    current.last_error if last_error is _UNSET else last_error,
-                    current.attempt_count if attempt_count is _UNSET else attempt_count,
-                    current.manifest_id if manifest_id is _UNSET else manifest_id,
-                    current.runtime_manifest_id if runtime_manifest_id is _UNSET else runtime_manifest_id,
-                    current.evidence_packet_id if evidence_packet_id is _UNSET else evidence_packet_id,
-                    current.approval_manifest_id if approval_manifest_id is _UNSET else approval_manifest_id,
-                    (
-                        json.dumps(current.brownfield_review_state)
-                        if brownfield_review_state is _UNSET
-                        else (json.dumps(brownfield_review_state) if brownfield_review_state is not None else None)
-                    ),
-                    (
-                        json.dumps(current.brownfield_entry_ids or [])
-                        if brownfield_entry_ids is _UNSET
-                        else json.dumps(brownfield_entry_ids or [])
-                    ),
-                    (
-                        current.brownfield_reviewed_count
-                        if brownfield_reviewed_count is _UNSET
-                        else brownfield_reviewed_count
-                    ),
-                    (
-                        current.brownfield_remaining_count
-                        if brownfield_remaining_count is _UNSET
-                        else brownfield_remaining_count
-                    ),
-                    datetime.now(timezone.utc).isoformat(),
-                    session_id,
-                    self._project_id,
+            update_builder_session(
+                conn,
+                project_id=self._project_id,
+                session_id=session_id,
+                stage=current.stage if stage is _UNSET else stage,
+                next_action=current.next_action if next_action is _UNSET else next_action,
+                last_action=current.last_action if last_action is _UNSET else last_action,
+                recovery_reason=current.recovery_reason if recovery_reason is _UNSET else recovery_reason,
+                last_error=current.last_error if last_error is _UNSET else last_error,
+                attempt_count=current.attempt_count if attempt_count is _UNSET else attempt_count,
+                manifest_id=current.manifest_id if manifest_id is _UNSET else manifest_id,
+                runtime_manifest_id=(
+                    current.runtime_manifest_id if runtime_manifest_id is _UNSET else runtime_manifest_id
                 ),
+                evidence_packet_id=(current.evidence_packet_id if evidence_packet_id is _UNSET else evidence_packet_id),
+                approval_manifest_id=(
+                    current.approval_manifest_id if approval_manifest_id is _UNSET else approval_manifest_id
+                ),
+                brownfield_review_state=(
+                    current.brownfield_review_state if brownfield_review_state is _UNSET else brownfield_review_state
+                ),
+                brownfield_entry_ids=(
+                    current.brownfield_entry_ids if brownfield_entry_ids is _UNSET else brownfield_entry_ids
+                ),
+                brownfield_reviewed_count=(
+                    current.brownfield_reviewed_count
+                    if brownfield_reviewed_count is _UNSET
+                    else brownfield_reviewed_count
+                ),
+                brownfield_remaining_count=(
+                    current.brownfield_remaining_count
+                    if brownfield_remaining_count is _UNSET
+                    else brownfield_remaining_count
+                ),
+                now=datetime.now(timezone.utc).isoformat(),
             )
         return self.get_builder_session(session_id)
 
     def get_builder_session(self, session_id: str) -> LocalBuilderSessionRecord | None:
         with self._connect() as conn:
-            row = conn.execute(
-                "SELECT * FROM builder_sessions WHERE session_id = ? AND project_id = ?",
-                (session_id, self._project_id),
-            ).fetchone()
-        return self._row_to_builder_session(row) if row else None
+            row = fetch_builder_session(conn, self._project_id, session_id)
+        return row_to_builder_session(row) if row else None
 
     def get_latest_builder_session(self) -> LocalBuilderSessionRecord | None:
         with self._connect() as conn:
-            row = conn.execute(
-                "SELECT * FROM builder_sessions WHERE project_id = ? ORDER BY created_at DESC LIMIT 1",
-                (self._project_id,),
-            ).fetchone()
-        return self._row_to_builder_session(row) if row else None
+            row = fetch_latest_builder_session(conn, self._project_id)
+        return row_to_builder_session(row) if row else None
 
     def ensure_latest_builder_session(self) -> LocalBuilderSessionRecord | None:
         latest = self.get_latest_builder_session()
@@ -688,26 +416,15 @@ class LocalProjectStore:
 
     def get_manifest_row(self, manifest_id: str) -> LocalManifestRow | None:
         with self._connect() as conn:
-            row = conn.execute(
-                "SELECT * FROM manifests WHERE manifest_id = ? AND project_id = ?",
-                (manifest_id, self._project_id),
-            ).fetchone()
+            row = fetch_manifest(conn, self._project_id, manifest_id)
         if row is None:
             return None
-        return self._row_to_manifest_namespace(row)
+        return row_to_manifest_record(row)
 
     def get_active_manifest_rows(self) -> list[LocalManifestRow]:
         with self._connect() as conn:
-            rows = conn.execute(
-                """
-                SELECT * FROM manifests
-                WHERE project_id = ?
-                  AND workflow_state NOT IN ('merged', 'deployed', 'expired', 'rejected')
-                ORDER BY created_at DESC
-                """,
-                (self._project_id,),
-            ).fetchall()
-        return [self._row_to_manifest_namespace(row) for row in rows]
+            rows = fetch_active_manifests(conn, self._project_id)
+        return [row_to_manifest_record(row) for row in rows]
 
     def get_all_manifest_rows(self) -> list[LocalManifestRow]:
         """Return every stored manifest row regardless of workflow state.
@@ -719,11 +436,8 @@ class LocalProjectStore:
         they misclassify already-shipped stories as "added" on the next run.
         """
         with self._connect() as conn:
-            rows = conn.execute(
-                "SELECT * FROM manifests WHERE project_id = ? ORDER BY created_at DESC",
-                (self._project_id,),
-            ).fetchall()
-        return [self._row_to_manifest_namespace(row) for row in rows]
+            rows = fetch_all_manifests(conn, self._project_id)
+        return [row_to_manifest_record(row) for row in rows]
 
     def save_runtime_execution(self, manifest_id: str, execution: dict[str, Any]) -> None:
         # Scrub any stray secrets (API keys, env assignments) out of subprocess
@@ -759,24 +473,10 @@ class LocalProjectStore:
 
     def get_runtime_execution(self, manifest_id: str) -> LocalRuntimeExecutionRecord | None:
         with self._connect() as conn:
-            row = conn.execute(
-                "SELECT * FROM runtime_executions WHERE manifest_id = ? AND project_id = ?",
-                (manifest_id, self._project_id),
-            ).fetchone()
+            row = fetch_runtime_execution(conn, self._project_id, manifest_id)
         if row is None:
             return None
-        return LocalRuntimeExecutionRecord(
-            manifest_id=row["manifest_id"],
-            runtime_name=row["runtime_name"],
-            runtime_version=row["runtime_version"],
-            reported_model=row["reported_model"],
-            invocation_ref=row["invocation_ref"],
-            exit_code=row["exit_code"],
-            stdout=row["stdout"],
-            stderr=row["stderr"],
-            duration_seconds=row["duration_seconds"],
-            transcript_path=row["transcript_path"],
-        )
+        return row_to_runtime_execution(row)
 
     def save_evidence(
         self,
@@ -810,10 +510,7 @@ class LocalProjectStore:
 
     def get_evidence(self, manifest_id: str) -> dict[str, Any] | None:
         with self._connect() as conn:
-            row = conn.execute(
-                "SELECT * FROM evidence_packets WHERE manifest_id = ? AND project_id = ?",
-                (manifest_id, self._project_id),
-            ).fetchone()
+            row = fetch_evidence_by_manifest(conn, self._project_id, manifest_id)
         if row is None:
             return None
         data = json.loads(row["content"])
@@ -829,10 +526,7 @@ class LocalProjectStore:
 
     def get_evidence_by_packet_id(self, packet_id: str) -> dict[str, Any] | None:
         with self._connect() as conn:
-            row = conn.execute(
-                "SELECT * FROM evidence_packets WHERE packet_id = ? AND project_id = ?",
-                (packet_id, self._project_id),
-            ).fetchone()
+            row = fetch_evidence_by_packet(conn, self._project_id, packet_id)
         if row is None:
             return None
         data = json.loads(row["content"])
@@ -973,18 +667,10 @@ class LocalProjectStore:
 
     def get_approval(self, manifest_id: str) -> LocalApprovalRecord | None:
         with self._connect() as conn:
-            row = conn.execute(
-                "SELECT * FROM approvals WHERE manifest_id = ? AND project_id = ?",
-                (manifest_id, self._project_id),
-            ).fetchone()
+            row = fetch_approval(conn, self._project_id, manifest_id)
         if row is None:
             return None
-        return LocalApprovalRecord(
-            manifest_id=row["manifest_id"],
-            decision=row["decision"],
-            rationale=row["rationale"],
-            created_at=row["created_at"],
-        )
+        return row_to_approval(row)
 
     def get_builder_session_snapshot(self, session_id: str) -> LocalBuilderSessionSnapshot | None:
         session = self.get_builder_session(session_id)
@@ -1130,35 +816,18 @@ class LocalProjectStore:
 
     def get_pending_legacy_behavior_rows(self) -> list[LegacyBehaviorRecord]:
         with self._connect() as conn:
-            rows = conn.execute(
-                """
-                SELECT * FROM legacy_behaviors
-                WHERE project_id = ? AND disposition IS NULL AND discarded = 0
-                ORDER BY created_at DESC
-                """,
-                (self._project_id,),
-            ).fetchall()
-        return [self._row_to_legacy_behavior_namespace(row) for row in rows]
+            rows = fetch_pending_legacy_behaviors(conn, self._project_id)
+        return [row_to_legacy_behavior(row) for row in rows]
 
     def get_legacy_behavior_rows_by_system(self, system: str) -> list[LegacyBehaviorRecord]:
         with self._connect() as conn:
-            rows = conn.execute(
-                """
-                SELECT * FROM legacy_behaviors
-                WHERE system = ? AND project_id = ?
-                ORDER BY created_at DESC
-                """,
-                (system, self._project_id),
-            ).fetchall()
-        return [self._row_to_legacy_behavior_namespace(row) for row in rows]
+            rows = fetch_legacy_behaviors_by_system(conn, self._project_id, system)
+        return [row_to_legacy_behavior(row) for row in rows]
 
     def get_legacy_behavior_row(self, entry_id: str) -> LegacyBehaviorRecord | None:
         with self._connect() as conn:
-            row = conn.execute(
-                "SELECT * FROM legacy_behaviors WHERE entry_id = ? AND project_id = ?",
-                (entry_id, self._project_id),
-            ).fetchone()
-        return self._row_to_legacy_behavior_namespace(row) if row else None
+            row = fetch_legacy_behavior(conn, self._project_id, entry_id)
+        return row_to_legacy_behavior(row) if row else None
 
     def update_legacy_behavior_disposition(
         self,
@@ -1231,15 +900,7 @@ class LocalProjectStore:
 
     def get_promoted_prl_items(self, limit: int = 50) -> list[dict[str, Any]]:
         with self._connect() as conn:
-            rows = conn.execute(
-                """
-                SELECT content FROM prl_items
-                WHERE project_id = ?
-                ORDER BY created_at DESC
-                LIMIT ?
-                """,
-                (self._project_id, limit),
-            ).fetchall()
+            rows = fetch_promoted_prl_items(conn, self._project_id, limit)
         return [json.loads(row["content"]) for row in rows]
 
     def append_audit_entry(self, row: Any) -> None:
@@ -1276,7 +937,7 @@ class LocalProjectStore:
                 "SELECT * FROM audit_entries WHERE project_id = ? ORDER BY timestamp DESC LIMIT 1",
                 (project_id or self._project_id,),
             ).fetchone()
-        return self._row_to_audit_namespace(row) if row else None
+        return row_to_audit_entry(row) if row else None
 
     def get_audit_by_event_type(self, event_type: str, project_id: str | None = None) -> list[AuditEntryRecord]:
         return self._fetch_audit(
@@ -1306,103 +967,5 @@ class LocalProjectStore:
 
     def _fetch_audit(self, query: str, params: tuple[Any, ...]) -> list[AuditEntryRecord]:
         with self._connect() as conn:
-            rows = conn.execute(query, params).fetchall()
-        return [self._row_to_audit_namespace(row) for row in rows]
-
-    @staticmethod
-    def _row_to_manifest_namespace(row: sqlite3.Row) -> LocalManifestRow:
-        return LocalManifestRow(
-            manifest_id=row["manifest_id"],
-            description=row["description"],
-            risk_tier=row["risk_tier"],
-            behavior_confidence=row["behavior_confidence"],
-            change_class=row["change_class"],
-            workflow_state=row["workflow_state"],
-            content=json.loads(row["content"]),
-            status=row["status"],
-            expires_at=datetime.fromisoformat(row["expires_at"]),
-            created_at=datetime.fromisoformat(row["created_at"]),
-        )
-
-    @staticmethod
-    def _row_to_builder_brief(row: sqlite3.Row) -> LocalBuilderBriefRecord:
-        return LocalBuilderBriefRecord(
-            brief_id=row["brief_id"],
-            request=row["request"],
-            project_mode=row["project_mode"],
-            constraints=json.loads(row["constraints"]),
-            acceptance_criteria=json.loads(row["acceptance_criteria"]),
-            must_not_break=json.loads(row["must_not_break"]),
-            open_questions=json.loads(row["open_questions"]),
-            source_of_truth=row["source_of_truth"],
-            critical_flows=json.loads(row["critical_flows"]),
-            manifest_id=row["manifest_id"],
-            evidence_packet_id=row["evidence_packet_id"],
-            prl_draft_path=row["prl_draft_path"],
-            created_at=row["created_at"],
-        )
-
-    @staticmethod
-    def _row_to_builder_session(row: sqlite3.Row) -> LocalBuilderSessionRecord:
-        return LocalBuilderSessionRecord(
-            session_id=row["session_id"],
-            brief_id=row["brief_id"],
-            request=row["request"],
-            project_mode=row["project_mode"],
-            stage=row["stage"],
-            next_action=row["next_action"],
-            last_action=row["last_action"],
-            recovery_reason=row["recovery_reason"],
-            last_error=row["last_error"],
-            attempt_count=row["attempt_count"],
-            manifest_id=row["manifest_id"],
-            runtime_manifest_id=row["runtime_manifest_id"],
-            evidence_packet_id=row["evidence_packet_id"],
-            approval_manifest_id=row["approval_manifest_id"],
-            source_of_truth=row["source_of_truth"],
-            critical_flows=json.loads(row["critical_flows"]),
-            brownfield_review_state=(
-                json.loads(row["brownfield_review_state"]) if row["brownfield_review_state"] else None
-            ),
-            brownfield_entry_ids=(json.loads(row["brownfield_entry_ids"]) if row["brownfield_entry_ids"] else []),
-            brownfield_reviewed_count=row["brownfield_reviewed_count"],
-            brownfield_remaining_count=row["brownfield_remaining_count"],
-            created_at=row["created_at"],
-            updated_at=row["updated_at"],
-        )
-
-    @staticmethod
-    def _row_to_legacy_behavior_namespace(row: sqlite3.Row) -> LegacyBehaviorRecord:
-        return LegacyBehaviorRecord(
-            entry_id=row["entry_id"],
-            system=row["system"],
-            project_id=row["project_id"],
-            behavior_description=row["behavior_description"],
-            inferred_by=row["inferred_by"],
-            inferred_at=datetime.fromisoformat(row["inferred_at"]),
-            confidence=row["confidence"],
-            disposition=row["disposition"],
-            reviewed_by=row["reviewed_by"],
-            reviewed_at=(datetime.fromisoformat(row["reviewed_at"]) if row["reviewed_at"] else None),
-            promoted_to_prl_id=row["promoted_to_prl_id"],
-            discarded=bool(row["discarded"]),
-            source_manifest_id=row["source_manifest_id"],
-        )
-
-    @staticmethod
-    def _row_to_audit_namespace(row: sqlite3.Row) -> AuditEntryRecord:
-        return AuditEntryRecord(
-            entry_id=row["entry_id"],
-            timestamp=datetime.fromisoformat(row["timestamp"]),
-            event_type=row["event_type"],
-            actor=row["actor"],
-            actor_type=row["actor_type"],
-            scope=json.loads(row["scope"]),
-            action_summary=row["action_summary"],
-            decision=row["decision"],
-            rationale=row["rationale"],
-            metadata_extra=json.loads(row["metadata_extra"]) if row["metadata_extra"] else {},
-            project_id=row["project_id"],
-            prev_hash=row["prev_hash"],
-            entry_hash=row["entry_hash"],
-        )
+            rows = fetch_audit(conn, query, params)
+        return [row_to_audit_entry(row) for row in rows]
