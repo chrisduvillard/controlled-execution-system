@@ -17,6 +17,33 @@ workflow. Describe the change you want, and CES turns it into a bounded
 manifest, runs it through a supported local runtime, reviews the result,
 records evidence, and stores project state under `.ces/`.
 
+## In Plain English
+
+CES is a safety wrapper for AI coding agents.
+
+When you ask Codex CLI or Claude Code to change a codebase, the agent can start
+editing files right away. That is useful, but it can also be risky: the agent
+might misunderstand the task, change too many files, skip tests, or say it is
+finished without proving that the result works.
+
+CES adds a controlled workflow around that process. You give CES a coding
+request, CES turns it into a clear work order, and then a local AI coding tool
+does the implementation. Afterward, CES checks what changed, asks for evidence,
+records what happened, and helps you decide whether to accept the work.
+
+Think of Codex or Claude Code as a student writing an assignment. CES is the
+rubric and supervision system around that assignment. It asks:
+
+- What exactly is the task?
+- Which files is the agent allowed to touch?
+- What counts as done?
+- Did the agent prove the result works?
+- Were tests or checks run?
+- What changed, and should a human approve it?
+
+CES is not trying to replace coding agents. It is trying to make their work
+safer, clearer, and easier to trust.
+
 The default product shape is deliberately small:
 
 | CES is | CES is not |
