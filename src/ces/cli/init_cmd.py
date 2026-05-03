@@ -15,6 +15,7 @@ from __future__ import annotations
 import os
 import re
 import secrets
+import shutil
 from datetime import datetime, timezone
 from importlib import resources
 from pathlib import Path
@@ -126,9 +127,14 @@ def initialize_local_project(project_root: Path, *, name: str) -> dict[str, Any]
 
 @run_async
 async def init_project(
-    name: str = typer.Argument(
-        ...,
-        help="Project name (alphanumeric, hyphens, underscores)",
+    name: str | None = typer.Argument(
+        None,
+        help="Project name; defaults to the current directory/repo name.",
+    ),
+    project_root: Path | None = typer.Option(
+        None,
+        "--project-root",
+        help="Directory to initialize; defaults to the current working directory.",
     ),
     template: str | None = typer.Option(
         None,
@@ -136,13 +142,17 @@ async def init_project(
         help=("Optional starter manifest template. Available: " + ", ".join(sorted(_MANIFEST_TEMPLATES)) + "."),
     ),
 ) -> None:
-    """Initialize a new CES project in the current directory.
+    """Initialize a new CES project in the current directory or --project-root.
 
     Creates ``.ces/`` with config.yaml, keys/, and artifacts/
     subdirectories.  If the directory is already a CES project,
     exits with an error. When ``--template`` is provided, a starter
     manifest is written to ``.ces/artifacts/manifest-template.yaml``.
     """
+    cwd = (project_root or Path.cwd()).resolve()
+    if name is None:
+        name = derive_project_name(cwd.name)
+
     # Validate project name (T-06-01: no path traversal)
     if not _PROJECT_NAME_RE.match(name):
         console.print(
@@ -169,7 +179,6 @@ async def init_project(
         )
         raise typer.Exit(code=1)
 
-    cwd = Path.cwd().resolve()
     ces_dir = cwd / ".ces"
 
     # Check if already initialized
@@ -192,7 +201,8 @@ async def init_project(
     # Success message
     console.print(
         Panel(
-            f"[green]CES is ready for:[/green] [bold]{name}[/bold]\n\n"
+            f"[green]CES is ready for:[/green] [bold]{name}[/bold]\n"
+            f"Project root: {cwd}\n\n"
             f"  .ces/config.yaml   - Project configuration\n"
             f"  .ces/state.db      - Local CES state database\n"
             f"  .ces/keys/         - Ed25519 manifest-signing keypair + audit-ledger HMAC secret (mode 0600)\n"
@@ -207,6 +217,18 @@ async def init_project(
         )
     )
 
-    console.print(
-        "\n[dim]Local mode is ready. Install/authenticate Codex CLI or Claude Code before running `ces build`.[/dim]"
-    )
+    detected = []
+    if shutil.which("codex") is not None:
+        detected.append("Codex CLI")
+    if shutil.which("claude") is not None:
+        detected.append("Claude Code")
+    if detected:
+        runtime_message = (
+            f"Local mode is ready. Detected {', '.join(detected)} on PATH; "
+            "run `ces doctor --verify-runtime` if you want CES to check authentication."
+        )
+    else:
+        runtime_message = (
+            "Local mode is ready. Install/authenticate Codex CLI or Claude Code before running `ces build`."
+        )
+    console.print(f"\n[dim]{runtime_message}[/dim]")

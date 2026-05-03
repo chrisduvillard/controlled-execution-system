@@ -73,6 +73,33 @@ class TestCesDoctor:
         assert "codex CLI" in result.stdout
         assert "on PATH" in result.stdout
 
+    def test_installed_runtime_is_labeled_auth_unverified_by_default(self, tmp_path: Path, monkeypatch: object) -> None:
+        """PATH-only doctor checks must not imply runtime auth/entitlement is verified."""
+        import shutil
+
+        monkeypatch.chdir(tmp_path)  # type: ignore[attr-defined]
+        monkeypatch.delenv("CES_DEMO_MODE", raising=False)  # type: ignore[attr-defined]
+        monkeypatch.setattr(shutil, "which", lambda name: "/usr/bin/claude" if name == "claude" else None)  # type: ignore[attr-defined]
+        app = _get_app()
+        result = runner.invoke(app, ["doctor"])
+        assert result.exit_code == 0
+        assert "auth not verified" in result.stdout.lower()
+
+    def test_json_doctor_exposes_runtime_auth_state(self, tmp_path: Path, monkeypatch: object) -> None:
+        """JSON doctor distinguishes installed runtimes from auth-verified runtimes."""
+        import json
+        import shutil
+
+        monkeypatch.chdir(tmp_path)  # type: ignore[attr-defined]
+        monkeypatch.setattr(shutil, "which", lambda name: "/usr/bin/codex" if name == "codex" else None)  # type: ignore[attr-defined]
+        app = _get_app()
+        result = runner.invoke(app, ["--json", "doctor"])
+        assert result.exit_code == 0, result.stdout
+        payload = json.loads(result.stdout)
+        assert payload["runtime_auth"]["codex"]["installed"] is True
+        assert payload["runtime_auth"]["codex"]["auth_checked"] is False
+        assert payload["runtime_auth"]["codex"]["auth_ok"] is None
+
     def test_exits_nonzero_when_no_provider(self, tmp_path: Path, monkeypatch: object) -> None:
         """ces doctor exits non-zero when no provider is available and no demo mode."""
         import shutil

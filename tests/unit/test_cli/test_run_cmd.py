@@ -27,7 +27,8 @@ def _get_app():
 
 def _patch_services(mock_services: dict[str, Any]):
     @asynccontextmanager
-    async def _fake_get_services():
+    async def _fake_get_services(*args: Any, **kwargs: Any):
+        mock_services.setdefault("_get_services_calls", []).append({"args": args, "kwargs": kwargs})
         yield mock_services
 
     return patch("ces.cli.run_cmd.get_services", new=_fake_get_services)
@@ -481,6 +482,82 @@ class TestRunCommand:
         mock_runtime_registry.resolve_runtime.assert_called_once()
         mock_runner.execute_runtime.assert_awaited_once()
         mock_store.save_runtime_execution.assert_called_once()
+
+    def test_build_runtime_failure_surfaces_scrubbed_stderr_and_writes_diagnostics(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.chdir(tmp_path)
+        ces_dir = tmp_path / ".ces"
+        ces_dir.mkdir()
+        (ces_dir / "config.yaml").write_text("project_id: local-proj\npreferred_runtime: codex\n")
+
+        manifest = MagicMock()
+        manifest.manifest_id = "M-runtime-fail"
+        manifest.description = "Build thing"
+        manifest.risk_tier = RiskTier.C
+        manifest.behavior_confidence = BehaviorConfidence.BC1
+        manifest.change_class = ChangeClass.CLASS_1
+        manifest.affected_files = []
+
+        mock_manager = AsyncMock()
+        mock_manager.create_manifest.return_value = manifest
+        mock_runtime = MagicMock()
+        mock_runtime.runtime_name = "codex"
+        mock_runtime.generate_manifest_assist.return_value = {
+            "description": "Build thing",
+            "risk_tier": RiskTier.C.value,
+            "behavior_confidence": BehaviorConfidence.BC1.value,
+            "change_class": ChangeClass.CLASS_1.value,
+            "affected_files": [],
+            "token_budget": 50000,
+            "reasoning": "test",
+        }
+        mock_runner = AsyncMock()
+        mock_runner.execute_runtime.return_value = {
+            "runtime_name": "codex",
+            "runtime_version": "1.0.0",
+            "reported_model": None,
+            "invocation_ref": "run-secret",
+            "exit_code": 1,
+            "stdout": "",
+            "stderr": "Auth failed: ANTHROPIC_API_KEY=sk-ant-test-secret; please log in",
+            "duration_seconds": 0.5,
+        }
+        mock_store = MagicMock()
+        mock_store.save_builder_brief.return_value = "BB-fail"
+        mock_store.save_builder_session.return_value = "BS-fail"
+        mock_synth = MagicMock()
+        mock_synth.format_summary_slots = AsyncMock(return_value=MagicMock(summary="", challenge=""))
+        mock_synth.triage = AsyncMock(return_value=MagicMock(color=MagicMock(value="red"), reason="Runtime failed"))
+        mock_services = {
+            "settings": MagicMock(default_runtime="codex"),
+            "manifest_manager": mock_manager,
+            "runtime_registry": MagicMock(resolve_runtime=MagicMock(return_value=mock_runtime)),
+            "agent_runner": mock_runner,
+            "local_store": mock_store,
+            "evidence_synthesizer": mock_synth,
+            "audit_ledger": AsyncMock(),
+            "sensor_orchestrator": MagicMock(run_all=AsyncMock(return_value=[])),
+            "legacy_behavior_service": AsyncMock(),
+        }
+
+        with _patch_services(mock_services):
+            app = _get_app()
+            result = runner.invoke(
+                app,
+                ["build", "Build thing", "--yes", "--accept-runtime-side-effects", "--acceptance", "Thing works"],
+            )
+
+        assert result.exit_code != 0
+        assert "Auth failed" in result.stdout
+        assert "sk-ant-test-secret" not in result.stdout
+        diagnostic_files = list((tmp_path / ".ces" / "runtime-diagnostics").glob("*.txt"))
+        assert diagnostic_files
+        diagnostic_text = diagnostic_files[0].read_text()
+        assert "Auth failed" in diagnostic_text
+        assert "sk-ant-test-secret" not in diagnostic_text
+        update_kwargs = mock_store.update_builder_session.call_args.kwargs
+        assert "runtime-diagnostics" in update_kwargs["last_error"]
 
     def test_build_uses_project_root_as_runtime_working_dir(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch

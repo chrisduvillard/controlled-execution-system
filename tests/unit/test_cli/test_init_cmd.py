@@ -75,6 +75,50 @@ class TestCesInit:
         assert result.exit_code == 0
         assert 'ces build "describe what you want to build"' in result.stdout
 
+    def test_init_without_name_defaults_to_directory_name(self, tmp_path: Path, monkeypatch: object) -> None:
+        """ces init with no NAME derives a safe project name from cwd."""
+        project_dir = tmp_path / "my cool.repo"
+        project_dir.mkdir()
+        monkeypatch.chdir(project_dir)  # type: ignore[attr-defined]
+        app = _get_app()
+        result = runner.invoke(app, ["init"])
+        assert result.exit_code == 0, result.stdout
+        import yaml
+
+        config = yaml.safe_load((project_dir / ".ces" / "config.yaml").read_text())
+        assert config["project_name"] == "my-cool.repo"
+
+    def test_init_project_root_initializes_requested_directory_not_cwd(
+        self, tmp_path: Path, monkeypatch: object
+    ) -> None:
+        """--project-root prevents source-checkout invocations from initializing cwd by accident."""
+        source_checkout = tmp_path / "ces-source"
+        target_repo = tmp_path / "target repo"
+        source_checkout.mkdir()
+        target_repo.mkdir()
+        monkeypatch.chdir(source_checkout)  # type: ignore[attr-defined]
+        app = _get_app()
+        result = runner.invoke(app, ["init", "--project-root", str(target_repo)])
+        assert result.exit_code == 0, result.stdout
+        assert (target_repo / ".ces").is_dir()
+        assert not (source_checkout / ".ces").exists()
+        import yaml
+
+        config = yaml.safe_load((target_repo / ".ces" / "config.yaml").read_text())
+        assert config["project_name"] == "target-repo"
+
+    def test_init_success_message_reflects_detected_runtime(self, tmp_path: Path, monkeypatch: object) -> None:
+        """ces init should not tell users to install runtimes already found on PATH."""
+        import shutil
+
+        monkeypatch.chdir(tmp_path)  # type: ignore[attr-defined]
+        monkeypatch.setattr(shutil, "which", lambda name: f"/usr/bin/{name}" if name == "codex" else None)  # type: ignore[attr-defined]
+        app = _get_app()
+        result = runner.invoke(app, ["init", "myproject"])
+        assert result.exit_code == 0, result.stdout
+        assert "Detected Codex CLI" in result.stdout
+        assert "Install/authenticate" not in result.stdout
+
     def test_validates_project_name(self, tmp_path: Path, monkeypatch: object) -> None:
         """ces init rejects project names with path traversal characters."""
         monkeypatch.chdir(tmp_path)  # type: ignore[attr-defined]

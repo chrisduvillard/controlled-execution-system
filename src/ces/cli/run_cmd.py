@@ -26,6 +26,7 @@ from ces.cli._errors import handle_error
 from ces.cli._factory import get_services
 from ces.cli._legacy_config import reject_server_mode
 from ces.cli._output import console
+from ces.cli._runtime_diagnostics import summarize_runtime_failure, write_runtime_diagnostics
 from ces.cli._wizard_helpers import WIZARD_STEPS
 from ces.cli.execute_cmd import COMPLETION_CLAIM_INSTRUCTIONS
 from ces.cli.init_cmd import derive_project_name, initialize_local_project
@@ -206,8 +207,14 @@ def _prompt_pack(
     return attach_engineering_charter("\n".join(lines))
 
 
-def _ensure_builder_project() -> tuple[Path, dict[str, Any], bool]:
+def _ensure_builder_project(project_root: Path | None = None) -> tuple[Path, dict[str, Any], bool]:
     """Return project root/config, auto-bootstrapping local state when missing."""
+    if project_root is not None:
+        resolved_root = project_root.resolve()
+        if (resolved_root / ".ces").is_dir():
+            return resolved_root, get_project_config(resolved_root), False
+        config = initialize_local_project(resolved_root, name=derive_project_name(resolved_root.name))
+        return resolved_root, config, True
     try:
         project_root = find_project_root()
         return project_root, get_project_config(project_root), False
@@ -799,6 +806,15 @@ async def _run_brief_flow(
     )
 
     if execution["exit_code"] != 0:
+        diagnostics_path = write_runtime_diagnostics(project_root, manifest.manifest_id, execution)
+        failure_summary = summarize_runtime_failure(execution)
+        console.print(
+            Panel(
+                f"{failure_summary}\n\nDiagnostics: {diagnostics_path}",
+                title="[red]Runtime Failed[/red]",
+                border_style="red",
+            )
+        )
         if session_id is not None and hasattr(local_store, "update_builder_session"):
             local_store.update_builder_session(
                 session_id,
@@ -806,11 +822,16 @@ async def _run_brief_flow(
                 next_action="retry_runtime",
                 last_action="runtime_failed",
                 recovery_reason="retry_execution",
-                last_error=(f"{execution['runtime_name']} exited with code {execution['exit_code']}"),
+                last_error=(
+                    f"{execution['runtime_name']} exited with code {execution['exit_code']}; "
+                    f"diagnostics: {diagnostics_path}"
+                ),
                 runtime_manifest_id=manifest.manifest_id,
                 evidence_packet_id=packet_id,
             )
-        raise RuntimeError(f"{execution['runtime_name']} exited with code {execution['exit_code']}")
+        raise RuntimeError(
+            f"{execution['runtime_name']} exited with code {execution['exit_code']}. Diagnostics: {diagnostics_path}"
+        )
 
     workflow_engine = WorkflowEngine(
         manifest_id=manifest.manifest_id,
@@ -1047,6 +1068,11 @@ async def run_task(
         "--from-spec",
         help="Preview the build order for a decomposed spec's manifests.",
     ),
+    project_root: Path | None = typer.Option(
+        None,
+        "--project-root",
+        help="Repo/CES project root to operate on; defaults to cwd/.ces discovery.",
+    ),
     story: str | None = typer.Option(
         None,
         "--story",
@@ -1058,7 +1084,8 @@ async def run_task(
         if from_spec is not None:
             await _preview_from_spec(from_spec, story_id=story)
             return
-        project_root, project_config, bootstrapped = _ensure_builder_project()
+        requested_project_root = project_root
+        project_root, project_config, bootstrapped = _ensure_builder_project(requested_project_root)
         reject_server_mode(project_config)
         if greenfield and brownfield:
             raise typer.BadParameter("Choose only one of --greenfield or --brownfield.")
@@ -1069,13 +1096,20 @@ async def run_task(
                 Panel(
                     "CES set up local project state for this repo so this build can start right away.\n"
                     f"Project: {project_name}\n"
+                    f"Project root: {project_root}\n"
                     "Manual setup is still available later with `ces init`.",
                     title="[green]Builder-First Setup[/green]",
                     border_style="green",
                 )
             )
 
-        async with get_services() as services:
+        if not bootstrapped:
+            console.print(f"[dim]Using project root: {project_root}[/dim]")
+
+        services_context = (
+            get_services(project_root=project_root) if requested_project_root is not None else get_services()
+        )
+        async with services_context as services:
             if yes:
                 builder_flow = BuilderFlowOrchestrator(project_root)
                 if description:

@@ -70,6 +70,24 @@ def _check_providers() -> dict[str, bool]:
     }
 
 
+def _runtime_auth_status(providers: dict[str, bool]) -> dict[str, dict[str, object]]:
+    """Return runtime auth metadata without pretending PATH checks verify auth."""
+    return {
+        "claude": {
+            "installed": providers.get("claude CLI", False),
+            "auth_checked": False,
+            "auth_ok": None,
+            "detail": "on PATH; auth not verified" if providers.get("claude CLI", False) else "not on PATH",
+        },
+        "codex": {
+            "installed": providers.get("codex CLI", False),
+            "auth_checked": False,
+            "auth_ok": None,
+            "detail": "on PATH; auth not verified" if providers.get("codex CLI", False) else "not on PATH",
+        },
+    }
+
+
 def _check_extras() -> dict[str, bool]:
     """Return a dict mapping extras-group name to installed flag."""
     result: dict[str, bool] = {}
@@ -260,6 +278,7 @@ def run_doctor(
         set_json_mode(True)
     python_ok, python_version = _check_python()
     providers = _check_providers()
+    runtime_auth = _runtime_auth_status(providers)
     extras = _check_extras()
     project_exists, project_path = _check_project_dir()
     runtime_safety = {
@@ -298,6 +317,7 @@ def run_doctor(
             "python_version": python_version,
             "python_ok": python_ok,
             "providers": providers,
+            "runtime_auth": runtime_auth,
             "runtime_available": runtime_available,
             "any_provider": any_provider,
             "extras": extras,
@@ -333,7 +353,8 @@ def run_doctor(
     )
     for name, ok in providers.items():
         if name in {"claude CLI", "codex CLI"}:
-            detail = "on PATH" if ok else "not on PATH"
+            runtime_key = "claude" if name.startswith("claude") else "codex"
+            detail = str(runtime_auth[runtime_key]["detail"])
         elif name == "CES_DEMO_MODE":
             detail = "enabled" if ok else "disabled"
         else:
