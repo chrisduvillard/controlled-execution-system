@@ -41,3 +41,36 @@ def test_tier_c_keeps_performance_findings_advisory() -> None:
 
     assert decision.blocking is False
     assert decision.advisory_findings[0].severity == "medium"
+
+
+def test_missing_coverage_artifact_is_advisory_for_builder_policy() -> None:
+    """RunLens dogfood: absent coverage.json should not block if coverage was not requested."""
+    from datetime import datetime, timezone
+
+    from ces.harness.models.sensor_result import SensorFinding, SensorResult
+    from ces.harness.services.risk_sensor_policy import evaluate_sensor_policy
+    from ces.shared.enums import RiskTier
+
+    result = SensorResult(
+        sensor_id="test_coverage",
+        sensor_pack="test_coverage",
+        passed=False,
+        score=0.0,
+        details="No coverage data found",
+        findings=(
+            SensorFinding(
+                category="missing_artifact",
+                severity="high",
+                location="coverage.json",
+                message="Required coverage artifact is missing: coverage.json",
+                suggestion="Run coverage json",
+            ),
+        ),
+        timestamp=datetime.now(timezone.utc),
+    )
+
+    decision = evaluate_sensor_policy(RiskTier.B, [result])
+
+    assert decision.blocking is False
+    assert decision.blocking_findings == ()
+    assert len(decision.advisory_findings) == 1

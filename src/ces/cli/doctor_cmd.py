@@ -32,6 +32,7 @@ import json
 import os
 import shutil
 import stat
+import subprocess
 import sys
 from pathlib import Path
 
@@ -70,9 +71,9 @@ def _check_providers() -> dict[str, bool]:
     }
 
 
-def _runtime_auth_status(providers: dict[str, bool]) -> dict[str, dict[str, object]]:
+def _runtime_auth_status(providers: dict[str, bool], *, verify_runtime: bool = False) -> dict[str, dict[str, object]]:
     """Return runtime auth metadata without pretending PATH checks verify auth."""
-    return {
+    statuses: dict[str, dict[str, object]] = {
         "claude": {
             "installed": providers.get("claude CLI", False),
             "auth_checked": False,
@@ -86,6 +87,47 @@ def _runtime_auth_status(providers: dict[str, bool]) -> dict[str, dict[str, obje
             "detail": "on PATH; auth not verified" if providers.get("codex CLI", False) else "not on PATH",
         },
     }
+    if verify_runtime:
+        for runtime, provider_key in (("claude", "claude CLI"), ("codex", "codex CLI")):
+            executable = shutil.which(runtime)
+            if not providers.get(provider_key, False) or executable is None:
+                continue
+            ok, detail = _probe_runtime_auth(runtime, executable, Path.cwd())
+            statuses[runtime].update({"auth_checked": True, "auth_ok": ok, "detail": detail})
+    return statuses
+
+
+def _probe_runtime_auth(runtime: str, executable: str, cwd: Path) -> tuple[bool, str]:
+    """Run a minimal runtime probe when explicitly requested by --verify-runtime."""
+    try:
+        if runtime == "codex":
+            command = [
+                executable,
+                "exec",
+                "Reply with READY and do not edit files.",
+                "-C",
+                str(cwd),
+                "--sandbox",
+                "danger-full-access",
+                "--skip-git-repo-check",
+            ]
+        elif runtime == "claude":
+            command = [executable, "-p", "Reply with READY and do not edit files."]
+        else:
+            return False, f"No auth probe is configured for {runtime}."
+        completed = subprocess.run(  # noqa: S603 - command is a fixed CES runtime-auth probe.
+            command,
+            cwd=cwd,
+            capture_output=True,
+            text=True,
+            timeout=45,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return False, f"auth probe failed before runtime completed: {exc}"
+    output = "\n".join(part for part in (completed.stdout.strip(), completed.stderr.strip()) if part)
+    detail = output.splitlines()[-1][:240] if output else f"exit code {completed.returncode}"
+    return completed.returncode == 0, f"auth probe {'succeeded' if completed.returncode == 0 else 'failed'}: {detail}"
 
 
 def _check_extras() -> dict[str, bool]:
@@ -252,6 +294,11 @@ def run_doctor(
         "--runtime-safety",
         help="Show runtime adapter safety, version, allowlist, and MCP grounding disclosures.",
     ),
+    verify_runtime: bool = typer.Option(
+        False,
+        "--verify-runtime",
+        help="Run a minimal installed-runtime auth probe. May contact the runtime provider and consume a small request.",
+    ),
     compat: bool = typer.Option(
         False,
         "--compat",
@@ -278,7 +325,7 @@ def run_doctor(
         set_json_mode(True)
     python_ok, python_version = _check_python()
     providers = _check_providers()
-    runtime_auth = _runtime_auth_status(providers)
+    runtime_auth = _runtime_auth_status(providers, verify_runtime=verify_runtime)
     extras = _check_extras()
     project_exists, project_path = _check_project_dir()
     runtime_safety = {
@@ -295,6 +342,9 @@ def run_doctor(
         security_ok = all(ok for ok, _detail in security_checks.values())
 
     runtime_available = providers["claude CLI"] or providers["codex CLI"]
+    runtime_auth_ok = all(
+        bool(status["auth_ok"]) for status in runtime_auth.values() if bool(status.get("auth_checked"))
+    )
     any_provider = any(providers.values())
 
     distinct_provider_count = 0
@@ -310,7 +360,7 @@ def run_doctor(
         distinct_provider_count = len(names_set)
         strict_providers_ok = distinct_provider_count >= strict_providers
 
-    overall_ok = python_ok and runtime_available and security_ok and strict_providers_ok
+    overall_ok = python_ok and runtime_available and runtime_auth_ok and security_ok and strict_providers_ok
 
     if _output_mod._json_mode:
         payload = {
@@ -319,6 +369,7 @@ def run_doctor(
             "providers": providers,
             "runtime_auth": runtime_auth,
             "runtime_available": runtime_available,
+            "runtime_auth_ok": runtime_auth_ok,
             "any_provider": any_provider,
             "extras": extras,
             "runtime_safety": runtime_safety,
@@ -435,6 +486,15 @@ def run_doctor(
         hints.append(
             "Optional: enable CES_DEMO_MODE=1 if you want offline helper responses "
             "for review and manifest-assist flows when a CLI-backed provider is unavailable."
+        )
+    if verify_runtime and not runtime_auth_ok:
+        failed = [
+            name for name, status in runtime_auth.items() if status.get("auth_checked") and not status.get("auth_ok")
+        ]
+        hints.append(
+            "Runtime authentication probe failed for: "
+            + ", ".join(failed)
+            + ". Re-authenticate the runtime CLI, then rerun `ces doctor --verify-runtime`."
         )
     if security and not security_ok:
         failing = [name for name, (ok, _detail) in security_checks.items() if not ok]

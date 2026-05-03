@@ -87,6 +87,7 @@ def initialize_local_project(project_root: Path, *, name: str) -> dict[str, Any]
     keys_dir = ces_dir / "keys"
     keys_dir.mkdir(mode=0o700)
     (ces_dir / "artifacts").mkdir()
+    (ces_dir / ".gitignore").write_text("*\n", encoding="utf-8")
     try:
         os.chmod(ces_dir, 0o700)
         os.chmod(keys_dir, 0o700)
@@ -125,6 +126,23 @@ def initialize_local_project(project_root: Path, *, name: str) -> dict[str, Any]
     return config
 
 
+_DEFAULT_GITIGNORE_ENTRIES = (".ces/", ".venv/", ".coverage", "coverage.json")
+
+
+def _ensure_local_gitignore_entries(project_root: Path) -> tuple[str, ...]:
+    """Ensure CES local state/secrets and common generated artifacts are ignored."""
+    gitignore_path = project_root / ".gitignore"
+    existing = gitignore_path.read_text(encoding="utf-8") if gitignore_path.exists() else ""
+    existing_lines = {line.strip() for line in existing.splitlines()}
+    missing = tuple(entry for entry in _DEFAULT_GITIGNORE_ENTRIES if entry not in existing_lines)
+    if not missing:
+        return ()
+    prefix = "" if not existing or existing.endswith("\n") else "\n"
+    block = "\n".join(("# CES local state and generated artifacts", *missing))
+    gitignore_path.write_text(f"{existing}{prefix}{block}\n", encoding="utf-8")
+    return missing
+
+
 @run_async
 async def init_project(
     name: str | None = typer.Argument(
@@ -140,6 +158,12 @@ async def init_project(
         None,
         "--template",
         help=("Optional starter manifest template. Available: " + ", ".join(sorted(_MANIFEST_TEMPLATES)) + "."),
+    ),
+    yes: bool = typer.Option(
+        False,
+        "--yes",
+        "-y",
+        help="Non-interactive confirmation flag for automation consistency; init has no prompts today.",
     ),
 ) -> None:
     """Initialize a new CES project in the current directory or --project-root.
@@ -193,7 +217,9 @@ async def init_project(
         )
         raise typer.Exit(code=1)
 
+    del yes
     config = initialize_local_project(cwd, name=name)
+    ignored_entries = _ensure_local_gitignore_entries(cwd)
 
     if template is not None:
         _copy_manifest_template(template, ces_dir / "artifacts" / "manifest-template.yaml")
@@ -207,6 +233,7 @@ async def init_project(
             f"  .ces/state.db      - Local CES state database\n"
             f"  .ces/keys/         - Ed25519 manifest-signing keypair + audit-ledger HMAC secret (mode 0600)\n"
             f"  .ces/artifacts/    - Draft truth artifacts\n\n"
+            f"Git hygiene: {'.gitignore updated for ' + ', '.join(ignored_entries) if ignored_entries else '.gitignore already protects CES local state'}\n\n"
             f"Next steps:\n"
             f'  1. Run [bold]ces build "describe what you want to build"[/bold]\n'
             f"  2. If this repo already exists, capture important legacy behavior with [bold]ces brownfield[/bold]\n"

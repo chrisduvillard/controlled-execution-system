@@ -263,7 +263,7 @@ def _build_events_table(events: list[dict]) -> Table:
     return table
 
 
-def _build_overview_panel(project_id: str, data: dict) -> Panel:
+def _build_overview_panel(project_id: str, data: dict, project_name: str | None = None) -> Panel:
     active_manifests = data["active_manifests"]
     pending_reviews = data["pending_reviews"]
     recent_events = data["recent_events"]
@@ -313,13 +313,19 @@ def _build_overview_panel(project_id: str, data: dict) -> Panel:
         if builder_brief is not None
         else "unknown"
     )
-
+    display_project = project_name or project_id
     lines = [
-        f"Project: {project_id}",
-        f"Current request: {current_request}",
-        f"Project mode: {project_mode}",
-        f"Needs review: {len(pending_reviews)}",
+        f"Project: {display_project}",
     ]
+    if project_name and project_name != project_id:
+        lines.append(f"Project ID: {project_id}")
+    lines.extend(
+        [
+            f"Current request: {current_request}",
+            f"Project mode: {project_mode}",
+            f"Needs review: {len(pending_reviews)}",
+        ]
+    )
     if builder_run is not None:
         lines.append(f"Review state: {builder_run.review_state}")
         lines.append(f"Latest outcome: {builder_run.latest_outcome}")
@@ -348,10 +354,11 @@ def _build_overview_panel(project_id: str, data: dict) -> Panel:
     return Panel(body, title="Builder Status", border_style="cyan")
 
 
-def _serialize_status_payload(project_id: str, data: dict) -> dict:
+def _serialize_status_payload(project_id: str, data: dict, project_name: str | None = None) -> dict:
     builder_run = serialize_builder_run_report(build_builder_run_report(data.get("builder_snapshot")))
     return {
         "project_id": project_id,
+        "project_name": project_name,
         "trust_profiles": data["trust_profiles"],
         "active_manifests": data["active_manifests"],
         "pending_reviews": data["pending_reviews"],
@@ -538,7 +545,11 @@ async def show_status(
             data = await _gather_status_data(services, project_id=project_id, project_config=project_config)
 
             if _output_mod._json_mode:
-                typer.echo(json.dumps(_serialize_status_payload(project_id, data), indent=2))
+                typer.echo(
+                    json.dumps(
+                        _serialize_status_payload(project_id, data, project_config.get("project_name")), indent=2
+                    )
+                )
                 return
 
             if watch:
@@ -551,7 +562,7 @@ async def show_status(
                                 project_id=project_id,
                                 project_config=project_config,
                             )
-                            tables = [_build_overview_panel(project_id, data)]
+                            tables = [_build_overview_panel(project_id, data, project_config.get("project_name"))]
                             if expert:
                                 tables.extend(
                                     [
@@ -577,7 +588,7 @@ async def show_status(
                 return
 
             # Single display
-            console.print(_build_overview_panel(project_id, data))
+            console.print(_build_overview_panel(project_id, data, project_config.get("project_name")))
 
             # Telemetry metrics panel (shown only when local telemetry exists)
             if data.get("telemetry_summary"):

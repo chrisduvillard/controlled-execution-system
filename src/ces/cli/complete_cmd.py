@@ -70,7 +70,6 @@ async def complete_builder_session(
                     summary="Manual completion evidence attached by operator.",
                     challenge="External/manual recovery path; runtime did not produce this evidence.",
                     triage_color="green",
-                    findings=[],
                     content={
                         "manual_completion": True,
                         "evidence_path": str(evidence_path),
