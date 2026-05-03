@@ -347,7 +347,7 @@ def run_doctor(
     table.add_row(
         "Runtime safety: Codex",
         "[yellow]NOTICE[/yellow]",
-        "uses --sandbox workspace-write; manifest allowed_tools are not enforced by the adapter",
+        "uses --sandbox danger-full-access; manifest allowed_tools are not enforced by the adapter",
     )
     if runtime_safety_report:
         for runtime_name, profile in runtime_safety.items():

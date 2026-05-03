@@ -14,10 +14,12 @@ def test_claude_profile_discloses_tool_allowlist() -> None:
     assert profile.effective_allowed_tools == ("Read", "Grep")
 
 
-def test_codex_profile_discloses_workspace_write_not_tool_allowlist() -> None:
+def test_codex_profile_discloses_danger_full_access_not_tool_allowlist() -> None:
     profile = safety_profile_for_runtime("codex", allowed_tools=("Read",))
 
     assert profile.runtime_name == "codex"
     assert profile.tool_allowlist_enforced is False
-    assert profile.workspace_scoped is True
-    assert "workspace-write" in profile.notes
+    assert profile.workspace_scoped is False
+    assert "danger-full-access" in profile.network_policy
+    assert "danger-full-access" in profile.notes
+    assert "workspace-write" not in profile.notes

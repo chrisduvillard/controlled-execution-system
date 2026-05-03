@@ -44,11 +44,15 @@ def safety_profile_for_runtime(
             notes="Claude receives an explicit --allowedTools list from CES.",
         )
     if normalized == "codex":
+        # Codex runs with full host access in Chris's CES deployment because
+        # Codex's bubblewrap-backed workspace-write sandbox cannot execute shell
+        # tools on this host. This is intentionally disclosed as not workspace
+        # scoped so unattended builds still require explicit side-effect consent.
         return RuntimeSafetyProfile(
             runtime_name="codex",
             tool_allowlist_enforced=False,
-            workspace_scoped=True,
-            network_policy="Codex CLI workspace-write policy",
+            workspace_scoped=False,
+            network_policy="Codex CLI danger-full-access policy",
             effective_allowed_tools=(),
             mcp_servers_requested=tuple(mcp_servers),
             mcp_grounding_supported=False,
@@ -64,7 +68,7 @@ def safety_profile_for_runtime(
                 "OPENAI_PROJECT",
             ),
             notes=(
-                "Codex is invoked with --sandbox workspace-write; CES manifest allowed_tools "
+                "Codex is invoked with --sandbox danger-full-access; CES manifest allowed_tools "
                 "are not enforced by the Codex adapter."
             ),
         )
@@ -85,7 +89,7 @@ def runtime_side_effects_block_auto_approval(profile: RuntimeSafetyProfile, *, a
     """Return True when unattended approval must stop for runtime side-effect risk."""
     if accepted:
         return False
-    return profile.workspace_scoped and not profile.tool_allowlist_enforced
+    return not profile.tool_allowlist_enforced
 
 
 def _mcp_notes(mcp_servers: tuple[str, ...], *, supported: bool) -> str:

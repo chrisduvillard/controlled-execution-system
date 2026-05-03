@@ -171,13 +171,16 @@ class CodexRuntimeAdapter(_BaseRuntimeAdapter):
         working_dir: Path,
         allowed_tools: tuple[str, ...] = (),
     ) -> AgentRuntimeResult:
-        # Codex enforces workspace scoping via ``--sandbox workspace-write``
-        # rather than an explicit tool allowlist, so ``allowed_tools`` is
-        # accepted for protocol parity but not threaded into the command.
+        # Codex receives full host access instead of an explicit tool allowlist;
+        # side-effect risk is disclosed and gated by the builder flow.
         del allowed_tools
         started = time.monotonic()
         invocation_ref = f"codex-{uuid.uuid4().hex[:12]}"
         message_file = self._prepare_project_transcript_path(working_dir, invocation_ref)
+        # Chris's CES/Codex deployment always runs Codex with full host access.
+        # Codex workspace-write uses bubblewrap, which cannot execute shell tools
+        # on the target Ubuntu host (`bwrap: loopback: Failed RTM_NEWADDR`).
+        # Runtime side-effect risk is disclosed and gated by the builder flow.
         command = [
             self._resolved_binary(),
             "exec",
@@ -185,7 +188,7 @@ class CodexRuntimeAdapter(_BaseRuntimeAdapter):
             "-C",
             str(working_dir),
             "--sandbox",
-            "workspace-write",
+            "danger-full-access",
             "--skip-git-repo-check",
             "--output-last-message",
             str(message_file),
