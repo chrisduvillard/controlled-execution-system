@@ -77,24 +77,27 @@ def _maybe_provision_test_keys(keys_dir: Path) -> None:
         save_audit_hmac_secret(hmac_path, generate_audit_hmac_secret())
 
 
-def get_settings() -> CESSettings:
+def get_settings(project_root: Path | None = None) -> CESSettings:
     """Return a CESSettings instance from environment variables and project .env.
 
     Safe to call without a database connection.  Used by commands
     like ``ces init`` that only need configuration values.
+    When ``project_root`` is supplied, settings are resolved from that
+    directory instead of cwd discovery so source-checkout invocations can
+    target a separate repository explicitly.
 
     Returns:
         CESSettings populated from CES_* environment variables.
     """
     try:
-        project_root = find_project_root()
+        resolved_root = project_root.resolve() if project_root is not None else find_project_root()
     except typer.BadParameter:
         return CESSettings()
-    return CESSettings(_env_file=project_root / ".env")
+    return CESSettings(_env_file=resolved_root / ".env")
 
 
 @asynccontextmanager
-async def get_services() -> AsyncGenerator[CESServices, None]:
+async def get_services(project_root: Path | None = None) -> AsyncGenerator[CESServices, None]:
     """Async context manager that yields the local CES service graph."""
     from ces.brownfield.services.legacy_register import LegacyBehaviorService
     from ces.control.services.audit_ledger import AuditLedgerService
@@ -120,9 +123,9 @@ async def get_services() -> AsyncGenerator[CESServices, None]:
         load_keypair_from_dir,
     )
 
-    settings = get_settings()
+    settings = get_settings(project_root=project_root)
     try:
-        project_root = find_project_root()
+        project_root = project_root.resolve() if project_root is not None else find_project_root()
         project_config = get_project_config(project_root)
     except typer.BadParameter:
         # Not inside a CES project — let consumers (e.g. ``ces init``)

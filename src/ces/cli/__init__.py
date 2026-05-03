@@ -10,6 +10,7 @@ from ces.cli import (
     baseline_cmd,
     brownfield_cmd,
     classify_cmd,
+    complete_cmd,
     doctor_cmd,
     dogfood_cmd,
     emergency_cmd,
@@ -79,6 +80,9 @@ app.command(
 )(run_cmd.run_task)
 app.command(name="continue", help="Resume the latest saved builder brief without re-entering context.")(
     run_cmd.continue_task
+)
+app.command(name="complete", help="Reconcile externally completed builder work with the CES audit trail.")(
+    complete_cmd.complete_builder_session
 )
 app.command(name="explain", help="Explain the latest builder brief and current CES state in plain language.")(
     run_cmd.explain_task
