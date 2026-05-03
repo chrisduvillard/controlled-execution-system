@@ -86,3 +86,47 @@ def test_complete_marks_latest_blocked_session_completed_with_manual_evidence(
         evidence_packet_id="EP-manual-BS-manual",
         approval_manifest_id="M-manual",
     )
+
+
+def test_complete_with_real_local_store_saves_manual_evidence_without_crashing(
+    tmp_path: Path, monkeypatch: object
+) -> None:
+    """RunLens dogfood regression: real LocalProjectStore.save_evidence has no findings kwarg."""
+    from ces.local_store.store import LocalProjectStore
+
+    monkeypatch.chdir(tmp_path)  # type: ignore[attr-defined]
+    ces_dir = tmp_path / ".ces"
+    ces_dir.mkdir()
+    (ces_dir / "config.yaml").write_text("project_id: local-proj\n", encoding="utf-8")
+    evidence = tmp_path / "verification.md"
+    evidence.write_text("pytest passed\nruff passed\n", encoding="utf-8")
+
+    store = LocalProjectStore(ces_dir / "state.db", project_id="local-proj")
+    session_id = store.save_builder_session(
+        brief_id=None,
+        request="Build RunLens",
+        project_mode="greenfield",
+        stage="blocked",
+        next_action="review_evidence",
+        last_action="approval_rejected",
+        manifest_id="M-runlens",
+        runtime_manifest_id="M-runlens",
+    )
+    mock_services = {"local_store": store, "audit_ledger": AsyncMock()}
+
+    with _patch_services(mock_services):
+        app = _get_app()
+        result = runner.invoke(app, ["complete", "--evidence", str(evidence), "--yes"])
+
+    try:
+        assert result.exit_code == 0, f"stdout={result.stdout} exc={result.exception}"
+        session = store.get_builder_session(session_id)
+        assert session is not None
+        assert session.stage == "completed"
+        assert session.evidence_packet_id == f"EP-manual-{session_id}"
+        packet = store.get_evidence_by_packet_id(f"EP-manual-{session_id}")
+        assert packet is not None
+        assert packet["manual_completion"] is True
+        assert "pytest passed" in packet["evidence_text"]
+    finally:
+        store.close()

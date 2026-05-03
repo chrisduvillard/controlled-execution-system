@@ -118,6 +118,29 @@ class TestCesInit:
         assert result.exit_code == 0, result.stdout
         assert "Detected Codex CLI" in result.stdout
         assert "Install/authenticate" not in result.stdout
+        assert "ces doctor" in result.stdout
+        assert "--verify-runtime" in result.stdout
+
+    def test_init_accepts_yes_for_automation_consistency(self, tmp_path: Path, monkeypatch: object) -> None:
+        """RunLens dogfood: `ces init --project-root ... --yes` should be accepted."""
+        monkeypatch.chdir(tmp_path)  # type: ignore[attr-defined]
+        target = tmp_path / "runlens"
+        target.mkdir()
+        app = _get_app()
+        result = runner.invoke(app, ["init", "--project-root", str(target), "--yes"])
+        assert result.exit_code == 0, result.stdout
+        assert (target / ".ces" / "config.yaml").exists()
+
+    def test_init_ignores_ces_state_and_common_local_artifacts(self, tmp_path: Path, monkeypatch: object) -> None:
+        """RunLens dogfood: init should prevent accidental `git add .` of CES secrets/state."""
+        monkeypatch.chdir(tmp_path)  # type: ignore[attr-defined]
+        app = _get_app()
+        result = runner.invoke(app, ["init", "myproject", "--yes"])
+        assert result.exit_code == 0, result.stdout
+        gitignore = (tmp_path / ".gitignore").read_text(encoding="utf-8")
+        for entry in (".ces/", ".venv/", ".coverage", "coverage.json"):
+            assert entry in gitignore
+        assert (tmp_path / ".ces" / ".gitignore").read_text(encoding="utf-8").strip() == "*"
 
     def test_validates_project_name(self, tmp_path: Path, monkeypatch: object) -> None:
         """ces init rejects project names with path traversal characters."""

@@ -96,6 +96,78 @@ def test_builder_prompt_pack_attaches_engineering_charter() -> None:
     assert "Discounts apply at checkout" in prompt
 
 
+def test_greenfield_empty_manifest_scope_derives_runtime_changed_files() -> None:
+    """RunLens dogfood: greenfield builds should verify against actual workspace delta."""
+    from ces.cli._builder_flow import BuilderBriefDraft
+    from ces.cli.run_cmd import _manifest_with_effective_greenfield_scope
+    from ces.execution.workspace_delta import WorkspaceDelta
+
+    manifest = TaskManifest(
+        manifest_id="M-greenfield",
+        description="Build RunLens",
+        risk_tier=RiskTier.C,
+        behavior_confidence=BehaviorConfidence.BC1,
+        change_class=ChangeClass.CLASS_1,
+        affected_files=(),
+        token_budget=1000,
+        expires_at=datetime.now(timezone.utc) + timedelta(days=1),
+        workflow_state=WorkflowState.QUEUED,
+        version=1,
+        status=ArtifactStatus.DRAFT,
+        owner="cli-user",
+        created_at=datetime.now(timezone.utc),
+        last_confirmed=datetime.now(timezone.utc),
+    )
+    brief = BuilderBriefDraft(
+        request="Build RunLens",
+        project_mode="greenfield",
+        constraints=[],
+        acceptance_criteria=[],
+        must_not_break=[],
+        open_questions={},
+    )
+    delta = WorkspaceDelta(created_files=("README.md", "src/runlens/cli.py"), modified_files=("pyproject.toml",))
+
+    scoped = _manifest_with_effective_greenfield_scope(manifest, brief, delta)
+
+    assert scoped.affected_files == ("README.md", "pyproject.toml", "src/runlens/cli.py")
+    assert manifest.affected_files == ()
+
+
+def test_brownfield_empty_manifest_scope_is_not_inferred_from_runtime_delta() -> None:
+    from ces.cli._builder_flow import BuilderBriefDraft
+    from ces.cli.run_cmd import _manifest_with_effective_greenfield_scope
+    from ces.execution.workspace_delta import WorkspaceDelta
+
+    manifest = TaskManifest(
+        manifest_id="M-brownfield",
+        description="Change app",
+        risk_tier=RiskTier.B,
+        behavior_confidence=BehaviorConfidence.BC2,
+        change_class=ChangeClass.CLASS_2,
+        affected_files=(),
+        token_budget=1000,
+        expires_at=datetime.now(timezone.utc) + timedelta(days=1),
+        workflow_state=WorkflowState.QUEUED,
+        version=1,
+        status=ArtifactStatus.DRAFT,
+        owner="cli-user",
+        created_at=datetime.now(timezone.utc),
+        last_confirmed=datetime.now(timezone.utc),
+    )
+    brief = BuilderBriefDraft(
+        request="Change app",
+        project_mode="brownfield",
+        constraints=[],
+        acceptance_criteria=[],
+        must_not_break=[],
+        open_questions={},
+    )
+    delta = WorkspaceDelta(modified_files=("app.py",))
+
+    assert _manifest_with_effective_greenfield_scope(manifest, brief, delta) is manifest
+
+
 class TestRunCommand:
     def test_build_yes_with_description_requires_acceptance_context(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch

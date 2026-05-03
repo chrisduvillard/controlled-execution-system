@@ -38,7 +38,7 @@ from ces.control.spec.template_loader import TemplateLoader
 from ces.execution.completion_parser import parse_completion_claim
 from ces.execution.providers.bootstrap import resolve_primary_provider
 from ces.execution.runtime_safety import runtime_side_effects_block_auto_approval, safety_profile_for_runtime
-from ces.execution.workspace_delta import WorkspaceSnapshot
+from ces.execution.workspace_delta import WorkspaceDelta, WorkspaceSnapshot
 from ces.harness.prompts.engineering_charter import attach_engineering_charter
 from ces.harness.sensors.security import SecuritySensor
 from ces.harness.services.change_impact import build_observability_acceptance_template
@@ -97,6 +97,31 @@ def _with_workflow_state(manifest: object, workflow_state: object) -> object:
         return manifest.model_copy(update={"workflow_state": workflow_state})
     try:
         setattr(manifest, "workflow_state", workflow_state)
+    except (AttributeError, TypeError):
+        pass
+    return manifest
+
+
+def _manifest_with_effective_greenfield_scope(
+    manifest: object,
+    brief: BuilderBriefDraft,
+    delta: WorkspaceDelta,
+) -> object:
+    """For greenfield builds, treat actual runtime-created files as manifest scope.
+
+    Greenfield `ces build` requests often start with an empty manifest scope because
+    the product layout is not knowable until the runtime creates it. Brownfield
+    builds remain fail-closed and must declare scope explicitly.
+    """
+    if getattr(brief, "project_mode", "") != "greenfield" or getattr(manifest, "affected_files", ()):
+        return manifest
+    changed_files = tuple(delta.changed_files)
+    if not changed_files:
+        return manifest
+    if isinstance(manifest, TaskManifest):
+        return manifest.model_copy(update={"affected_files": changed_files})
+    try:
+        setattr(manifest, "affected_files", changed_files)
     except (AttributeError, TypeError):
         pass
     return manifest
@@ -667,6 +692,7 @@ async def _run_brief_flow(
         working_dir=project_root,
     )
     workspace_delta = workspace_before.diff(WorkspaceSnapshot.capture(project_root))
+    manifest_for_verification = _manifest_with_effective_greenfield_scope(manifest, brief_draft, workspace_delta)
     execution = _normalize_runtime_execution(run_result)
     runtime_safety = safety_profile_for_runtime(
         execution.get("runtime_name", getattr(runtime_adapter, "runtime_name", "unknown")),
@@ -688,8 +714,8 @@ async def _run_brief_flow(
         if completion_claim is None:
             completion_verification = missing_completion_result()
         elif verifier is not None:
-            completion_verification = await verifier.verify(manifest, completion_claim, project_root)
-    workspace_scope_violations = collect_workspace_scope_violations(manifest, workspace_delta)
+            completion_verification = await verifier.verify(manifest_for_verification, completion_claim, project_root)
+    workspace_scope_violations = collect_workspace_scope_violations(manifest_for_verification, workspace_delta)
     local_store.save_runtime_execution(manifest.manifest_id, execution)
 
     # When manifest has no affected_files, discover Python files from project root

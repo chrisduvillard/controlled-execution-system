@@ -195,6 +195,42 @@ class TestStatusView:
         assert "4 reviewed, 0 remaining" in out
         assert "Start a new task with `ces build`" in out
 
+    def test_status_prefers_project_name_with_id_as_secondary_metadata(
+        self, ces_project: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """RunLens dogfood: status should orient operators by human project_name."""
+        monkeypatch.chdir(ces_project)
+        (ces_project / ".ces" / "config.yaml").write_text(
+            "project_id: proj-runlens\nproject_name: runlens\npreferred_runtime: codex\n",
+            encoding="utf-8",
+        )
+        mock_services = _make_mock_services()
+
+        with _patch_services(mock_services):
+            app = _get_app()
+            result = runner.invoke(app, ["status"])
+
+        assert result.exit_code == 0, result.stdout
+        assert "Project: runlens" in result.stdout
+        assert "Project ID: proj-runlens" in result.stdout
+
+    def test_status_json_includes_project_name(self, ces_project: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.chdir(ces_project)
+        (ces_project / ".ces" / "config.yaml").write_text(
+            "project_id: proj-runlens\nproject_name: runlens\n",
+            encoding="utf-8",
+        )
+        mock_services = _make_mock_services()
+
+        with _patch_services(mock_services):
+            app = _get_app()
+            result = runner.invoke(app, ["status", "--json"])
+
+        assert result.exit_code == 0, result.stdout
+        data = json.loads(result.stdout)
+        assert data["project_id"] == "proj-runlens"
+        assert data["project_name"] == "runlens"
+
     def test_status_expert_shows_detailed_sections(self, ces_project: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """ces status --expert shows the detailed CES status sections."""
         monkeypatch.chdir(ces_project)

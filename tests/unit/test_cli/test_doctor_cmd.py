@@ -100,6 +100,25 @@ class TestCesDoctor:
         assert payload["runtime_auth"]["codex"]["auth_checked"] is False
         assert payload["runtime_auth"]["codex"]["auth_ok"] is None
 
+    def test_doctor_verify_runtime_option_marks_auth_checked(self, tmp_path: Path, monkeypatch: object) -> None:
+        """RunLens dogfood: init guidance command `ces doctor --verify-runtime` must exist."""
+        import json
+        import shutil
+
+        monkeypatch.chdir(tmp_path)  # type: ignore[attr-defined]
+        monkeypatch.setattr(shutil, "which", lambda name: "/usr/bin/codex" if name == "codex" else None)  # type: ignore[attr-defined]
+        monkeypatch.setattr(
+            "ces.cli.doctor_cmd._probe_runtime_auth",
+            lambda runtime, executable, cwd: (True, f"{runtime} auth probe succeeded"),
+        )
+        app = _get_app()
+        result = runner.invoke(app, ["doctor", "--verify-runtime", "--json"])
+        assert result.exit_code == 0, result.stdout
+        payload = json.loads(result.stdout)
+        assert payload["runtime_auth"]["codex"]["auth_checked"] is True
+        assert payload["runtime_auth"]["codex"]["auth_ok"] is True
+        assert "auth probe succeeded" in payload["runtime_auth"]["codex"]["detail"]
+
     def test_exits_nonzero_when_no_provider(self, tmp_path: Path, monkeypatch: object) -> None:
         """ces doctor exits non-zero when no provider is available and no demo mode."""
         import shutil
