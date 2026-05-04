@@ -138,7 +138,7 @@ class TestCesInit:
         result = runner.invoke(app, ["init", "myproject", "--yes"])
         assert result.exit_code == 0, result.stdout
         gitignore = (tmp_path / ".gitignore").read_text(encoding="utf-8")
-        for entry in (".ces/", ".venv/", ".coverage", "coverage.json"):
+        for entry in (".ces/", ".venv/", ".coverage", "coverage.json", "*.egg-info/", "dist/", "build/"):
             assert entry in gitignore
         assert (tmp_path / ".ces" / ".gitignore").read_text(encoding="utf-8").strip() == "*"
 

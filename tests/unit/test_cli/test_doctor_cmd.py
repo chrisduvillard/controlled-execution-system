@@ -367,3 +367,48 @@ class TestCesDoctorSecurity:
         app = _get_app()
         result = runner.invoke(app, ["doctor", "--security"])
         assert result.exit_code == 1  # runtime missing, not a security issue
+
+    def test_doctor_verify_runtime_can_target_one_runtime(self, tmp_path: Path, monkeypatch: object) -> None:
+        """SpecTrail SF-001: one broken installed runtime should not fail a targeted probe."""
+        import json
+        import shutil
+
+        monkeypatch.chdir(tmp_path)  # type: ignore[attr-defined]
+        monkeypatch.setattr(
+            shutil,
+            "which",
+            lambda name: f"/usr/bin/{name}" if name in {"codex", "claude"} else None,
+        )  # type: ignore[attr-defined]
+
+        def fake_probe(runtime: str, executable: str, cwd: Path) -> tuple[bool, str]:
+            if runtime == "codex":
+                return True, "codex auth probe succeeded"
+            return False, "claude auth probe failed"
+
+        monkeypatch.setattr("ces.cli.doctor_cmd._probe_runtime_auth", fake_probe)
+        app = _get_app()
+        result = runner.invoke(app, ["doctor", "--verify-runtime", "--runtime", "codex", "--json"])
+        assert result.exit_code == 0, result.stdout
+        payload = json.loads(result.stdout)
+        assert payload["runtime_filter"] == "codex"
+        assert payload["runtime_auth"]["codex"]["auth_checked"] is True
+        assert payload["runtime_auth"]["claude"]["auth_checked"] is False
+
+    def test_runtime_auth_failure_detail_includes_actionable_stderr(self, monkeypatch: object, tmp_path: Path) -> None:
+        """SpecTrail SF-002: auth probe failures include runtime, exit code, and stderr tail."""
+        import subprocess
+
+        class Completed:
+            returncode = 42
+            stdout = ""
+            stderr = "not logged in: run codex login"
+
+        monkeypatch.setattr(subprocess, "run", lambda *args, **kwargs: Completed())
+        ok, detail = __import__("ces.cli.doctor_cmd", fromlist=["_probe_runtime_auth"])._probe_runtime_auth(
+            "codex", "/usr/bin/codex", tmp_path
+        )
+        assert ok is False
+        assert "runtime=codex" in detail
+        assert "exit_code=42" in detail
+        assert "codex login" in detail
+

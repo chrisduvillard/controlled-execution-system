@@ -313,7 +313,8 @@ def _prepare_local_project(tmp_path: Path) -> LocalProjectStore:
 
 def _patch_builder_cli_services(mock_services: dict[str, Any]):
     @asynccontextmanager
-    async def _fake_get_services():
+    async def _fake_get_services(*args: Any, **kwargs: Any):
+        del args, kwargs
         yield mock_services
 
     stack = ExitStack()

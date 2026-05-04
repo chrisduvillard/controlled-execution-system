@@ -58,7 +58,11 @@ def build_builder_run_report(snapshot: Any) -> BuilderRunReport | None:
     brownfield = getattr(snapshot, "brownfield", None)
 
     approval_decision = _normalize_approval_decision(getattr(approval, "decision", None))
-    workflow_state = _text(getattr(manifest, "workflow_state", None))
+    workflow_state = _effective_workflow_state(
+        stored_workflow_state=_text(getattr(manifest, "workflow_state", None)),
+        approval_decision=approval_decision,
+        stage=_text(getattr(snapshot, "stage", None)) or _text(getattr(session, "stage", None)),
+    )
     review_state = _derive_review_state(
         approval_decision=approval_decision,
         workflow_state=workflow_state,
@@ -213,6 +217,18 @@ def render_builder_run_report_markdown(report: BuilderRunReport) -> str:
             f"{report.brownfield_remaining_count} remaining"
         )
     return "\n".join(lines) + "\n"
+
+
+def _effective_workflow_state(
+    *,
+    stored_workflow_state: str | None,
+    approval_decision: str | None,
+    stage: str | None,
+) -> str | None:
+    """Resolve stale manual-completion states for operator-facing status."""
+    if approval_decision == "approved" and stage == "completed" and stored_workflow_state == "rejected":
+        return "approved"
+    return stored_workflow_state
 
 
 def _derive_review_state(

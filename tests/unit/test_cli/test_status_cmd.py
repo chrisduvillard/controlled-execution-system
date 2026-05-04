@@ -36,7 +36,8 @@ def _patch_services(mock_services: dict[str, Any]):
     """Return a patch that replaces get_services with a fake async context manager."""
 
     @asynccontextmanager
-    async def _fake_get_services():
+    async def _fake_get_services(*args: Any, **kwargs: Any):
+        del args, kwargs
         yield mock_services
 
     return patch("ces.cli.status_cmd.get_services", new=_fake_get_services)
@@ -328,3 +329,67 @@ class TestStatusWatch:
             result = runner.invoke(app, ["--json", "status"])
 
         assert result.exit_code == 0, f"stdout={result.stdout}"
+
+    def test_status_accepts_project_root_and_redacts_event_actor(
+        self, tmp_path: Path, ces_project: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """SpecTrail SF-003/SF-007: status can target another repo and never prints raw actor IDs."""
+        monkeypatch.chdir(tmp_path)
+        mock_services = _make_mock_services()
+        mock_services["audit_ledger"].query_by_time_range = AsyncMock(
+            return_value=[
+                SimpleNamespace(
+                    timestamp="2026-05-04T00:00:00Z",
+                    event_type=SimpleNamespace(value="approval"),
+                    actor="chrisduvillard@example.test",
+                    action_summary="Approved manually",
+                )
+            ]
+        )
+
+        with _patch_services(mock_services):
+            app = _get_app()
+            result = runner.invoke(app, ["status", "--project-root", str(ces_project), "--json"])
+
+        assert result.exit_code == 0, result.stdout
+        data = json.loads(result.stdout)
+        assert data["project_id"]
+        actor = data["recent_events"][0]["actor"]
+        assert actor.startswith("actor:")
+        assert "chrisduvillard" not in result.stdout
+
+    def test_status_json_reconciles_stale_rejected_manifest_after_manual_completion(
+        self, ces_project: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """SpecTrail SF-006: approved completed sessions must not report rejected workflow state."""
+        monkeypatch.chdir(ces_project)
+        mock_services = _make_mock_services()
+        mock_store = MagicMock()
+        mock_store.get_latest_builder_session_snapshot.return_value = SimpleNamespace(
+            request="Build SpecTrail",
+            project_mode="greenfield",
+            stage="completed",
+            next_action="start_new_session",
+            next_step="Start a new task with `ces build` when you're ready for the next request.",
+            latest_activity="CES has saved builder progress for this request.",
+            latest_artifact="approval",
+            brief_only_fallback=False,
+            brief=None,
+            manifest=SimpleNamespace(manifest_id="M-stale", workflow_state="rejected"),
+            runtime_execution=None,
+            evidence={"packet_id": "EP-manual", "triage_color": "green"},
+            approval=SimpleNamespace(decision="approve"),
+            session=SimpleNamespace(session_id="BS-stale"),
+            brownfield=None,
+        )
+        mock_services["local_store"] = mock_store
+
+        with _patch_services(mock_services):
+            app = _get_app()
+            result = runner.invoke(app, ["status", "--json"])
+
+        assert result.exit_code == 0, result.stdout
+        data = json.loads(result.stdout)
+        assert data["builder_run"]["workflow_state"] == "approved"
+        assert data["builder_run"]["review_state"] == "approved"
+

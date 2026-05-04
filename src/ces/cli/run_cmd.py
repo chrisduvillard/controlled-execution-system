@@ -295,6 +295,7 @@ def _build_completion_summary(
     triage_color: str,
     governance: bool,
     manifest_id: str,
+    auto_blockers: list[str] | None = None,
     prl_draft_path: str | None = None,
 ) -> str:
     if decision != "approve":
@@ -318,6 +319,9 @@ def _build_completion_summary(
         )
     else:
         lines.append("Need deeper CES details? Re-run with `--governance` or use `ces review`.")
+    if auto_blockers:
+        lines.append("Blocking reasons:")
+        lines.extend(f"- {item}" for item in auto_blockers)
     if prl_draft_path:
         lines.append(f"PRL draft: {prl_draft_path}")
     return "\n".join(lines)
@@ -987,6 +991,7 @@ async def _run_brief_flow(
                 triage_color=_coerce_text(triage.color),
                 governance=governance,
                 manifest_id=manifest.manifest_id,
+                auto_blockers=list(auto_blockers),
                 prl_draft_path=prl_draft_path,
             ),
             title="[green]Build Review Complete[/green]",

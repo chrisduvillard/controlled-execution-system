@@ -130,3 +130,42 @@ def test_complete_with_real_local_store_saves_manual_evidence_without_crashing(
         assert "pytest passed" in packet["evidence_text"]
     finally:
         store.close()
+
+
+def test_complete_updates_manifest_workflow_state_to_approved(tmp_path: Path, monkeypatch: object) -> None:
+    """SpecTrail SF-006: manual completion must reconcile manifest state as approved."""
+    monkeypatch.chdir(tmp_path)  # type: ignore[attr-defined]
+    ces_dir = tmp_path / ".ces"
+    ces_dir.mkdir()
+    (ces_dir / "config.yaml").write_text("project_id: local-proj\n", encoding="utf-8")
+    session = SimpleNamespace(
+        session_id="BS-approved",
+        runtime_manifest_id="M-approved",
+        manifest_id="M-approved",
+        evidence_packet_id="EP-existing",
+        stage="blocked",
+    )
+    manifest = MagicMock()
+    approved_manifest = MagicMock()
+    manifest.model_copy.return_value = approved_manifest
+    manifest_manager = AsyncMock()
+    manifest_manager.get_manifest = AsyncMock(return_value=manifest)
+    manifest_manager.save_manifest = AsyncMock()
+    mock_store = MagicMock()
+    mock_store.get_latest_builder_session.return_value = session
+    mock_services = {
+        "local_store": mock_store,
+        "manifest_manager": manifest_manager,
+        "audit_ledger": AsyncMock(),
+    }
+
+    with _patch_services(mock_services):
+        app = _get_app()
+        result = runner.invoke(app, ["complete", "--yes"])
+
+    assert result.exit_code == 0, result.stdout
+    manifest.model_copy.assert_called_once()
+    kwargs = manifest.model_copy.call_args.kwargs["update"]
+    assert str(kwargs["workflow_state"].value) == "approved"
+    manifest_manager.save_manifest.assert_awaited_once_with(approved_manifest)
+
