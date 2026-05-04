@@ -135,13 +135,17 @@ def _probe_runtime_auth(runtime: str, executable: str, cwd: Path) -> tuple[bool,
         return False, f"auth probe failed before runtime completed: {exc}"
     stdout = completed.stdout.strip()
     stderr = completed.stderr.strip()
-    output = "\n".join(part for part in (stdout, stderr) if part)
-    detail = output.splitlines()[-1][:240] if output else "no stdout/stderr"
+    command_label = " ".join(Path(part).name if index == 0 else part for index, part in enumerate(command[:2]))
     if completed.returncode == 0:
-        return True, f"auth probe succeeded: {detail}"
+        return (
+            True,
+            f"auth probe succeeded: runtime={runtime}; command={command_label}; "
+            f"exit_code=0; stdout_tail={stdout[-240:] or '(empty)'}; "
+            f"stderr_tail={stderr[-240:] or '(empty)'}",
+        )
     return (
         False,
-        f"auth probe failed: runtime={runtime}; command={' '.join(command[:2])}; "
+        f"auth probe failed: runtime={runtime}; command={command_label}; "
         f"exit_code={completed.returncode}; stdout_tail={stdout[-240:] or '(empty)'}; "
         f"stderr_tail={stderr[-240:] or '(empty)'}",
     )

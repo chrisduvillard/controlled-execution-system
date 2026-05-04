@@ -60,6 +60,11 @@ async def complete_builder_session(
                 raise RuntimeError("No builder session found. Start with `ces build`.")
             resolved_manifest_id = _manifest_id_from_session(session, manifest_id)
             evidence_packet_id = getattr(session, "evidence_packet_id", None)
+            existing_evidence = None
+            get_evidence = getattr(local_store, "get_evidence", None)
+            if callable(get_evidence):
+                candidate = get_evidence(resolved_manifest_id)
+                existing_evidence = candidate if isinstance(candidate, dict) else None
             if evidence is not None:
                 evidence_path = evidence.resolve()
                 if not evidence_path.exists():
@@ -76,6 +81,7 @@ async def complete_builder_session(
                         "evidence_path": str(evidence_path),
                         "evidence_text": evidence_path.read_text(encoding="utf-8", errors="replace"),
                         "rationale": rationale,
+                        "superseded_evidence": existing_evidence,
                     },
                 )
             if not yes and not typer.confirm(

@@ -112,6 +112,20 @@ def test_complete_with_real_local_store_saves_manual_evidence_without_crashing(
         manifest_id="M-runlens",
         runtime_manifest_id="M-runlens",
     )
+    store.save_evidence(
+        "M-runlens",
+        packet_id="EP-runtime-failed",
+        summary="Runtime evidence failed verification.",
+        challenge="Criteria missing.",
+        triage_color="red",
+        content={
+            "runtime_safety": {"tool_allowlist_enforced": False},
+            "verification_result": {
+                "passed": False,
+                "findings": [{"message": "Acceptance criterion has no evidence: 'export works'"}],
+            },
+        },
+    )
     mock_services = {"local_store": store, "audit_ledger": AsyncMock()}
 
     with _patch_services(mock_services):
@@ -128,6 +142,8 @@ def test_complete_with_real_local_store_saves_manual_evidence_without_crashing(
         assert packet is not None
         assert packet["manual_completion"] is True
         assert "pytest passed" in packet["evidence_text"]
+        assert packet["superseded_evidence"]["packet_id"] == "EP-runtime-failed"
+        assert packet["superseded_evidence"]["verification_result"]["passed"] is False
     finally:
         store.close()
 

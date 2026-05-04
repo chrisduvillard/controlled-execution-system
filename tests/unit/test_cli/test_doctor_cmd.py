@@ -411,3 +411,28 @@ class TestCesDoctorSecurity:
         assert "runtime=codex" in detail
         assert "exit_code=42" in detail
         assert "codex login" in detail
+
+
+def test_runtime_auth_success_detail_includes_actionable_probe_metadata(tmp_path: Path, monkeypatch: object) -> None:
+    """PromptVault dogfood: successful auth probe should still identify runtime/command/exit/output."""
+    from ces.cli.doctor_cmd import _probe_runtime_auth
+
+    class Completed:
+        returncode = 0
+        stdout = "READY\n"
+        stderr = ""
+
+    def fake_run(command, **kwargs):  # type: ignore[no-untyped-def]
+        del kwargs
+        assert command[:2] == ["/usr/bin/codex", "exec"]
+        return Completed()
+
+    monkeypatch.setattr("ces.cli.doctor_cmd.subprocess.run", fake_run)  # type: ignore[attr-defined]
+
+    ok, detail = _probe_runtime_auth("codex", "/usr/bin/codex", tmp_path)
+
+    assert ok is True
+    assert "runtime=codex" in detail
+    assert "command=codex exec" in detail
+    assert "exit_code=0" in detail
+    assert "stdout_tail=READY" in detail

@@ -109,3 +109,86 @@ def test_report_builder_accepts_command_local_json_flag(tmp_path: Path, monkeypa
     assert result.exit_code == 0, f"stdout={result.stdout}"
     payload = json.loads(result.stdout)
     assert payload["builder_run"]["request"] == "Modernize billing exports"
+
+
+def test_builder_report_surfaces_verification_findings_and_manual_supersession(tmp_path: Path, monkeypatch) -> None:
+    """PromptVault dogfood: status/report must expose why auto-approval failed after manual completion."""
+    from ces.cli._builder_report import build_builder_run_report, render_builder_run_report_markdown
+
+    snapshot = SimpleNamespace(
+        request="Build PromptVault",
+        project_mode="greenfield",
+        stage="completed",
+        next_action="start_new_session",
+        next_step="Start a new task",
+        latest_activity="CES recorded approval",
+        latest_artifact="approval",
+        brief_only_fallback=False,
+        brief=SimpleNamespace(prl_draft_path=None),
+        manifest=SimpleNamespace(manifest_id="M-pv", workflow_state="approved"),
+        runtime_execution=SimpleNamespace(exit_code=0, reported_model="gpt-5.5"),
+        evidence={
+            "packet_id": "EP-pv",
+            "triage_color": "red",
+            "runtime_safety": {
+                "tool_allowlist_enforced": False,
+                "accepted_runtime_side_effect_risk": True,
+            },
+            "verification_result": {
+                "passed": False,
+                "findings": [{"message": "Acceptance criterion has no evidence: 'delete command works'"}],
+            },
+        },
+        approval=SimpleNamespace(decision="approve"),
+        session=SimpleNamespace(session_id="BS-pv"),
+        brownfield=None,
+    )
+
+    report = build_builder_run_report(snapshot)
+
+    assert report is not None
+    assert report.verification_findings == ("Acceptance criterion has no evidence: 'delete command works'",)
+    assert report.manual_completion_supersedes_rejected_auto_review is True
+    markdown = render_builder_run_report_markdown(report)
+    assert "Manual completion superseded failed auto-approval: True" in markdown
+    assert "Acceptance criterion has no evidence" in markdown
+
+
+def test_builder_report_reads_verification_findings_from_manual_superseded_evidence() -> None:
+    """PromptVault dogfood: manual evidence must not hide the failed runtime evidence it superseded."""
+    from ces.cli._builder_report import build_builder_run_report
+
+    snapshot = SimpleNamespace(
+        request="Build PromptVault",
+        project_mode="greenfield",
+        stage="completed",
+        next_action="start_new_session",
+        next_step="Start a new task",
+        latest_activity="CES recorded approval",
+        latest_artifact="approval",
+        brief=SimpleNamespace(prl_draft_path=None),
+        manifest=SimpleNamespace(manifest_id="M-pv", workflow_state="approved"),
+        runtime_execution=SimpleNamespace(exit_code=0, reported_model="gpt-5.5"),
+        evidence={
+            "packet_id": "EP-manual",
+            "manual_completion": True,
+            "superseded_evidence": {
+                "packet_id": "EP-runtime",
+                "runtime_safety": {"tool_allowlist_enforced": False},
+                "verification_result": {
+                    "passed": False,
+                    "findings": [{"message": "Acceptance criterion has no evidence: 'export works'"}],
+                },
+            },
+        },
+        approval=SimpleNamespace(decision="approve"),
+        session=SimpleNamespace(session_id="BS-pv"),
+        brownfield=None,
+    )
+
+    report = build_builder_run_report(snapshot)
+
+    assert report is not None
+    assert report.runtime_tool_allowlist_enforced is False
+    assert report.verification_findings == ("Acceptance criterion has no evidence: 'export works'",)
+    assert report.manual_completion_supersedes_rejected_auto_review is True

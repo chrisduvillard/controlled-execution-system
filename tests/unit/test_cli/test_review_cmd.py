@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from contextlib import asynccontextmanager
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -47,7 +48,8 @@ def _patch_services(mock_services: dict[str, Any]):
     """Return a patch that replaces get_services with a fake async context manager."""
 
     @asynccontextmanager
-    async def _fake_get_services():
+    async def _fake_get_services(*args: Any, **kwargs: Any):
+        del args, kwargs
         yield mock_services
 
     return patch("ces.cli.review_cmd.get_services", new=_fake_get_services)
@@ -543,3 +545,85 @@ class TestReviewWorkflowEngineIntegration:
         assert "ces report builder" in result.stdout
         assert "ces status" in result.stdout
         assert "ces audit" in result.stdout
+
+
+def test_review_accepts_project_root_option(tmp_path: Path, ces_project: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """PromptVault dogfood: ces review should support the same --project-root affordance as status."""
+    project = tmp_path / "target"
+    project.mkdir()
+    (project / ".ces").mkdir()
+    (project / ".ces" / "config.yaml").write_text("project_id: proj-target\n", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+
+    mock_manifest = _make_mock_manifest(workflow_state=WorkflowState.UNDER_REVIEW)
+    mock_manager = AsyncMock()
+    mock_manager.get_manifest = AsyncMock(return_value=mock_manifest)
+    mock_reg, mock_settings = _make_provider_and_settings()
+    mock_services = {
+        "manifest_manager": mock_manager,
+        "review_router": _make_mock_review_router(),
+        "evidence_synthesizer": _make_mock_evidence_synthesizer(),
+        "audit_ledger": AsyncMock(),
+        "provider_registry": mock_reg,
+        "settings": mock_settings,
+    }
+
+    with (
+        _patch_services(mock_services),
+        patch("ces.cli.review_cmd.WorkflowEngine", return_value=AsyncMock()),
+        _patch_diff_extractor(),
+    ):
+        result = runner.invoke(_get_app(), ["review", "M-review123", "--project-root", str(project)])
+
+    assert result.exit_code == 0, f"stdout={result.stdout}"
+
+
+def test_review_full_for_rejected_builder_run_shows_verification_findings(
+    ces_project: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """PromptVault dogfood: rejected builder runs should be inspectable without re-reviewing."""
+    monkeypatch.chdir(ces_project)
+    mock_manifest = _make_mock_manifest(workflow_state=WorkflowState.REJECTED)
+    mock_manager = AsyncMock()
+    mock_manager.get_manifest = AsyncMock(return_value=mock_manifest)
+    mock_store = MagicMock()
+    mock_store.get_latest_builder_session_snapshot.return_value = SimpleNamespace(
+        request="Build PromptVault",
+        project_mode="greenfield",
+        stage="blocked",
+        next_action="review_evidence",
+        next_step="Review the evidence",
+        latest_activity="CES recorded rejection",
+        latest_artifact="approval",
+        brief_only_fallback=False,
+        brief=SimpleNamespace(prl_draft_path=None),
+        manifest=SimpleNamespace(manifest_id="M-review123", workflow_state="rejected"),
+        runtime_execution=SimpleNamespace(exit_code=0, reported_model="gpt-5.5"),
+        evidence={
+            "packet_id": "EP-review",
+            "triage_color": "red",
+            "verification_result": {
+                "passed": False,
+                "findings": [{"message": "Acceptance criterion has no evidence: 'export works'"}],
+            },
+        },
+        approval=SimpleNamespace(decision="reject"),
+        session=SimpleNamespace(session_id="BS-review"),
+        brownfield=None,
+    )
+    mock_services = {
+        "manifest_manager": mock_manager,
+        "review_router": _make_mock_review_router(),
+        "evidence_synthesizer": _make_mock_evidence_synthesizer(),
+        "audit_ledger": AsyncMock(),
+        "provider_registry": MagicMock(get_provider=MagicMock(side_effect=KeyError("no provider"))),
+        "settings": MagicMock(default_model_id="gpt-5.5"),
+        "local_store": mock_store,
+    }
+
+    with _patch_services(mock_services):
+        result = runner.invoke(_get_app(), ["review", "M-review123", "--full"])
+
+    assert result.exit_code == 0, f"stdout={result.stdout}"
+    assert "Builder Truth" in result.stdout
+    assert "Acceptance criterion has no evidence" in result.stdout

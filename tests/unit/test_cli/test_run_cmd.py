@@ -2240,3 +2240,49 @@ class TestRunCommand:
         assert "Modernize billing exports" in out
         assert "Start a new task with `ces build`" in out
         assert "Older fallback brief" not in out
+
+
+def test_builder_brief_preserves_comma_rich_cli_acceptance_criteria(tmp_path: Path) -> None:
+    """PromptVault dogfood: one --acceptance value with commas is one criterion."""
+    from ces.cli._builder_flow import BuilderFlowOrchestrator
+
+    brief = BuilderFlowOrchestrator(tmp_path).collect_brief(
+        description="Build PromptVault",
+        prompt_fn=lambda *args, **kwargs: "",
+        force_greenfield=True,
+        provided_acceptance_criteria=[
+            "Provides a CLI named promptvault with add, list, render, delete, export commands"
+        ],
+    )
+
+    assert brief.acceptance_criteria == [
+        "Provides a CLI named promptvault with add, list, render, delete, export commands"
+    ]
+
+
+def test_completion_blockers_include_verification_finding_messages() -> None:
+    """PromptVault dogfood: rejected build summary should name exact failed evidence checks."""
+    from ces.cli.run_cmd import _completion_verification_blockers
+    from ces.harness.models.completion_claim import (
+        VerificationFinding,
+        VerificationFindingKind,
+        VerificationResult,
+    )
+
+    result = VerificationResult(
+        passed=False,
+        findings=(
+            VerificationFinding(
+                kind=VerificationFindingKind.CRITERION_UNADDRESSED,
+                severity="critical",
+                message="Acceptance criterion has no evidence: 'delete command works'",
+                hint="Add CriterionEvidence",
+            ),
+        ),
+        sensor_results=(),
+        timestamp=datetime.now(timezone.utc),
+    )
+
+    assert _completion_verification_blockers(result) == [
+        "completion evidence failed verification: Acceptance criterion has no evidence: 'delete command works'"
+    ]
