@@ -218,6 +218,7 @@ class CodexRuntimeAdapter(_BaseRuntimeAdapter):
             try:
                 result = subprocess.run(
                     command,
+                    stdin=subprocess.DEVNULL,
                     stdout=stdout_file,
                     stderr=stderr_file,
                     check=False,
@@ -289,6 +290,7 @@ class ClaudeRuntimeAdapter(_BaseRuntimeAdapter):
             try:
                 result = subprocess.run(
                     command,
+                    stdin=subprocess.DEVNULL,
                     stdout=stdout_file,
                     stderr=stderr_file,
                     check=False,

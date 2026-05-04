@@ -206,6 +206,34 @@ class TestRuntimeAdapterEnvScrubbing:
         {
             "PATH": "/usr/bin",
             "HOME": "/home/tester",
+        },
+        clear=True,
+    )
+    def test_runtime_adapters_do_not_inherit_stdin(self, tmp_path: Path) -> None:
+        adapter = CodexRuntimeAdapter()
+        adapter.version = MagicMock(return_value="1.0.0")
+
+        def _run(*args, **kwargs):
+            kwargs["stdout"].write(b"ok")
+            return SimpleNamespace(returncode=0)
+
+        with patch(
+            "ces.execution.runtimes.adapters.subprocess.run",
+            side_effect=_run,
+        ) as mock_run:
+            adapter.run_task(
+                manifest_description="Implement feature",
+                prompt_pack="Prompt pack",
+                working_dir=tmp_path,
+            )
+
+        assert mock_run.call_args.kwargs["stdin"] == subprocess.DEVNULL
+
+    @patch.dict(
+        "os.environ",
+        {
+            "PATH": "/usr/bin",
+            "HOME": "/home/tester",
             "CES_RUNTIME_TIMEOUT_SECONDS": "3",
         },
         clear=True,
