@@ -19,6 +19,7 @@ from ces.cli import (
     init_cmd,
     intake_cmd,
     manifest_cmd,
+    recover_cmd,
     report_cmd,
     review_cmd,
     run_cmd,
@@ -91,6 +92,9 @@ app.command(name="explain", help="Explain the latest builder brief and current C
 )
 app.command(name="why", help="Explain why the latest builder run is blocked and show the next command.")(
     why_cmd.explain_blocker
+)
+app.command(name="recover", help="Recover from a blocked builder run with rerunnable verification evidence.")(
+    recover_cmd.recover_builder_session
 )
 app.command(name="run", help="Legacy alias for the guided local-first build flow.")(run_cmd.run_task)
 
