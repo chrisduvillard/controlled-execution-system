@@ -547,10 +547,17 @@ def _as_bullets(values: list[str]) -> list[str]:
 
 
 def _split_flows(raw: str) -> list[str]:
-    normalized = raw.replace("\n", ",")
-    if "," not in normalized and " and " in normalized.lower():
-        normalized = normalized.replace(" and ", ", ")
-    return [part.strip() for part in normalized.split(",") if part.strip()]
+    """Split critical-flow text without corrupting comma-rich workflow descriptions.
+
+    Repeated ``--critical-flow`` options arrive as newline-delimited values.
+    Treat each line as atomic, matching ``_split_list`` behavior for acceptance
+    criteria, and reserve semicolons for compact prompt-mode multi-entry text.
+    """
+    normalized = raw.replace("\r\n", "\n").replace("\r", "\n")
+    flows: list[str] = []
+    for line in normalized.split("\n"):
+        flows.extend(part.strip() for part in line.split(";") if part.strip())
+    return flows
 
 
 def _normalize_disposition(value: str) -> str:

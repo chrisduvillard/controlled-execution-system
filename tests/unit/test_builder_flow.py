@@ -116,6 +116,29 @@ class TestUnattendedBrief:
         assert brief.acceptance_criteria == []
         assert brief.must_not_break == []
 
+    def test_collect_brief_preserves_comma_rich_critical_flow_options(self, tmp_path: Path) -> None:
+        """ReleasePulse RP-CES-013: repeated --critical-flow values are atomic, even with commas."""
+        orchestrator = BuilderFlowOrchestrator(tmp_path)
+
+        def auto_prompt_fn(prompt: str, default: str = "") -> str:
+            return default
+
+        brief = orchestrator.collect_brief(
+            description="Add version command",
+            prompt_fn=auto_prompt_fn,
+            force_brownfield=True,
+            provided_source_of_truth="README and tests",
+            provided_critical_flows=[
+                "python -m releasepulse summary sample_changelog.txt prints markdown containing Launch, Fixes, and Docs and exits 0.",
+                "python -m releasepulse unknown exits non-zero with a helpful error.",
+            ],
+        )
+
+        assert brief.critical_flows == [
+            "python -m releasepulse summary sample_changelog.txt prints markdown containing Launch, Fixes, and Docs and exits 0.",
+            "python -m releasepulse unknown exits non-zero with a helpful error.",
+        ]
+
 
 class TestBrownfieldBehaviorCapture:
     @pytest.mark.asyncio
