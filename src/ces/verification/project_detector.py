@@ -29,7 +29,23 @@ def detect_project_type(project_root: Path) -> str:
         if "react" in deps and ("vite" in deps or "@vitejs/plugin-react" in deps or "build" in scripts):
             return "vite-react-app"
         return "node-app"
+    if _looks_like_python_project(project_root):
+        return "python-package"
     return "unknown"
+
+
+def _looks_like_python_project(project_root: Path) -> bool:
+    tests_dir = project_root / "tests"
+    if tests_dir.is_dir() and any(tests_dir.rglob("*.py")):
+        return True
+    for child in project_root.iterdir():
+        if child.name.startswith((".", "__")):
+            continue
+        if child.is_file() and child.suffix == ".py":
+            return True
+        if child.is_dir() and ((child / "__init__.py").is_file() or (child / "__main__.py").is_file()):
+            return True
+    return False
 
 
 def _read_toml(path: Path) -> dict[str, Any]:

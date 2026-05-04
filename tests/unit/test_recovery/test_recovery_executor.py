@@ -123,6 +123,29 @@ def test_auto_evidence_can_safely_complete_and_preserve_superseded_evidence(tmp_
     assert approval.decision == "approve"
 
 
+def test_auto_evidence_refreshes_stale_empty_contract_after_greenfield_files_exist(tmp_path: Path) -> None:
+    """ReleasePulse RP-CES-012: recovery must not get stuck on pre-runtime empty contracts."""
+    store, project_root = _seed_project(tmp_path)
+    tests_dir = project_root / "tests"
+    tests_dir.mkdir()
+    (tests_dir / "test_smoke.py").write_text("def test_smoke():\n    assert True\n", encoding="utf-8")
+    contract = CompletionContract(
+        request="Build demo",
+        acceptance_criteria=(AcceptanceCriterion(id="AC-001", text="Running pytest passes."),),
+        project_type="unknown",
+        inferred_commands=(),
+    )
+    contract.write(project_root / ".ces" / "completion-contract.json")
+
+    result = run_auto_evidence_recovery(project_root=project_root, local_store=store, dry_run=True, auto_complete=True)
+
+    assert result.verification.passed is True
+    assert [command.command for command in result.verification.commands] == [
+        "python -m pytest -q",
+        "python -m compileall tests",
+    ]
+
+
 def test_auto_evidence_does_not_complete_when_verification_fails(tmp_path: Path) -> None:
     store, project_root = _seed_project(tmp_path)
     contract = CompletionContract(

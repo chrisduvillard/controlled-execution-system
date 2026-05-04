@@ -25,6 +25,17 @@ def test_detects_python_package_from_pyproject_without_scripts(tmp_path: Path) -
     assert detect_project_type(tmp_path) == "python-package"
 
 
+def test_detects_python_package_from_tests_without_pyproject(tmp_path: Path) -> None:
+    from ces.verification.project_detector import detect_project_type
+
+    (tmp_path / "tests").mkdir()
+    (tmp_path / "tests" / "test_cli.py").write_text("def test_smoke():\n    assert True\n", encoding="utf-8")
+    (tmp_path / "releasepulse").mkdir()
+    (tmp_path / "releasepulse" / "__main__.py").write_text("print('pong')\n", encoding="utf-8")
+
+    assert detect_project_type(tmp_path) == "python-package"
+
+
 def test_detects_vite_react_app(tmp_path: Path) -> None:
     from ces.verification.project_detector import detect_project_type
 
