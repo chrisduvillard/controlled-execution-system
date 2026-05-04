@@ -35,6 +35,8 @@ class BuilderRunReport:
     prl_draft_path: str | None
     reported_model: str | None
     verification_findings: tuple[str, ...]
+    independent_verification_passed: bool | None
+    completion_contract_path: str | None
     manual_completion_supersedes_rejected_auto_review: bool
     brownfield_reviewed_count: int
     brownfield_remaining_count: int
@@ -81,6 +83,8 @@ def build_builder_run_report(snapshot: Any) -> BuilderRunReport | None:
     )
     runtime_safety = _runtime_safety_content(evidence if isinstance(evidence, dict) else None)
     verification_findings = _verification_findings(evidence if isinstance(evidence, dict) else None)
+    independent_verification_passed = _independent_verification_passed(evidence if isinstance(evidence, dict) else None)
+    completion_contract_path = _completion_contract_path(evidence if isinstance(evidence, dict) else None)
     return BuilderRunReport(
         session_id=_text(getattr(session, "session_id", None)),
         request=request,
@@ -110,6 +114,8 @@ def build_builder_run_report(snapshot: Any) -> BuilderRunReport | None:
         prl_draft_path=_text(getattr(brief, "prl_draft_path", None)),
         reported_model=_text(getattr(runtime_execution, "reported_model", None)),
         verification_findings=verification_findings,
+        independent_verification_passed=independent_verification_passed,
+        completion_contract_path=completion_contract_path,
         manual_completion_supersedes_rejected_auto_review=(
             approval_decision == "approved" and bool(verification_findings)
         ),
@@ -158,6 +164,10 @@ def summarize_builder_run(report: BuilderRunReport) -> list[str]:
     if report.evidence_packet_id:
         lines.append(f"Evidence packet: {report.evidence_packet_id}")
     lines.append(f"Evidence quality: {report.evidence_quality_state}")
+    if report.completion_contract_path:
+        lines.append(f"Completion contract: {report.completion_contract_path}")
+    if report.independent_verification_passed is not None:
+        lines.append(f"Independent verification passed: {report.independent_verification_passed}")
     lines.append(f"Verification sensors: {report.verification_sensor_state}")
     if report.runtime_tool_allowlist_enforced is not None:
         lines.append(f"Runtime tool allowlist enforced: {report.runtime_tool_allowlist_enforced}")
@@ -214,6 +224,8 @@ def render_builder_run_report_markdown(report: BuilderRunReport) -> str:
         f"- Workflow state: {report.workflow_state or 'unknown'}",
         f"- Triage color: {report.triage_color or 'unknown'}",
         f"- Evidence quality: {report.evidence_quality_state}",
+        f"- Completion contract: {report.completion_contract_path or 'none'}",
+        f"- Independent verification passed: {_render_optional_bool(report.independent_verification_passed)}",
         f"- Verification sensors: {report.verification_sensor_state}",
         f"- Runtime tool allowlist enforced: {_render_optional_bool(report.runtime_tool_allowlist_enforced)}",
         f"- Runtime side-effect waiver accepted: {report.runtime_side_effect_waived}",
@@ -350,6 +362,23 @@ def _verification_findings(evidence: dict[str, Any] | None) -> tuple[str, ...]:
 def _superseded_evidence_content(content: dict[str, Any]) -> dict[str, Any]:
     superseded = content.get("superseded_evidence")
     return _evidence_content(superseded) if isinstance(superseded, dict) else {}
+
+
+def _independent_verification_passed(evidence: dict[str, Any] | None) -> bool | None:
+    content = _evidence_content(evidence)
+    verification = content.get("independent_verification")
+    if not isinstance(verification, dict):
+        verification = _superseded_evidence_content(content).get("independent_verification")
+    passed = verification.get("passed") if isinstance(verification, dict) else None
+    return passed if isinstance(passed, bool) else None
+
+
+def _completion_contract_path(evidence: dict[str, Any] | None) -> str | None:
+    content = _evidence_content(evidence)
+    value = content.get("completion_contract_path")
+    if not isinstance(value, str):
+        value = _superseded_evidence_content(content).get("completion_contract_path")
+    return value.strip() if isinstance(value, str) and value.strip() else None
 
 
 def _evidence_content(evidence: Any) -> dict[str, Any]:

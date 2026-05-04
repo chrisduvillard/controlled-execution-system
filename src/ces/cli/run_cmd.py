@@ -52,6 +52,9 @@ from ces.shared.enums import (
     TrustStatus,
     WorkflowState,
 )
+from ces.verification.build_contract import write_completion_contract
+from ces.verification.completion_contract import CompletionContract
+from ces.verification.runner import run_verification_commands
 
 BUILDER_COMPLETION_SENSORS = ("test_pass", "lint", "typecheck", "coverage")
 
@@ -252,6 +255,27 @@ def _ensure_builder_project(project_root: Path | None = None) -> tuple[Path, dic
 def _coerce_text(value: Any) -> str:
     primitive = getattr(value, "value", value)
     return primitive if isinstance(primitive, str) else str(primitive)
+
+
+def _write_completion_contract_for_build(
+    *,
+    project_root: Path,
+    brief: BuilderBriefDraft,
+    manifest: Any,
+    runtime_adapter: Any,
+) -> Path:
+    runtime_name = str(getattr(runtime_adapter, "runtime_name", "unknown"))
+    runtime_metadata = {
+        "manifest_id": str(getattr(manifest, "manifest_id", "")),
+        "accepted_runtime_side_effect_risk": bool(getattr(manifest, "accepted_runtime_side_effect_risk", False)),
+    }
+    return write_completion_contract(
+        project_root=project_root,
+        request=brief.request,
+        acceptance_criteria=tuple(brief.acceptance_criteria),
+        runtime_name=runtime_name,
+        runtime_metadata=runtime_metadata,
+    )
 
 
 def _completion_verification_blockers(completion_verification: Any) -> list[str]:
@@ -629,6 +653,12 @@ async def _run_brief_flow(
             manifest_id=manifest.manifest_id,
         )
     manifest = await _ensure_signed_manifest(manager, manifest)
+    contract_path = _write_completion_contract_for_build(
+        project_root=project_root,
+        brief=brief_draft,
+        manifest=manifest,
+        runtime_adapter=runtime_adapter,
+    )
     if session_id is not None and hasattr(local_store, "update_builder_session"):
         current_attempts = getattr(current_session, "attempt_count", 0) or 0
         local_store.update_builder_session(
@@ -744,6 +774,17 @@ async def _run_brief_flow(
         elif verifier is not None:
             completion_verification = await verifier.verify(manifest_for_verification, completion_claim, project_root)
     workspace_scope_violations = collect_workspace_scope_violations(manifest_for_verification, workspace_delta)
+    contract_path = _write_completion_contract_for_build(
+        project_root=project_root,
+        brief=brief_draft,
+        manifest=manifest,
+        runtime_adapter=runtime_adapter,
+    )
+    independent_verification = None
+    if execution["exit_code"] == 0 and contract_path.is_file():
+        independent_contract = CompletionContract.read(contract_path)
+        if independent_contract.inferred_commands:
+            independent_verification = run_verification_commands(project_root, independent_contract.inferred_commands)
     local_store.save_runtime_execution(manifest.manifest_id, execution)
 
     # When manifest has no affected_files, discover Python files from project root
@@ -825,6 +866,8 @@ async def _run_brief_flow(
             "workspace_delta": serialize_model(workspace_delta),
             "workspace_scope_violations": list(workspace_scope_violations),
             "runtime_safety": serialize_model(runtime_safety),
+            "independent_verification": independent_verification.to_dict() if independent_verification else None,
+            "completion_contract_path": str(contract_path),
             "sensor_policy": serialize_model(sensor_policy),
             "triage_reason": triage.reason,
         },
@@ -898,6 +941,8 @@ async def _run_brief_flow(
 
     auto_blockers: list[str] = []
     auto_blockers.extend(_completion_verification_blockers(completion_verification))
+    if independent_verification is not None and not independent_verification.passed:
+        auto_blockers.append("independent verification failed; run `ces verify --json` for command details")
     if workspace_scope_violations:
         auto_blockers.append("workspace changes exceeded manifest scope")
     if sensor_policy.blocking:

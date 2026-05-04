@@ -192,3 +192,39 @@ def test_builder_report_reads_verification_findings_from_manual_superseded_evide
     assert report.runtime_tool_allowlist_enforced is False
     assert report.verification_findings == ("Acceptance criterion has no evidence: 'export works'",)
     assert report.manual_completion_supersedes_rejected_auto_review is True
+
+
+def test_builder_report_surfaces_completion_contract_and_independent_verification() -> None:
+    from ces.cli._builder_report import build_builder_run_report, render_builder_run_report_markdown
+
+    snapshot = SimpleNamespace(
+        request="Build PromptVault",
+        project_mode="greenfield",
+        stage="completed",
+        next_action="start_new_session",
+        next_step="Start a new task",
+        latest_activity="CES recorded approval",
+        latest_artifact="approval",
+        brief=SimpleNamespace(prl_draft_path=None),
+        manifest=SimpleNamespace(manifest_id="M-pv", workflow_state="approved"),
+        runtime_execution=SimpleNamespace(exit_code=0, reported_model="gpt-5.5"),
+        evidence={
+            "packet_id": "EP-pv",
+            "content": {
+                "completion_contract_path": ".ces/completion-contract.json",
+                "independent_verification": {"passed": True, "commands": []},
+            },
+        },
+        approval=SimpleNamespace(decision="approve"),
+        session=SimpleNamespace(session_id="BS-pv"),
+        brownfield=None,
+    )
+
+    report = build_builder_run_report(snapshot)
+
+    assert report is not None
+    assert report.completion_contract_path == ".ces/completion-contract.json"
+    assert report.independent_verification_passed is True
+    markdown = render_builder_run_report_markdown(report)
+    assert "Completion contract: .ces/completion-contract.json" in markdown
+    assert "Independent verification passed: True" in markdown

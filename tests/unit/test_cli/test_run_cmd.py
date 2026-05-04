@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -2364,3 +2365,32 @@ def test_build_gsd_sets_description_and_greenfield_defaults(tmp_path: Path, monk
     assert call["description"] == "Build PromptVault"
     assert call["force_greenfield"] is True
     assert call["force_brownfield"] is False
+
+
+def test_build_writes_completion_contract_before_runtime(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from ces.cli._builder_flow import BuilderBriefDraft
+    from ces.cli.run_cmd import _write_completion_contract_for_build
+
+    manifest = SimpleNamespace(manifest_id="M-contract", accepted_runtime_side_effect_risk=True)
+    runtime_adapter = SimpleNamespace(runtime_name="codex")
+    brief = BuilderBriefDraft(
+        request="Build PromptVault",
+        project_mode="greenfield",
+        constraints=[],
+        acceptance_criteria=["CLI lists prompts", "CLI renders variables"],
+        must_not_break=[],
+        open_questions={},
+    )
+
+    path = _write_completion_contract_for_build(
+        project_root=tmp_path,
+        brief=brief,
+        manifest=manifest,
+        runtime_adapter=runtime_adapter,
+    )
+
+    assert path == tmp_path / ".ces" / "completion-contract.json"
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    assert payload["request"] == "Build PromptVault"
+    assert payload["acceptance_criteria"][0]["id"] == "AC-001"
+    assert payload["runtime"]["name"] == "codex"
