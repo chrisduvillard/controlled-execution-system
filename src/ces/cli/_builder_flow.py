@@ -415,8 +415,11 @@ class BuilderFlowOrchestrator:
                 for description, disposition in reviewed_candidates.items()
             ],
             "reviewed_entry_ids": list(reviewed_entry_ids),
-            "reviewed_count": len(reviewed_candidates),
+            "reviewed_count": len(reviewed_entry_ids),
             "remaining_count": max(total_candidates - len(reviewed_candidates), 0),
+            "entry_reviewed_count": len(reviewed_entry_ids),
+            "item_reviewed_count": len(reviewed_candidates),
+            "item_remaining_count": max(total_candidates - len(reviewed_candidates), 0),
             "group_defaults": dict(group_defaults),
         }
 

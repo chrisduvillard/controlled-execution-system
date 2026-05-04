@@ -299,7 +299,12 @@ def build_brownfield_explanation_lines(
         remaining_count = max(total_count - reviewed_count, 0)
         group_index = int(checkpoint.get("group_index", 0))
         current_group = groups[group_index].get("label", "Unknown") if 0 <= group_index < len(groups) else "Complete"
-        lines.append(f"Brownfield review progress: {reviewed_count} reviewed, {remaining_count} remaining")
+        reviewed_label = "review item" if reviewed_count == 1 else "review items"
+        remaining_label = "review item" if remaining_count == 1 else "review items"
+        lines.append(
+            f"Brownfield review progress: {reviewed_count} {reviewed_label} checked, "
+            f"{remaining_count} {remaining_label} remaining"
+        )
         lines.append(f"Current group: {current_group}")
         lines.append("CES will resume this checkpoint when you run `ces continue`.")
     else:

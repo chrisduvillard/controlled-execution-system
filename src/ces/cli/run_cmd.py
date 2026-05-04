@@ -22,6 +22,7 @@ from ces.cli._builder_evidence import (
     workspace_scope_violations as collect_workspace_scope_violations,
 )
 from ces.cli._builder_flow import BuilderBriefDraft, BuilderFlowOrchestrator
+from ces.cli._builder_report import format_brownfield_progress
 from ces.cli._context import find_project_root, get_project_config
 from ces.cli._errors import handle_error
 from ces.cli._factory import get_services
@@ -776,7 +777,7 @@ async def _run_brief_flow(
                 runtime_manifest_id=manifest.manifest_id,
                 brownfield_review_state=state,
                 brownfield_entry_ids=list(state.get("reviewed_entry_ids", [])),
-                brownfield_reviewed_count=int(state.get("reviewed_count", 0)),
+                brownfield_reviewed_count=len(list(state.get("reviewed_entry_ids", []))),
                 brownfield_remaining_count=int(state.get("remaining_count", 0)),
             )
 
@@ -1546,11 +1547,7 @@ async def explain_task(
                     and getattr(snapshot, "brownfield", None) is not None
                     and not any(line.startswith("Brownfield review progress:") for line in lines)
                 ):
-                    lines.append(
-                        "Brownfield review progress: "
-                        f"{snapshot.brownfield.reviewed_count} reviewed, "
-                        f"{snapshot.brownfield.remaining_count} remaining"
-                    )
+                    lines.append(f"Brownfield progress: {format_brownfield_progress(snapshot.brownfield)}")
 
             if governance and selected_view == "overview":
                 if manifest is not None:

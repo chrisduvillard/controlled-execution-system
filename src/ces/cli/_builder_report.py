@@ -41,6 +41,10 @@ class BuilderRunReport:
     manual_completion_supersedes_rejected_auto_review: bool
     brownfield_reviewed_count: int
     brownfield_remaining_count: int
+    brownfield_entry_reviewed_count: int = 0
+    brownfield_entry_remaining_count: int = 0
+    brownfield_item_reviewed_count: int = 0
+    brownfield_item_remaining_count: int = 0
 
 
 @dataclass(frozen=True)
@@ -89,6 +93,7 @@ def build_builder_run_report(snapshot: Any) -> BuilderRunReport | None:
     )
     independent_verification_passed = _independent_verification_passed(evidence if isinstance(evidence, dict) else None)
     completion_contract_path = _completion_contract_path(evidence if isinstance(evidence, dict) else None)
+    brownfield_counts = _brownfield_counts(brownfield)
     return BuilderRunReport(
         session_id=_text(getattr(session, "session_id", None)),
         request=request,
@@ -124,8 +129,12 @@ def build_builder_run_report(snapshot: Any) -> BuilderRunReport | None:
         manual_completion_supersedes_rejected_auto_review=(
             approval_decision == "approved" and bool(verification_findings or superseded_verification_findings)
         ),
-        brownfield_reviewed_count=int(getattr(brownfield, "reviewed_count", 0) or 0),
-        brownfield_remaining_count=int(getattr(brownfield, "remaining_count", 0) or 0),
+        brownfield_reviewed_count=brownfield_counts["entry_reviewed"],
+        brownfield_remaining_count=brownfield_counts["entry_remaining"],
+        brownfield_entry_reviewed_count=brownfield_counts["entry_reviewed"],
+        brownfield_entry_remaining_count=brownfield_counts["entry_remaining"],
+        brownfield_item_reviewed_count=brownfield_counts["item_reviewed"],
+        brownfield_item_remaining_count=brownfield_counts["item_remaining"],
     )
 
 
@@ -250,12 +259,80 @@ def render_builder_run_report_markdown(report: BuilderRunReport) -> str:
         lines.extend(["", "## Superseded Verification Findings", ""])
         lines.extend(f"- {finding}" for finding in report.superseded_verification_findings)
     if report.project_mode == "brownfield":
-        lines.append(
-            "- Brownfield progress: "
-            f"{report.brownfield_reviewed_count} reviewed, "
-            f"{report.brownfield_remaining_count} remaining"
-        )
+        lines.append(f"- Brownfield progress: {format_brownfield_progress(report)}")
     return "\n".join(lines) + "\n"
+
+
+def format_brownfield_progress(report_or_brownfield: Any) -> str:
+    """Render entry-level brownfield progress without hiding item-level review work.
+
+    ``reviewed_count`` historically counted lower-level checkpoint items in some
+    builder sessions. Operators, however, see and act on OLB behavior entries.
+    Prefer the explicit entry-id count when present and keep checkpoint item
+    counts as parenthetical diagnostics.
+    """
+
+    if isinstance(report_or_brownfield, BuilderRunReport):
+        entry_reviewed = report_or_brownfield.brownfield_entry_reviewed_count
+        entry_remaining = report_or_brownfield.brownfield_entry_remaining_count
+        item_reviewed = report_or_brownfield.brownfield_item_reviewed_count
+        item_remaining = report_or_brownfield.brownfield_item_remaining_count
+        if (
+            entry_reviewed == 0
+            and entry_remaining == 0
+            and item_reviewed == 0
+            and item_remaining == 0
+            and (report_or_brownfield.brownfield_reviewed_count or report_or_brownfield.brownfield_remaining_count)
+        ):
+            entry_reviewed = report_or_brownfield.brownfield_reviewed_count
+            entry_remaining = report_or_brownfield.brownfield_remaining_count
+            item_reviewed = report_or_brownfield.brownfield_reviewed_count
+            item_remaining = report_or_brownfield.brownfield_remaining_count
+    else:
+        counts = _brownfield_counts(report_or_brownfield)
+        entry_reviewed = counts["entry_reviewed"]
+        entry_remaining = counts["entry_remaining"]
+        item_reviewed = counts["item_reviewed"]
+        item_remaining = counts["item_remaining"]
+
+    behavior = "behavior" if entry_reviewed == 1 else "behaviors"
+    remaining_behavior = "behavior" if entry_remaining == 1 else "behaviors"
+    text = f"{entry_reviewed} {behavior} reviewed, {entry_remaining} {remaining_behavior} remaining"
+    if item_reviewed != entry_reviewed or item_remaining != entry_remaining:
+        reviewed_item = "review item" if item_reviewed == 1 else "review items"
+        remaining_item = "review item" if item_remaining == 1 else "review items"
+        text += f" ({item_reviewed} {reviewed_item} checked, {item_remaining} {remaining_item} remaining)"
+    return text
+
+
+def _brownfield_counts(brownfield: Any) -> dict[str, int]:
+    raw_reviewed = int(getattr(brownfield, "reviewed_count", 0) or 0)
+    raw_remaining = int(getattr(brownfield, "remaining_count", 0) or 0)
+    entry_ids = tuple(getattr(brownfield, "entry_ids", ()) or ())
+    checkpoint = getattr(brownfield, "checkpoint", None)
+    checkpoint_reviewed = _checkpoint_reviewed_item_count(checkpoint)
+    item_reviewed = checkpoint_reviewed if checkpoint_reviewed is not None else raw_reviewed
+    item_remaining = raw_remaining
+    has_entry_level_truth = bool(entry_ids)
+    entry_reviewed = len(entry_ids) if has_entry_level_truth else raw_reviewed
+    entry_remaining = (
+        int(getattr(brownfield, "entry_remaining_count", 0) or 0) if has_entry_level_truth else raw_remaining
+    )
+    return {
+        "entry_reviewed": entry_reviewed,
+        "entry_remaining": entry_remaining,
+        "item_reviewed": item_reviewed,
+        "item_remaining": item_remaining,
+    }
+
+
+def _checkpoint_reviewed_item_count(checkpoint: Any) -> int | None:
+    if not isinstance(checkpoint, dict):
+        return None
+    reviewed = checkpoint.get("reviewed_candidates")
+    if isinstance(reviewed, list):
+        return len(reviewed)
+    return None
 
 
 def _effective_workflow_state(
