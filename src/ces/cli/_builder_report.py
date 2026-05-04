@@ -327,8 +327,10 @@ def format_brownfield_progress(report_or_brownfield: Any) -> str:
 def _brownfield_counts(brownfield: Any) -> dict[str, int]:
     raw_reviewed = int(getattr(brownfield, "reviewed_count", 0) or 0)
     raw_remaining = int(getattr(brownfield, "remaining_count", 0) or 0)
-    entry_ids = tuple(getattr(brownfield, "entry_ids", ()) or ())
     checkpoint = getattr(brownfield, "checkpoint", None)
+    entry_ids = tuple(getattr(brownfield, "entry_ids", ()) or ())
+    if not entry_ids:
+        entry_ids = _checkpoint_reviewed_entry_ids(checkpoint)
     checkpoint_reviewed = _checkpoint_reviewed_item_count(checkpoint)
     item_reviewed = checkpoint_reviewed if checkpoint_reviewed is not None else raw_reviewed
     item_remaining = raw_remaining
@@ -343,6 +345,15 @@ def _brownfield_counts(brownfield: Any) -> dict[str, int]:
         "item_reviewed": item_reviewed,
         "item_remaining": item_remaining,
     }
+
+
+def _checkpoint_reviewed_entry_ids(checkpoint: Any) -> tuple[str, ...]:
+    if not isinstance(checkpoint, dict):
+        return ()
+    reviewed = checkpoint.get("reviewed_entry_ids")
+    if not isinstance(reviewed, list):
+        return ()
+    return tuple(entry_id for entry_id in reviewed if isinstance(entry_id, str) and entry_id.strip())
 
 
 def _checkpoint_reviewed_item_count(checkpoint: Any) -> int | None:

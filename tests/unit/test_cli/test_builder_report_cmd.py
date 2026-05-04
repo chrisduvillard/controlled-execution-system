@@ -149,6 +149,48 @@ def test_builder_report_exposes_entry_level_brownfield_counts_when_item_count_is
     assert "13 reviewed, 0 remaining" not in markdown
 
 
+def test_builder_report_uses_checkpoint_entry_ids_when_snapshot_entry_ids_are_empty() -> None:
+    """ReleasePulse RP-CES-013: persisted sessions may omit entry_ids but keep them in checkpoint state."""
+    from ces.cli._builder_report import build_builder_run_report, render_builder_run_report_markdown
+
+    snapshot = SimpleNamespace(
+        request="Improve ReleasePulse brownfield CLI",
+        project_mode="brownfield",
+        stage="completed",
+        next_action="start_new_session",
+        next_step="Start a new task",
+        latest_activity="CES recorded approval",
+        latest_artifact="approval",
+        brief=SimpleNamespace(prl_draft_path=None),
+        manifest=SimpleNamespace(manifest_id="M-rp", workflow_state="approved"),
+        runtime_execution=SimpleNamespace(exit_code=0, reported_model="gpt-5.5"),
+        evidence={"packet_id": "EP-rp", "triage_color": "green"},
+        approval=SimpleNamespace(decision="approve"),
+        session=SimpleNamespace(session_id="BS-rp"),
+        brownfield=SimpleNamespace(
+            entry_ids=[],
+            reviewed_count=9,
+            remaining_count=0,
+            checkpoint={
+                "reviewed_entry_ids": ["OLB-095836dc0cab"],
+                "reviewed_candidates": [{"description": f"candidate {idx}"} for idx in range(9)],
+                "remaining_count": 0,
+            },
+        ),
+    )
+
+    report = build_builder_run_report(snapshot)
+
+    assert report is not None
+    assert report.brownfield_entry_reviewed_count == 1
+    assert report.brownfield_item_reviewed_count == 9
+    assert report.brownfield_reviewed_count == 1
+    markdown = render_builder_run_report_markdown(report)
+    assert "1 behavior reviewed, 0 behaviors remaining" in markdown
+    assert "9 review items checked" in markdown
+    assert "9 behaviors reviewed" not in markdown
+
+
 def test_builder_report_surfaces_verification_findings_and_manual_supersession(tmp_path: Path, monkeypatch) -> None:
     """PromptVault dogfood: status/report must expose why auto-approval failed after manual completion."""
     from ces.cli._builder_report import build_builder_run_report, render_builder_run_report_markdown
