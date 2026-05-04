@@ -26,7 +26,9 @@ def build_completion_contract(
         request=request,
         project_type=project_type,
         acceptance_criteria=criteria_from_texts(acceptance_criteria),
-        inferred_commands=infer_verification_commands(project_root, project_type),
+        inferred_commands=infer_verification_commands(
+            project_root, project_type, acceptance_criteria=acceptance_criteria
+        ),
         runtime=runtime,
     )
 

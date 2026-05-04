@@ -30,3 +30,25 @@ def test_runner_fails_when_no_commands_are_inferred(tmp_path: Path) -> None:
 
     assert result.passed is False
     assert result.commands == ()
+
+
+def test_runner_accepts_expected_nonzero_exit_code(tmp_path: Path) -> None:
+    from ces.verification.completion_contract import VerificationCommand
+    from ces.verification.runner import run_verification_commands
+
+    result = run_verification_commands(
+        tmp_path,
+        (
+            VerificationCommand(
+                id="VC-negative",
+                kind="negative-smoke",
+                command="python -c 'import sys; sys.exit(1)'",
+                expected_exit_codes=(1,),
+            ),
+        ),
+    )
+
+    assert result.passed is True
+    assert result.commands[0].exit_code == 1
+    assert result.commands[0].expected_exit_codes == (1,)
+    assert result.commands[0].passed is True
