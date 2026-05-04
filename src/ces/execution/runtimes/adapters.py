@@ -18,6 +18,8 @@ from ces.execution.secrets import scrub_secrets_from_text
 
 _MAX_RUNTIME_OUTPUT_BYTES = 1_048_576
 _TRUNCATION_MARKER = "\n...[truncated]"
+_DEFAULT_RUNTIME_TIMEOUT_SECONDS = 1800
+_TIMEOUT_EXIT_CODE = 124
 
 # Default tool allowlist for the Claude builder runtime when the manifest
 # doesn't name one explicitly. Deliberately excludes Bash and WebFetch so
@@ -47,6 +49,24 @@ class _BaseRuntimeAdapter:
     def _build_env(self) -> dict[str, str]:
         """Pass only the env vars required for CLI auth and stable execution."""
         return build_subprocess_env(self.runtime_env_keys)
+
+    def _runtime_timeout_seconds(self) -> int:
+        raw = os.environ.get("CES_RUNTIME_TIMEOUT_SECONDS")
+        if raw is None:
+            return _DEFAULT_RUNTIME_TIMEOUT_SECONDS
+        try:
+            timeout = int(raw)
+        except ValueError:
+            return _DEFAULT_RUNTIME_TIMEOUT_SECONDS
+        return timeout if timeout > 0 else _DEFAULT_RUNTIME_TIMEOUT_SECONDS
+
+    def _timeout_message(self, timeout_seconds: int) -> str:
+        return (
+            f"{self.runtime_name} runtime timed out after {timeout_seconds} seconds. "
+            "The run was stopped so CES can recover instead of hanging indefinitely; "
+            "inspect the runtime transcript, then retry with `ces continue` or set "
+            "CES_RUNTIME_TIMEOUT_SECONDS to a larger positive value if this task legitimately needs more time."
+        )
 
     @staticmethod
     def _prepare_project_transcript_path(working_dir: Path, invocation_ref: str) -> Path:
@@ -193,14 +213,21 @@ class CodexRuntimeAdapter(_BaseRuntimeAdapter):
             "--output-last-message",
             str(message_file),
         ]
+        timeout_seconds = self._runtime_timeout_seconds()
         with tempfile.TemporaryFile() as stdout_file, tempfile.TemporaryFile() as stderr_file:
-            result = subprocess.run(
-                command,
-                stdout=stdout_file,
-                stderr=stderr_file,
-                check=False,
-                env=self._build_env(),
-            )
+            try:
+                result = subprocess.run(
+                    command,
+                    stdout=stdout_file,
+                    stderr=stderr_file,
+                    check=False,
+                    env=self._build_env(),
+                    timeout=timeout_seconds,
+                )
+                exit_code = result.returncode
+            except subprocess.TimeoutExpired:
+                exit_code = _TIMEOUT_EXIT_CODE
+                stderr_file.write(("\n" + self._timeout_message(timeout_seconds)).encode("utf-8"))
             stdout = self._read_limited_file(stdout_file)
             stderr = self._read_limited_file(stderr_file)
         if message_file.exists():
@@ -210,7 +237,7 @@ class CodexRuntimeAdapter(_BaseRuntimeAdapter):
             runtime_version=self.version(),
             reported_model=None,
             invocation_ref=invocation_ref,
-            exit_code=result.returncode,
+            exit_code=exit_code,
             stdout=stdout,
             stderr=stderr,
             duration_seconds=time.monotonic() - started,
@@ -257,15 +284,22 @@ class ClaudeRuntimeAdapter(_BaseRuntimeAdapter):
             "--add-dir",
             str(working_dir),
         ]
+        timeout_seconds = self._runtime_timeout_seconds()
         with tempfile.TemporaryFile() as stdout_file, tempfile.TemporaryFile() as stderr_file:
-            result = subprocess.run(
-                command,
-                stdout=stdout_file,
-                stderr=stderr_file,
-                check=False,
-                cwd=working_dir,
-                env=self._build_env(),
-            )
+            try:
+                result = subprocess.run(
+                    command,
+                    stdout=stdout_file,
+                    stderr=stderr_file,
+                    check=False,
+                    cwd=working_dir,
+                    env=self._build_env(),
+                    timeout=timeout_seconds,
+                )
+                exit_code = result.returncode
+            except subprocess.TimeoutExpired:
+                exit_code = _TIMEOUT_EXIT_CODE
+                stderr_file.write(("\n" + self._timeout_message(timeout_seconds)).encode("utf-8"))
             stdout = self._read_limited_file(stdout_file)
             stderr = self._read_limited_file(stderr_file)
         reported_model = None
@@ -281,7 +315,7 @@ class ClaudeRuntimeAdapter(_BaseRuntimeAdapter):
             runtime_version=self.version(),
             reported_model=reported_model,
             invocation_ref=invocation_ref,
-            exit_code=result.returncode,
+            exit_code=exit_code,
             stdout=stdout,
             stderr=stderr,
             duration_seconds=time.monotonic() - started,

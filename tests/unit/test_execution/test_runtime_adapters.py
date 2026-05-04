@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import stat
+import subprocess
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
@@ -170,6 +171,67 @@ class TestRuntimeAdapterEnvScrubbing:
         assert result.stderr == "eeeeeeee\n...[truncated]"
         assert result.transcript_path is not None
         assert Path(result.transcript_path).parent == tmp_path / ".ces" / "runtime-transcripts"
+
+    @patch.dict(
+        "os.environ",
+        {
+            "PATH": "/usr/bin",
+            "HOME": "/home/tester",
+            "CES_RUNTIME_TIMEOUT_SECONDS": "7",
+        },
+        clear=True,
+    )
+    def test_runtime_adapters_pass_configured_timeout_to_subprocess(self, tmp_path: Path) -> None:
+        adapter = CodexRuntimeAdapter()
+        adapter.version = MagicMock(return_value="1.0.0")
+
+        def _run(*args, **kwargs):
+            kwargs["stdout"].write(b"ok")
+            return SimpleNamespace(returncode=0)
+
+        with patch(
+            "ces.execution.runtimes.adapters.subprocess.run",
+            side_effect=_run,
+        ) as mock_run:
+            adapter.run_task(
+                manifest_description="Implement feature",
+                prompt_pack="Prompt pack",
+                working_dir=tmp_path,
+            )
+
+        assert mock_run.call_args.kwargs["timeout"] == 7
+
+    @patch.dict(
+        "os.environ",
+        {
+            "PATH": "/usr/bin",
+            "HOME": "/home/tester",
+            "CES_RUNTIME_TIMEOUT_SECONDS": "3",
+        },
+        clear=True,
+    )
+    def test_codex_runtime_timeout_returns_actionable_failure(self, tmp_path: Path) -> None:
+        adapter = CodexRuntimeAdapter()
+        adapter.version = MagicMock(return_value="1.0.0")
+
+        def _run(*args, **kwargs):
+            kwargs["stderr"].write(b"partial stderr before hang")
+            raise subprocess.TimeoutExpired(cmd=args[0], timeout=kwargs["timeout"])
+
+        with patch(
+            "ces.execution.runtimes.adapters.subprocess.run",
+            side_effect=_run,
+        ):
+            result = adapter.run_task(
+                manifest_description="Implement feature",
+                prompt_pack="Prompt pack",
+                working_dir=tmp_path,
+            )
+
+        assert result.exit_code == 124
+        assert "timed out after 3 seconds" in result.stderr
+        assert "partial stderr before hang" in result.stderr
+        assert result.transcript_path is not None
 
     @patch.dict(
         "os.environ",
