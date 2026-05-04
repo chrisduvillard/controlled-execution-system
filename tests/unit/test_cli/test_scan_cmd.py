@@ -67,6 +67,25 @@ class TestCesScan:
         types = {m["type"] for m in data["modules"]}
         assert "python" in types
 
+    def test_detects_python_package_without_pyproject(self, tmp_path: Path, monkeypatch: object) -> None:
+        """Detects simple runnable Python packages even without pyproject.toml."""
+        monkeypatch.chdir(tmp_path)  # type: ignore[attr-defined]
+        _write(tmp_path / "idea_ledger" / "__init__.py", '"""Idea Ledger."""\n')
+        _write(tmp_path / "idea_ledger" / "__main__.py", "def main():\n    return 0\n")
+        _write(tmp_path / "idea_ledger" / "cli.py", "def cli():\n    return 0\n")
+        _write(tmp_path / "tests" / "test_cli.py", "def test_smoke():\n    assert True\n")
+
+        app = _get_app()
+        result = runner.invoke(app, ["scan"])
+
+        assert result.exit_code == 0, result.stdout
+        data = json.loads((tmp_path / ".ces" / "brownfield" / "scan.json").read_text(encoding="utf-8"))
+        assert {
+            "path": "idea_ledger/__init__.py",
+            "type": "python",
+            "name": "idea_ledger",
+        } in data["modules"]
+
     def test_detects_node_module(self, tmp_path: Path, monkeypatch: object) -> None:
         """Detects a package.json inside a subfolder as a Node module."""
         monkeypatch.chdir(tmp_path)  # type: ignore[attr-defined]
