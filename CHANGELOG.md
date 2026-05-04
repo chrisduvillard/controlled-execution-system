@@ -7,6 +7,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.7] - 2026-05-04
+
+0→100 builder robustness release. This release makes CES materially easier to
+use on real greenfield projects when runtime evidence, independent build proof,
+or recovery steps are ambiguous.
+
+### Added
+- `ces build --gsd`: greenfield delivery alias for the builder workflow, making
+  the intended 0→100 product-build path explicit from the CLI.
+- `ces why`: first-class blocker diagnosis command for explaining why a builder
+  run is blocked or rejected and which command to run next.
+- Completion contracts at `.ces/completion-contract.json`, describing expected
+  project artifacts and independent verification commands for completed builder
+  work.
+- `ces verify`: reruns completion-contract verification independently from the
+  runtime so users and automation can prove a project actually works after a
+  builder run.
+- `ces recover`: non-mutating recovery planning via `--dry-run`, plus guarded
+  `--auto-evidence` and `--auto-complete` flows for blocked sessions whose
+  artifacts can be independently verified.
+- `ces benchmark greenfield`: deterministic 0→100 benchmark harness with a
+  built-in `python-cli` scenario, fake runtime, persisted scorecards, friction
+  metrics, and machine-readable JSON output.
+
+### Changed
+- Builder summaries now surface actionable next commands, including `ces why`,
+  `ces recover --dry-run`, `ces verify`, and `ces report builder` depending on
+  the session state.
+- Builder evidence now records completion-contract paths and independent
+  verification results when verification commands are available.
+
+### Fixed
+- Blocked builder sessions now distinguish runtime, review, evidence,
+  verification, and recovery blockers instead of leaving users to infer the
+  cause from raw state.
+- Recovery evidence preserves superseded packet metadata and original runtime
+  context so self-recovery does not hide the failure that required recovery.
+
 ## [0.1.6] - 2026-04-30
 
 Public GitHub readiness hardening before making the repository visible.
