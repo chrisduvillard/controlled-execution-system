@@ -284,6 +284,57 @@ def test_recovered_builder_report_separates_active_and_superseded_verification_f
     assert "missing artifact: coverage.json" in markdown
 
 
+def test_approved_builder_report_demotes_stale_runtime_findings_when_independent_verification_passed() -> None:
+    """ReleasePulse redogfood: approved runs must not keep stale red findings active."""
+    from ces.cli._builder_report import build_builder_run_report, render_builder_run_report_markdown
+
+    snapshot = SimpleNamespace(
+        request="Improve ReleasePulse",
+        project_mode="brownfield",
+        stage="completed",
+        next_action="start_new_session",
+        next_step="Start a new task",
+        latest_activity="CES recorded approval",
+        latest_artifact="approval",
+        brief=SimpleNamespace(prl_draft_path=None),
+        manifest=SimpleNamespace(manifest_id="M-rp", workflow_state="merged", verification_sensors=()),
+        runtime_execution=SimpleNamespace(exit_code=0, reported_model="gpt-5.5"),
+        evidence={
+            "packet_id": "EP-approved",
+            "triage_color": "red",
+            "content": {
+                "verification_result": {
+                    "passed": False,
+                    "findings": [
+                        {"message": "Verification command failed with exit code 1: python -m releasepulse unknown"},
+                        {"message": "[coverage] Required coverage artifact is missing: coverage.json @ coverage.json"},
+                    ],
+                },
+                "independent_verification": {"passed": True, "commands": ["pytest"]},
+                "completion_contract_path": "project/.ces/completion-contract.json",
+            },
+        },
+        approval=SimpleNamespace(decision="approve"),
+        session=SimpleNamespace(session_id="BS-rp"),
+        brownfield=SimpleNamespace(reviewed_count=1, remaining_count=0, entry_ids=("OLB-1",), checkpoint=None),
+    )
+
+    report = build_builder_run_report(snapshot)
+
+    assert report is not None
+    assert report.latest_outcome == "approved"
+    assert report.triage_color == "green"
+    assert report.evidence_quality_state == "passed"
+    assert report.verification_findings == ()
+    assert report.superseded_verification_findings == (
+        "Verification command failed with exit code 1: python -m releasepulse unknown",
+        "[coverage] Required coverage artifact is missing: coverage.json @ coverage.json",
+    )
+    markdown = render_builder_run_report_markdown(report)
+    assert "## Verification Findings" not in markdown
+    assert "## Superseded Verification Findings" in markdown
+
+
 def test_builder_report_surfaces_completion_contract_and_independent_verification() -> None:
     from ces.cli._builder_report import build_builder_run_report, render_builder_run_report_markdown
 
