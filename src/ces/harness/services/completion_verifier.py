@@ -175,6 +175,13 @@ def _default_hint(sensor_id: str) -> str:
 def _check_schema(manifest: TaskManifest, claim: CompletionClaim) -> list[VerificationFinding]:
     findings: list[VerificationFinding] = []
     if claim.task_id != manifest.manifest_id:
+        hint = "Reissue the completion claim with the correct task_id"
+        if claim.task_id.startswith("OLB-"):
+            hint = (
+                "OLB-* values identify reviewed legacy behavior, not the active task manifest. "
+                f"Reissue the completion claim with task_id={manifest.manifest_id!r}; keep legacy behavior IDs "
+                "only in evidence notes or related legacy context."
+            )
         findings.append(
             VerificationFinding(
                 kind=VerificationFindingKind.SCHEMA_VIOLATION,
@@ -182,7 +189,7 @@ def _check_schema(manifest: TaskManifest, claim: CompletionClaim) -> list[Verifi
                 message=(
                     f"Claim.task_id={claim.task_id!r} does not match manifest.manifest_id={manifest.manifest_id!r}"
                 ),
-                hint="Reissue the completion claim with the correct task_id",
+                hint=hint,
             )
         )
     return findings

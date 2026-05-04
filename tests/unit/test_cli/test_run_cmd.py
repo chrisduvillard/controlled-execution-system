@@ -135,9 +135,10 @@ def test_greenfield_empty_manifest_scope_derives_runtime_changed_files() -> None
     assert manifest.affected_files == ()
 
 
-def test_brownfield_empty_manifest_scope_is_not_inferred_from_runtime_delta() -> None:
+def test_brownfield_empty_manifest_scope_derives_truth_paths_and_runtime_changes() -> None:
+    """ReleasePulse dogfood: brownfield verification should not hit allowed=()."""
     from ces.cli._builder_flow import BuilderBriefDraft
-    from ces.cli.run_cmd import _manifest_with_effective_greenfield_scope
+    from ces.cli.run_cmd import _manifest_with_effective_brownfield_scope
     from ces.execution.workspace_delta import WorkspaceDelta
 
     manifest = TaskManifest(
@@ -163,10 +164,37 @@ def test_brownfield_empty_manifest_scope_is_not_inferred_from_runtime_delta() ->
         acceptance_criteria=[],
         must_not_break=[],
         open_questions={},
+        source_of_truth="README.md",
+        critical_flows=["CLI behavior in `src/releasepulse/cli.py` stays compatible"],
     )
-    delta = WorkspaceDelta(modified_files=("app.py",))
+    delta = WorkspaceDelta(modified_files=("src/releasepulse/cli.py",), created_files=("tests/test_cli.py",))
 
-    assert _manifest_with_effective_greenfield_scope(manifest, brief, delta) is manifest
+    scoped = _manifest_with_effective_brownfield_scope(manifest, brief, delta)
+
+    assert scoped.affected_files == ("README.md", "src/releasepulse/cli.py", "tests/test_cli.py")
+    assert manifest.affected_files == ()
+
+
+def test_brownfield_prompt_pack_tells_runtime_to_claim_manifest_id_not_olb_id() -> None:
+    from ces.cli._builder_flow import BuilderBriefDraft
+    from ces.cli.run_cmd import _prompt_pack
+
+    prompt = _prompt_pack(
+        BuilderBriefDraft(
+            request="Improve existing CLI",
+            project_mode="brownfield",
+            constraints=[],
+            acceptance_criteria=["CLI stays compatible"],
+            must_not_break=[],
+            open_questions={},
+            source_of_truth="README.md",
+            critical_flows=["OLB-reviewed CLI behavior"],
+        ),
+        manifest=SimpleNamespace(manifest_id="M-active", affected_files=("README.md",)),
+    )
+
+    assert "task_id must be the active manifest ID: M-active" in prompt
+    assert "Do not use OLB-* legacy behavior IDs as task_id" in prompt
 
 
 class TestRunCommand:
@@ -1413,7 +1441,7 @@ class TestRunCommand:
                     "--acceptance",
                     "Invoice editing still works",
                     "--source-of-truth",
-                    "legacy_app.py",
+                    "current behavior",
                     "--critical-flow",
                     "Invoice editing",
                 ],
