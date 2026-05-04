@@ -113,10 +113,26 @@ def _find_codeowners(root: Path) -> list[dict[str, object]]:
     return []
 
 
+def _is_python_package_init(path: Path, root: Path) -> bool:
+    """Return True when ``path`` identifies a local Python package root."""
+    if path.name != "__init__.py":
+        return False
+    package_dir = path.parent
+    if package_dir == root:
+        return False
+    rel_parts = package_dir.relative_to(root).parts
+    if any(_should_skip_dir(part) for part in rel_parts):
+        return False
+    if package_dir.name in {"tests", "test"}:
+        return False
+    return any(candidate.is_file() for candidate in package_dir.glob("*.py") if candidate.name != "__init__.py")
+
+
 def _walk_repo(root: Path) -> tuple[list[dict[str, object]], list[str]]:
     """Walk ``root`` and return (module manifests, generated file paths)."""
     modules: list[dict[str, object]] = []
     generated: list[str] = []
+    seen_modules: set[tuple[str, str]] = set()
 
     for current in root.rglob("*"):
         # Skip any path whose components include a blacklisted directory.
@@ -130,13 +146,24 @@ def _walk_repo(root: Path) -> tuple[list[dict[str, object]], list[str]]:
         filename = current.name
 
         if filename in _MODULE_MANIFESTS:
-            modules.append(
-                {
-                    "path": rel_posix,
-                    "type": _MODULE_MANIFESTS[filename],
-                    "name": current.parent.name if current.parent != root else root.name,
-                }
-            )
+            module = {
+                "path": rel_posix,
+                "type": _MODULE_MANIFESTS[filename],
+                "name": current.parent.name if current.parent != root else root.name,
+            }
+            module_key = (module["type"], module["name"])
+            seen_modules.add(module_key)
+            modules.append(module)
+        elif _is_python_package_init(current, root):
+            module = {
+                "path": rel_posix,
+                "type": "python",
+                "name": current.parent.name,
+            }
+            module_key = (module["type"], module["name"])
+            if module_key not in seen_modules:
+                seen_modules.add(module_key)
+                modules.append(module)
 
         if _detect_generated(current):
             generated.append(rel_posix)
