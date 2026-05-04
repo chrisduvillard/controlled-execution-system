@@ -74,6 +74,7 @@ def _check_providers() -> dict[str, bool]:
 def _runtime_auth_status(
     providers: dict[str, bool],
     *,
+    cwd: Path | None = None,
     verify_runtime: bool = False,
     runtime_filter: str = "all",
 ) -> dict[str, dict[str, object]]:
@@ -100,7 +101,7 @@ def _runtime_auth_status(
             executable = shutil.which(runtime)
             if not providers.get(provider_key, False) or executable is None:
                 continue
-            ok, detail = _probe_runtime_auth(runtime, executable, Path.cwd())
+            ok, detail = _probe_runtime_auth(runtime, executable, cwd or Path.cwd())
             statuses[runtime].update({"auth_checked": True, "auth_ok": ok, "detail": detail})
     return statuses
 
@@ -161,12 +162,12 @@ def _check_extras() -> dict[str, bool]:
     return result
 
 
-def _check_project_dir() -> tuple[bool, Path]:
-    """Return (exists, resolved_path) for a .ces/ directory in cwd."""
+def _check_project_dir(project_root: Path | None = None) -> tuple[bool, Path]:
+    """Return (exists, resolved_path) for a .ces/ directory in cwd or explicit root."""
     try:
-        path = find_project_root() / ".ces"
+        path = find_project_root(project_root) / ".ces"
     except typer.BadParameter:
-        path = Path.cwd() / ".ces"
+        path = (project_root.resolve() if project_root is not None else Path.cwd()) / ".ces"
     return path.is_dir(), path
 
 
@@ -325,6 +326,11 @@ def run_doctor(
         "--runtime",
         help="Runtime auth probe target when --verify-runtime is used: all, codex, or claude.",
     ),
+    project_root: Path | None = typer.Option(
+        None,
+        "--project-root",
+        help="Repo/CES project root to diagnose; defaults to cwd/.ces discovery.",
+    ),
     compat: bool = typer.Option(
         False,
         "--compat",
@@ -354,9 +360,17 @@ def run_doctor(
         raise typer.BadParameter("--runtime must be one of: all, codex, claude")
     python_ok, python_version = _check_python()
     providers = _check_providers()
-    runtime_auth = _runtime_auth_status(providers, verify_runtime=verify_runtime, runtime_filter=runtime)
+    project_exists, project_path = _check_project_dir(project_root)
+    resolved_project_root = (
+        project_path.parent if project_path.name == ".ces" else project_root.resolve() if project_root else Path.cwd()
+    )
+    runtime_auth = _runtime_auth_status(
+        providers,
+        cwd=resolved_project_root,
+        verify_runtime=verify_runtime,
+        runtime_filter=runtime,
+    )
     extras = _check_extras()
-    project_exists, project_path = _check_project_dir()
     runtime_safety = {
         "claude": safety_profile_for_runtime("claude").model_dump(mode="json"),
         "codex": safety_profile_for_runtime("codex").model_dump(mode="json"),
@@ -411,6 +425,7 @@ def run_doctor(
             "dependency_freshness": {
                 name: {"ok": ok, "detail": detail} for name, (ok, detail) in dependency_freshness.items()
             },
+            "project_root": str(resolved_project_root),
             "project_dir": {"exists": project_exists, "path": str(project_path)},
             "overall_ok": overall_ok,
         }

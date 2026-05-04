@@ -35,6 +35,7 @@ class BuilderRunReport:
     prl_draft_path: str | None
     reported_model: str | None
     verification_findings: tuple[str, ...]
+    superseded_verification_findings: tuple[str, ...]
     independent_verification_passed: bool | None
     completion_contract_path: str | None
     manual_completion_supersedes_rejected_auto_review: bool
@@ -83,6 +84,9 @@ def build_builder_run_report(snapshot: Any) -> BuilderRunReport | None:
     )
     runtime_safety = _runtime_safety_content(evidence if isinstance(evidence, dict) else None)
     verification_findings = _verification_findings(evidence if isinstance(evidence, dict) else None)
+    superseded_verification_findings = _superseded_verification_findings(
+        evidence if isinstance(evidence, dict) else None
+    )
     independent_verification_passed = _independent_verification_passed(evidence if isinstance(evidence, dict) else None)
     completion_contract_path = _completion_contract_path(evidence if isinstance(evidence, dict) else None)
     return BuilderRunReport(
@@ -114,10 +118,11 @@ def build_builder_run_report(snapshot: Any) -> BuilderRunReport | None:
         prl_draft_path=_text(getattr(brief, "prl_draft_path", None)),
         reported_model=_text(getattr(runtime_execution, "reported_model", None)),
         verification_findings=verification_findings,
+        superseded_verification_findings=superseded_verification_findings,
         independent_verification_passed=independent_verification_passed,
         completion_contract_path=completion_contract_path,
         manual_completion_supersedes_rejected_auto_review=(
-            approval_decision == "approved" and bool(verification_findings)
+            approval_decision == "approved" and bool(verification_findings or superseded_verification_findings)
         ),
         brownfield_reviewed_count=int(getattr(brownfield, "reviewed_count", 0) or 0),
         brownfield_remaining_count=int(getattr(brownfield, "remaining_count", 0) or 0),
@@ -179,6 +184,9 @@ def summarize_builder_run(report: BuilderRunReport) -> list[str]:
     if report.verification_findings:
         lines.append("Verification findings:")
         lines.extend(f"- {finding}" for finding in report.verification_findings[:5])
+    if report.superseded_verification_findings:
+        lines.append("Superseded verification findings:")
+        lines.extend(f"- {finding}" for finding in report.superseded_verification_findings[:5])
     return lines
 
 
@@ -238,6 +246,9 @@ def render_builder_run_report_markdown(report: BuilderRunReport) -> str:
     if report.verification_findings:
         lines.extend(["", "## Verification Findings", ""])
         lines.extend(f"- {finding}" for finding in report.verification_findings)
+    if report.superseded_verification_findings:
+        lines.extend(["", "## Superseded Verification Findings", ""])
+        lines.extend(f"- {finding}" for finding in report.superseded_verification_findings)
     if report.project_mode == "brownfield":
         lines.append(
             "- Brownfield progress: "
@@ -341,9 +352,16 @@ def _runtime_safety_content(evidence: dict[str, Any] | None) -> dict[str, Any]:
 def _verification_findings(evidence: dict[str, Any] | None) -> tuple[str, ...]:
     content = _evidence_content(evidence)
     verification = content.get("verification_result")
-    if not isinstance(verification, dict):
-        superseded = _superseded_evidence_content(content)
-        verification = superseded.get("verification_result")
+    return _verification_finding_messages(verification)
+
+
+def _superseded_verification_findings(evidence: dict[str, Any] | None) -> tuple[str, ...]:
+    content = _evidence_content(evidence)
+    verification = _superseded_evidence_content(content).get("verification_result")
+    return _verification_finding_messages(verification)
+
+
+def _verification_finding_messages(verification: Any) -> tuple[str, ...]:
     if not isinstance(verification, dict) or verification.get("passed") is not False:
         return ()
     findings = verification.get("findings", ())

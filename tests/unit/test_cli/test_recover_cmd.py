@@ -57,7 +57,13 @@ def _seed_project(project_root: Path) -> None:
         summary="Original blocked evidence",
         challenge="No independent verification yet",
         triage_color="yellow",
-        content={"execution": {"exit_code": 0}},
+        content={
+            "execution": {"exit_code": 0},
+            "verification_result": {
+                "passed": False,
+                "findings": [{"message": "original missing artifact"}],
+            },
+        },
     )
     store.save_builder_session(
         brief_id=brief_id,
@@ -117,3 +123,10 @@ def test_recover_auto_evidence_json_can_complete(tmp_path: Path, monkeypatch) ->
     assert payload["result"]["completed"] is True
     store = LocalProjectStore(tmp_path / ".ces" / "state.db", project_id="proj")
     assert store.get_latest_builder_session().stage == "completed"  # type: ignore[union-attr]
+
+    from ces.cli._builder_report import build_builder_run_report
+
+    report = build_builder_run_report(store.get_latest_builder_session_snapshot())
+    assert report is not None
+    assert report.verification_findings == ()
+    assert report.superseded_verification_findings == ("original missing artifact",)
