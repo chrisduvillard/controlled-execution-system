@@ -23,6 +23,7 @@ from ces.harness.models.completion_claim import (
     CompletionClaim,
     CriterionEvidence,
     EvidenceKind,
+    VerificationCommandEvidence,
     VerificationFindingKind,
 )
 from ces.harness.sensors.base import BaseSensor
@@ -177,6 +178,57 @@ class TestVerifierSchemaChecks:
         )
         result = await verifier.verify(manifest, claim, tmp_path)
         assert result.passed is True
+
+    @pytest.mark.asyncio
+    async def test_expected_nonzero_command_evidence_satisfies_negative_criterion(self, tmp_path: Path) -> None:
+        """ReleasePulse RP-CES-011: expected negative CLI checks should not block completion."""
+        verifier = CompletionVerifier(sensors={})
+        criterion = "python -m releasepulse unknown exits non-zero with a helpful unknown command error."
+        claim = _make_claim(
+            criteria_satisfied=(
+                CriterionEvidence(
+                    criterion=criterion,
+                    evidence=(
+                        "`python -m releasepulse unknown` exited 2 and stderr included "
+                        "`releasepulse: error: unknown command: unknown`."
+                    ),
+                    evidence_kind=EvidenceKind.COMMAND_OUTPUT,
+                ),
+            ),
+            verification_commands=(
+                VerificationCommandEvidence(
+                    command="python -m releasepulse unknown",
+                    exit_code=2,
+                    summary="Exited non-zero and printed a helpful unknown command error.",
+                ),
+            ),
+        )
+        manifest = _make_manifest(acceptance_criteria=(criterion,))
+
+        result = await verifier.verify(manifest, claim, tmp_path)
+
+        assert result.passed is True
+        assert result.findings == ()
+
+    @pytest.mark.asyncio
+    async def test_unexpected_nonzero_command_evidence_still_fails(self, tmp_path: Path) -> None:
+        verifier = CompletionVerifier(sensors={})
+        claim = _make_claim(
+            verification_commands=(
+                VerificationCommandEvidence(
+                    command="pytest",
+                    exit_code=1,
+                    summary="Tests failed.",
+                ),
+            ),
+        )
+
+        result = await verifier.verify(_make_manifest(), claim, tmp_path)
+
+        assert result.passed is False
+        assert any(
+            "Verification command failed with exit code 1: pytest" in finding.message for finding in result.findings
+        )
 
 
 # ---------------------------------------------------------------------------

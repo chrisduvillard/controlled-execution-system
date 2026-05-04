@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from ces.recovery.planner import build_recovery_plan
+from ces.verification.build_contract import build_completion_contract
 from ces.verification.completion_contract import CompletionContract
 from ces.verification.runner import VerificationRunResult, run_verification_commands
 
@@ -50,6 +51,7 @@ def run_auto_evidence_recovery(
         raise RuntimeError("No completion contract found. Run `ces verify --json` first.")
 
     contract = CompletionContract.read(Path(plan.contract_path))
+    contract = _refresh_contract_if_unverifiable(project_root, contract)
     verification = run_verification_commands(project_root, contract.inferred_commands)
     if dry_run:
         return RecoveryExecutionResult(
@@ -149,6 +151,19 @@ def run_auto_evidence_recovery(
         session_id=plan.session_id,
         next_action="start_new_session",
         message="Builder session completed with recovered independent verification evidence.",
+    )
+
+
+def _refresh_contract_if_unverifiable(project_root: Path, contract: CompletionContract) -> CompletionContract:
+    """Re-infer verification commands when a pre-runtime contract has no checks."""
+    if contract.inferred_commands:
+        return contract
+    return build_completion_contract(
+        project_root=project_root,
+        request=contract.request,
+        acceptance_criteria=tuple(criterion.text for criterion in contract.acceptance_criteria),
+        runtime_name=str(contract.runtime.get("name") or "unknown"),
+        runtime_metadata={key: value for key, value in contract.runtime.items() if key != "name"},
     )
 
 

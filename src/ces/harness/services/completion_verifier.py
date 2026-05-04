@@ -330,7 +330,7 @@ def _check_required_evidence(
             )
         )
     for entry in claim.verification_commands:
-        if entry.exit_code != 0:
+        if entry.exit_code != 0 and not _is_expected_nonzero_verification_command(entry, claim):
             findings.append(
                 VerificationFinding(
                     kind=VerificationFindingKind.EVIDENCE_MISMATCH,
@@ -349,6 +349,44 @@ def _check_required_evidence(
                 )
             )
     return findings
+
+
+_NEGATIVE_EXIT_MARKERS = (
+    "nonzero",
+    "non-zero",
+    "non zero",
+    "non-0",
+    "non 0",
+    "expected failure",
+    "expected to fail",
+    "should fail",
+    "exits with an error",
+    "exit with an error",
+)
+
+
+def _is_expected_nonzero_verification_command(entry, claim: CompletionClaim) -> bool:  # type: ignore[no-untyped-def]
+    """Return True when a non-zero command is evidence for an expected-negative criterion."""
+    if entry.exit_code == 0:
+        return False
+    command = str(entry.command).strip()
+    if not command:
+        return False
+    command_folded = command.casefold()
+    summary_folded = str(entry.summary).casefold()
+    for criterion in claim.criteria_satisfied:
+        criterion_text = str(criterion.criterion)
+        evidence_text = str(criterion.evidence)
+        combined = f"{criterion_text}\n{evidence_text}".casefold()
+        if command_folded not in combined:
+            continue
+        if _expects_nonzero_exit(combined) or _expects_nonzero_exit(summary_folded):
+            return True
+    return False
+
+
+def _expects_nonzero_exit(text: str) -> bool:
+    return any(marker in text for marker in _NEGATIVE_EXIT_MARKERS)
 
 
 def _has_impacted_flow_evidence(claim: CompletionClaim) -> bool:
