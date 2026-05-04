@@ -8,6 +8,7 @@ from ces.cli import (
     approve_cmd,
     audit_cmd,
     baseline_cmd,
+    benchmark_cmd,
     brownfield_cmd,
     classify_cmd,
     complete_cmd,
@@ -122,6 +123,7 @@ app.command(name="setup-ci", help="Generate a CI gating workflow for the chosen 
 )
 app.command(name="scan", help="Inventory the repository: modules, generated code, CODEOWNERS.")(scan_cmd.scan)
 app.command(name="baseline", help="Capture a day-0 sensor snapshot under .ces/baseline/.")(baseline_cmd.baseline)
+app.add_typer(benchmark_cmd.benchmark_app, name="benchmark")
 app.command(name="audit", help="Inspect the local audit ledger.")(audit_cmd.query_audit)
 app.add_typer(report_cmd.report_app, name="report")
 app.add_typer(brownfield_cmd.brownfield_app, name="brownfield")
