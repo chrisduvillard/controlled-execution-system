@@ -87,12 +87,31 @@ def build_builder_run_report(snapshot: Any) -> BuilderRunReport | None:
         brief_only_fallback=bool(getattr(snapshot, "brief_only_fallback", False)),
     )
     runtime_safety = _runtime_safety_content(evidence if isinstance(evidence, dict) else None)
-    verification_findings = _verification_findings(evidence if isinstance(evidence, dict) else None)
-    superseded_verification_findings = _superseded_verification_findings(
+    raw_verification_findings = _verification_findings(evidence if isinstance(evidence, dict) else None)
+    raw_superseded_verification_findings = _superseded_verification_findings(
         evidence if isinstance(evidence, dict) else None
     )
     independent_verification_passed = _independent_verification_passed(evidence if isinstance(evidence, dict) else None)
     completion_contract_path = _completion_contract_path(evidence if isinstance(evidence, dict) else None)
+    approved_by_independent_verification = approval_decision == "approved" and independent_verification_passed is True
+    verification_findings = () if approved_by_independent_verification else raw_verification_findings
+    superseded_verification_findings = (
+        raw_superseded_verification_findings + raw_verification_findings
+        if approved_by_independent_verification
+        else raw_superseded_verification_findings
+    )
+    evidence_quality_state = (
+        "passed"
+        if approved_by_independent_verification
+        else compute_evidence_quality_state(evidence if isinstance(evidence, dict) else None)
+    )
+    triage_color = (
+        "green"
+        if approved_by_independent_verification
+        else evidence.get("triage_color")
+        if isinstance(evidence, dict)
+        else None
+    )
     brownfield_counts = _brownfield_counts(brownfield)
     return BuilderRunReport(
         session_id=_text(getattr(session, "session_id", None)),
@@ -110,8 +129,8 @@ def build_builder_run_report(snapshot: Any) -> BuilderRunReport | None:
         evidence_packet_id=evidence.get("packet_id") if isinstance(evidence, dict) else None,
         approval_decision=approval_decision,
         workflow_state=workflow_state,
-        triage_color=evidence.get("triage_color") if isinstance(evidence, dict) else None,
-        evidence_quality_state=compute_evidence_quality_state(evidence if isinstance(evidence, dict) else None),
+        triage_color=triage_color,
+        evidence_quality_state=evidence_quality_state,
         verification_sensor_state=(
             "configured"
             if tuple(getattr(manifest, "verification_sensors", ()) or ())
