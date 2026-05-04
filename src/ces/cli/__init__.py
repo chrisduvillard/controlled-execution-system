@@ -28,6 +28,7 @@ from ces.cli import (
     status_cmd,
     triage_cmd,
     vault_cmd,
+    why_cmd,
 )
 from ces.cli._output import set_json_mode
 
@@ -86,6 +87,9 @@ app.command(name="complete", help="Reconcile externally completed builder work w
 )
 app.command(name="explain", help="Explain the latest builder brief and current CES state in plain language.")(
     run_cmd.explain_task
+)
+app.command(name="why", help="Explain why the latest builder run is blocked and show the next command.")(
+    why_cmd.explain_blocker
 )
 app.command(name="run", help="Legacy alias for the guided local-first build flow.")(run_cmd.run_task)
 

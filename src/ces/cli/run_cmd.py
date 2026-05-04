@@ -337,6 +337,15 @@ def _build_completion_summary(
     if auto_blockers:
         lines.append("Blocking reasons:")
         lines.extend(f"- {item}" for item in auto_blockers)
+        lines.append("Next: ces why")
+        if any("evidence" in item.lower() or "verification" in item.lower() for item in auto_blockers):
+            lines.append("Next: ces recover --dry-run")
+    elif decision != "approve":
+        lines.append("Next: ces why")
+    elif merge_allowed is False:
+        lines.append("Next: ces review --full")
+    else:
+        lines.append("Next: ces report builder")
     if prl_draft_path:
         lines.append(f"PRL draft: {prl_draft_path}")
     return "\n".join(lines)
@@ -1037,6 +1046,11 @@ async def run_task(
         None,
         help="Task description to execute",
     ),
+    gsd: str | None = typer.Option(
+        None,
+        "--gsd",
+        help="0-to-100 greenfield request. Alias for a greenfield builder run with actionable final UX.",
+    ),
     runtime: str = typer.Option(
         "auto",
         "--runtime",
@@ -1129,6 +1143,11 @@ async def run_task(
         if from_spec is not None:
             await _preview_from_spec(from_spec, story_id=story)
             return
+        if gsd and description:
+            raise typer.BadParameter("Choose either a positional task description or --gsd, not both.")
+        if gsd:
+            description = gsd
+            greenfield = True
         requested_project_root = project_root
         project_root, project_config, bootstrapped = _ensure_builder_project(requested_project_root)
         reject_server_mode(project_config)

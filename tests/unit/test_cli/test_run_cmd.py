@@ -2286,3 +2286,81 @@ def test_completion_blockers_include_verification_finding_messages() -> None:
     assert _completion_verification_blockers(result) == [
         "completion evidence failed verification: Acceptance criterion has no evidence: 'delete command works'"
     ]
+
+
+def test_completion_summary_includes_actionable_next_command_for_blocked_build() -> None:
+    from ces.cli._builder_flow import BuilderBriefDraft
+    from ces.cli.run_cmd import _build_completion_summary
+
+    summary = _build_completion_summary(
+        BuilderBriefDraft(
+            request="Build PromptVault",
+            project_mode="greenfield",
+            constraints=[],
+            acceptance_criteria=["CLI delete command works"],
+            must_not_break=[],
+            open_questions={},
+        ),
+        runtime_name="codex",
+        decision="reject",
+        merge_allowed=False,
+        triage_color="red",
+        governance=True,
+        manifest_id="M-pv",
+        auto_blockers=["completion evidence failed verification: Acceptance criterion has no evidence"],
+    )
+
+    assert "Blocking reasons:" in summary
+    assert "Acceptance criterion has no evidence" in summary
+    assert "Next: ces why" in summary
+    assert "Next: ces recover --dry-run" in summary
+
+
+def test_build_gsd_conflicts_with_positional_description(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    ces_dir = tmp_path / ".ces"
+    ces_dir.mkdir()
+    (ces_dir / "config.yaml").write_text("project_id: local-proj\npreferred_runtime: codex\n")
+
+    result = runner.invoke(_get_app(), ["build", "Build A", "--gsd", "Build B", "--yes"])
+
+    assert result.exit_code != 0
+    assert "Choose either a positional task description or --gsd" in result.stdout
+
+
+def test_build_gsd_sets_description_and_greenfield_defaults(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    ces_dir = tmp_path / ".ces"
+    ces_dir.mkdir()
+    (ces_dir / "config.yaml").write_text("project_id: local-proj\npreferred_runtime: codex\n")
+
+    mock_services = {
+        "settings": MagicMock(default_runtime="codex"),
+        "manifest_manager": AsyncMock(),
+        "runtime_registry": MagicMock(resolve_runtime=MagicMock(side_effect=RuntimeError("should not run"))),
+        "agent_runner": AsyncMock(),
+        "local_store": MagicMock(),
+        "evidence_synthesizer": MagicMock(),
+        "audit_ledger": AsyncMock(),
+        "sensor_orchestrator": MagicMock(run_all=AsyncMock(return_value=[])),
+        "legacy_behavior_service": AsyncMock(),
+    }
+
+    with (
+        _patch_services(mock_services),
+        patch("ces.cli.run_cmd.BuilderFlowOrchestrator.collect_brief") as collect_brief,
+    ):
+        collect_brief.return_value = SimpleNamespace(
+            request="Build PromptVault",
+            project_mode="greenfield",
+            acceptance_criteria=[],
+            source_of_truth=None,
+            critical_flows=[],
+        )
+        result = runner.invoke(_get_app(), ["build", "--gsd", "Build PromptVault", "--yes"])
+
+    assert result.exit_code != 0
+    call = collect_brief.call_args.kwargs
+    assert call["description"] == "Build PromptVault"
+    assert call["force_greenfield"] is True
+    assert call["force_brownfield"] is False
