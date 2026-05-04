@@ -61,3 +61,24 @@ def test_infers_uv_cli_smoke_command_when_lockfile_exists(tmp_path: Path) -> Non
     commands = infer_verification_commands(tmp_path, "python-cli")
 
     assert commands[-1].command == "uv run promptvault --help"
+
+
+def test_infers_expected_failure_commands_from_explicit_negative_acceptance(tmp_path: Path) -> None:
+    from ces.verification.command_inference import infer_verification_commands
+
+    (tmp_path / "pyproject.toml").write_text(
+        "[project]\nname='releasepulse'\n[project.scripts]\nreleasepulse='releasepulse.cli:app'\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "uv.lock").write_text("", encoding="utf-8")
+
+    commands = infer_verification_commands(
+        tmp_path,
+        "python-cli",
+        acceptance_criteria=("`uv run releasepulse check missing.md` exits non-zero with a helpful message",),
+    )
+
+    negative_commands = [command for command in commands if command.kind == "negative-smoke"]
+    assert len(negative_commands) == 1
+    assert negative_commands[0].command == "uv run releasepulse check missing.md"
+    assert negative_commands[0].expected_exit_codes == (1,)

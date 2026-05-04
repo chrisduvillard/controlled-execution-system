@@ -20,6 +20,7 @@ class VerificationCommandResult:
     exit_code: int
     stdout: str
     stderr: str
+    expected_exit_codes: tuple[int, ...]
     passed: bool
 
 
@@ -55,6 +56,7 @@ def run_verification_commands(
             exit_code = 124 if isinstance(exc, subprocess.TimeoutExpired) else 127
             stdout = getattr(exc, "stdout", "") or ""
             stderr = str(exc)
+        expected_exit_codes = tuple(command.expected_exit_codes or (0,))
         results.append(
             VerificationCommandResult(
                 id=command.id,
@@ -64,7 +66,8 @@ def run_verification_commands(
                 exit_code=exit_code,
                 stdout=stdout,
                 stderr=stderr,
-                passed=exit_code == 0,
+                expected_exit_codes=expected_exit_codes,
+                passed=exit_code in expected_exit_codes,
             )
         )
     passed = bool(results) and all(result.passed or not result.required for result in results)

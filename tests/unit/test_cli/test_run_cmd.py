@@ -2289,6 +2289,34 @@ def test_completion_blockers_include_verification_finding_messages() -> None:
     ]
 
 
+def test_completion_contract_pass_supersedes_legacy_evidence_artifact_warnings() -> None:
+    """ReleasePulse RP-CES-002: independent verification is authoritative after runtime success."""
+    from ces.cli.run_cmd import _completion_verification_blockers
+    from ces.harness.models.completion_claim import (
+        VerificationFinding,
+        VerificationFindingKind,
+        VerificationResult,
+    )
+    from ces.verification.runner import VerificationRunResult
+
+    legacy_result = VerificationResult(
+        passed=False,
+        findings=(
+            VerificationFinding(
+                kind=VerificationFindingKind.CRITERION_UNADDRESSED,
+                severity="critical",
+                message="Acceptance criterion has no evidence: 'missing-file path exits nonzero'",
+                hint="Add CriterionEvidence",
+            ),
+        ),
+        sensor_results=(),
+        timestamp=datetime.now(timezone.utc),
+    )
+    independent = VerificationRunResult(passed=True, commands=())
+
+    assert _completion_verification_blockers(legacy_result, independent_verification=independent) == []
+
+
 def test_completion_summary_includes_actionable_next_command_for_blocked_build() -> None:
     from ces.cli._builder_flow import BuilderBriefDraft
     from ces.cli.run_cmd import _build_completion_summary

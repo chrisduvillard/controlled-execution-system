@@ -22,6 +22,7 @@ class VerificationCommand:
     required: bool = True
     cwd: str = "."
     timeout_seconds: int = 120
+    expected_exit_codes: tuple[int, ...] = (0,)
 
 
 @dataclass(frozen=True)
@@ -54,6 +55,7 @@ class CompletionContract:
                     required=bool(item.get("required", True)),
                     cwd=str(item.get("cwd", ".")),
                     timeout_seconds=int(item.get("timeout_seconds", 120)),
+                    expected_exit_codes=_expected_exit_codes(item),
                 )
                 for item in payload.get("inferred_commands", [])
             ),
@@ -75,3 +77,14 @@ def criteria_from_texts(texts: list[str] | tuple[str, ...]) -> tuple[AcceptanceC
         for index, text in enumerate(texts, start=1)
         if text.strip()
     )
+
+
+def _expected_exit_codes(item: dict[str, Any]) -> tuple[int, ...]:
+    if "expected_exit_codes" in item:
+        value = item.get("expected_exit_codes")
+        if isinstance(value, list | tuple):
+            codes = tuple(int(code) for code in value)
+            return codes or (0,)
+    if "expected_exit_code" in item:
+        return (int(item["expected_exit_code"]),)
+    return (0,)

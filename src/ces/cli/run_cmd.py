@@ -278,8 +278,14 @@ def _write_completion_contract_for_build(
     )
 
 
-def _completion_verification_blockers(completion_verification: Any) -> list[str]:
+def _completion_verification_blockers(
+    completion_verification: Any,
+    *,
+    independent_verification: Any | None = None,
+) -> list[str]:
     """Render completion-verification failures as actionable auto-blockers."""
+    if independent_verification is not None and bool(getattr(independent_verification, "passed", False)):
+        return []
     if completion_verification is None or bool(getattr(completion_verification, "passed", False)):
         return []
     findings = getattr(completion_verification, "findings", ()) or ()
@@ -940,7 +946,12 @@ async def _run_brief_flow(
     await manager.save_manifest(manifest)
 
     auto_blockers: list[str] = []
-    auto_blockers.extend(_completion_verification_blockers(completion_verification))
+    auto_blockers.extend(
+        _completion_verification_blockers(
+            completion_verification,
+            independent_verification=independent_verification,
+        )
+    )
     if independent_verification is not None and not independent_verification.passed:
         auto_blockers.append("independent verification failed; run `ces verify --json` for command details")
     if workspace_scope_violations:

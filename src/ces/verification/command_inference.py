@@ -3,18 +3,34 @@
 from __future__ import annotations
 
 import json
+import re
 import tomllib
 from pathlib import Path
 from typing import Any
 
 from ces.verification.completion_contract import VerificationCommand
 
+NEGATIVE_EXIT_MARKERS = (
+    "nonzero",
+    "non-zero",
+    "non zero",
+    "exit 1",
+    "exits 1",
+    "exit code 1",
+    "fails with",
+    "should fail",
+)
 
-def infer_verification_commands(project_root: Path, project_type: str) -> tuple[VerificationCommand, ...]:
+
+def infer_verification_commands(
+    project_root: Path,
+    project_type: str,
+    acceptance_criteria: tuple[str, ...] | list[str] = (),
+) -> tuple[VerificationCommand, ...]:
     if project_type.startswith("python"):
-        return _python_commands(project_root, project_type)
+        return (*_python_commands(project_root, project_type), *_criterion_commands(acceptance_criteria, project_root))
     if project_type in {"node-app", "vite-react-app"}:
-        return _node_commands(project_root)
+        return (*_node_commands(project_root), *_criterion_commands(acceptance_criteria, project_root))
     return ()
 
 
@@ -88,6 +104,42 @@ def _first_project_script_module(project_root: Path) -> str | None:
 
 def _command_id(commands: list[VerificationCommand]) -> str:
     return f"VC-{len(commands) + 1:03d}"
+
+
+def _criterion_commands(criteria: tuple[str, ...] | list[str], project_root: Path) -> tuple[VerificationCommand, ...]:
+    commands: list[VerificationCommand] = []
+    prefix = "uv run " if (project_root / "uv.lock").is_file() else ""
+    for criterion in criteria:
+        text = str(criterion).strip()
+        if not _expects_failure(text):
+            continue
+        command = _extract_backticked_command(text)
+        if command is None:
+            continue
+        if prefix and _first_project_script(project_root) and not command.startswith("uv run "):
+            command = f"{prefix}{command}"
+        commands.append(
+            VerificationCommand(
+                id=f"VC-criterion-negative-{len(commands) + 1:03d}",
+                kind="negative-smoke",
+                command=command,
+                expected_exit_codes=(1,),
+            )
+        )
+    return tuple(commands)
+
+
+def _expects_failure(text: str) -> bool:
+    normalized = text.casefold()
+    return any(marker in normalized for marker in NEGATIVE_EXIT_MARKERS)
+
+
+def _extract_backticked_command(text: str) -> str | None:
+    match = re.search(r"`([^`]+)`", text)
+    if match is None:
+        return None
+    command = match.group(1).strip()
+    return command or None
 
 
 def _read_toml(path: Path) -> dict[str, Any]:
