@@ -13,6 +13,7 @@ from ces.cli._context import find_project_root
 from ces.cli._errors import handle_error
 from ces.cli._factory import get_services
 from ces.cli._output import console
+from ces.shared.enums import WorkflowState
 
 
 def _manifest_id_from_session(session: Any, explicit_manifest_id: str | None) -> str:
@@ -83,6 +84,12 @@ async def complete_builder_session(
             ):
                 raise typer.Abort
             local_store.save_approval(resolved_manifest_id, decision="approve", rationale=rationale)
+            manifest_manager = services.get("manifest_manager")
+            if manifest_manager is not None and hasattr(manifest_manager, "get_manifest"):
+                manifest = await manifest_manager.get_manifest(resolved_manifest_id)
+                if manifest is not None:
+                    updated_manifest = manifest.model_copy(update={"workflow_state": WorkflowState.APPROVED})
+                    await manifest_manager.save_manifest(updated_manifest)
             audit_ledger = services.get("audit_ledger")
             if audit_ledger is not None and hasattr(audit_ledger, "record_approval"):
                 await audit_ledger.record_approval(

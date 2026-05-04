@@ -71,7 +71,12 @@ def _check_providers() -> dict[str, bool]:
     }
 
 
-def _runtime_auth_status(providers: dict[str, bool], *, verify_runtime: bool = False) -> dict[str, dict[str, object]]:
+def _runtime_auth_status(
+    providers: dict[str, bool],
+    *,
+    verify_runtime: bool = False,
+    runtime_filter: str = "all",
+) -> dict[str, dict[str, object]]:
     """Return runtime auth metadata without pretending PATH checks verify auth."""
     statuses: dict[str, dict[str, object]] = {
         "claude": {
@@ -89,6 +94,9 @@ def _runtime_auth_status(providers: dict[str, bool], *, verify_runtime: bool = F
     }
     if verify_runtime:
         for runtime, provider_key in (("claude", "claude CLI"), ("codex", "codex CLI")):
+            if runtime_filter not in {"all", runtime}:
+                statuses[runtime]["detail"] = "auth not checked; filtered by --runtime"
+                continue
             executable = shutil.which(runtime)
             if not providers.get(provider_key, False) or executable is None:
                 continue
@@ -125,9 +133,18 @@ def _probe_runtime_auth(runtime: str, executable: str, cwd: Path) -> tuple[bool,
         )
     except (OSError, subprocess.TimeoutExpired) as exc:
         return False, f"auth probe failed before runtime completed: {exc}"
-    output = "\n".join(part for part in (completed.stdout.strip(), completed.stderr.strip()) if part)
-    detail = output.splitlines()[-1][:240] if output else f"exit code {completed.returncode}"
-    return completed.returncode == 0, f"auth probe {'succeeded' if completed.returncode == 0 else 'failed'}: {detail}"
+    stdout = completed.stdout.strip()
+    stderr = completed.stderr.strip()
+    output = "\n".join(part for part in (stdout, stderr) if part)
+    detail = output.splitlines()[-1][:240] if output else "no stdout/stderr"
+    if completed.returncode == 0:
+        return True, f"auth probe succeeded: {detail}"
+    return (
+        False,
+        f"auth probe failed: runtime={runtime}; command={' '.join(command[:2])}; "
+        f"exit_code={completed.returncode}; stdout_tail={stdout[-240:] or '(empty)'}; "
+        f"stderr_tail={stderr[-240:] or '(empty)'}",
+    )
 
 
 def _check_extras() -> dict[str, bool]:
@@ -299,6 +316,11 @@ def run_doctor(
         "--verify-runtime",
         help="Run a minimal installed-runtime auth probe. May contact the runtime provider and consume a small request.",
     ),
+    runtime: str = typer.Option(
+        "all",
+        "--runtime",
+        help="Runtime auth probe target when --verify-runtime is used: all, codex, or claude.",
+    ),
     compat: bool = typer.Option(
         False,
         "--compat",
@@ -323,9 +345,12 @@ def run_doctor(
     """
     if json_output:
         set_json_mode(True)
+    runtime = runtime.lower().strip()
+    if runtime not in {"all", "codex", "claude"}:
+        raise typer.BadParameter("--runtime must be one of: all, codex, claude")
     python_ok, python_version = _check_python()
     providers = _check_providers()
-    runtime_auth = _runtime_auth_status(providers, verify_runtime=verify_runtime)
+    runtime_auth = _runtime_auth_status(providers, verify_runtime=verify_runtime, runtime_filter=runtime)
     extras = _check_extras()
     project_exists, project_path = _check_project_dir()
     runtime_safety = {
@@ -341,10 +366,15 @@ def run_doctor(
         security_checks = _check_security(project_path)
         security_ok = all(ok for ok, _detail in security_checks.values())
 
-    runtime_available = providers["claude CLI"] or providers["codex CLI"]
-    runtime_auth_ok = all(
-        bool(status["auth_ok"]) for status in runtime_auth.values() if bool(status.get("auth_checked"))
+    runtime_available = (
+        bool(providers.get(f"{runtime} CLI"))
+        if runtime in {"codex", "claude"}
+        else providers["claude CLI"] or providers["codex CLI"]
     )
+    checked_auth = [status for status in runtime_auth.values() if bool(status.get("auth_checked"))]
+    runtime_auth_ok = all(bool(status["auth_ok"]) for status in checked_auth)
+    if verify_runtime and runtime_available and not checked_auth:
+        runtime_auth_ok = False
     any_provider = any(providers.values())
 
     distinct_provider_count = 0
@@ -368,6 +398,7 @@ def run_doctor(
             "python_ok": python_ok,
             "providers": providers,
             "runtime_auth": runtime_auth,
+            "runtime_filter": runtime,
             "runtime_available": runtime_available,
             "runtime_auth_ok": runtime_auth_ok,
             "any_provider": any_provider,

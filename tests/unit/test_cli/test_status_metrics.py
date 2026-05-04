@@ -44,7 +44,8 @@ def _patch_services(mock_services: dict[str, Any]):
     """Return a patch that replaces get_services with a fake async context manager."""
 
     @asynccontextmanager
-    async def _fake_get_services():
+    async def _fake_get_services(*args: Any, **kwargs: Any):
+        del args, kwargs
         yield mock_services
 
     return patch("ces.cli.status_cmd.get_services", new=_fake_get_services)

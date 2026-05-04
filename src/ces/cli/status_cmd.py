@@ -20,7 +20,9 @@ Exports:
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
+from pathlib import Path
 from typing import Any
 
 import typer
@@ -35,6 +37,17 @@ from ces.cli._context import find_project_root, get_project_config, get_project_
 from ces.cli._errors import handle_error
 from ces.cli._factory import get_services
 from ces.cli._output import console, set_json_mode
+
+
+def _redact_actor(actor: object) -> str:
+    """Return a stable non-identifying actor label for status output."""
+    value = str(actor or "")
+    if not value:
+        return ""
+    if value in {"system", "operator", "human"} or value.startswith("actor:"):
+        return value
+    digest = hashlib.sha256(value.encode("utf-8")).hexdigest()[:10]
+    return f"actor:{digest}"
 
 
 def _load_builder_snapshot(local_store: Any) -> Any | None:
@@ -256,7 +269,7 @@ def _build_events_table(events: list[dict]) -> Table:
         table.add_row(
             str(e.get("timestamp", "")),
             e.get("event_type", ""),
-            e.get("actor", ""),
+            _redact_actor(e.get("actor", "")),
             summary,
         )
 
@@ -431,7 +444,7 @@ async def _gather_status_data(
             {
                 "timestamp": str(e.timestamp),
                 "event_type": e.event_type.value if hasattr(e.event_type, "value") else str(e.event_type),
-                "actor": e.actor,
+                "actor": _redact_actor(e.actor),
                 "summary": e.action_summary,
             }
             for e in recent_entries[:10]
@@ -526,6 +539,11 @@ async def show_status(
         "--json",
         help="Output status as JSON. Equivalent to `ces --json status`.",
     ),
+    project_root: Path | None = typer.Option(
+        None,
+        "--project-root",
+        help="CES project root to inspect; defaults to the current directory discovery.",
+    ),
 ) -> None:
     """Show project status with trust, manifests, reviews, and audit context.
 
@@ -534,14 +552,14 @@ async def show_status(
     if json_output:
         set_json_mode(True)
     try:
-        find_project_root()
-        project_id = get_project_id()
-        project_config = get_project_config()
+        resolved_project_root = find_project_root(project_root) if project_root is not None else find_project_root()
+        project_id = get_project_id(resolved_project_root)
+        project_config = get_project_config(resolved_project_root)
 
         # T-06-18: Enforce minimum interval
         interval = max(0.5, interval)
 
-        async with get_services() as services:
+        async with get_services(project_root=resolved_project_root) as services:
             data = await _gather_status_data(services, project_id=project_id, project_config=project_config)
 
             if _output_mod._json_mode:

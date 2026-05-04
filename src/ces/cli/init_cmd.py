@@ -126,7 +126,15 @@ def initialize_local_project(project_root: Path, *, name: str) -> dict[str, Any]
     return config
 
 
-_DEFAULT_GITIGNORE_ENTRIES = (".ces/", ".venv/", ".coverage", "coverage.json")
+_DEFAULT_GITIGNORE_ENTRIES = (
+    ".ces/",
+    ".venv/",
+    ".coverage",
+    "coverage.json",
+    "*.egg-info/",
+    "dist/",
+    "build/",
+)
 
 
 def _ensure_local_gitignore_entries(project_root: Path) -> tuple[str, ...]:
