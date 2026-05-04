@@ -193,8 +193,41 @@ class TestStatusView:
         out = result.stdout
         assert "Modernize billing exports" in out
         assert "completed" in out.lower()
-        assert "4 reviewed, 0 remaining" in out
+        assert "4 behaviors reviewed, 0 behaviors remaining" in out
         assert "Start a new task with `ces build`" in out
+
+    def test_status_labels_entry_level_brownfield_progress_when_item_count_is_inflated(
+        self, ces_project: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """ReleasePulse RP-CES-007: status should say one reviewed behavior, not 13 reviewed items."""
+        monkeypatch.chdir(ces_project)
+        mock_services = _make_mock_services()
+        mock_store = MagicMock()
+        mock_store.get_latest_builder_session_snapshot.return_value = SimpleNamespace(
+            request="Improve ReleasePulse brownfield CLI",
+            project_mode="brownfield",
+            stage="completed",
+            next_step="Start a new task with `ces build` when you're ready for the next request.",
+            latest_activity="CES recorded the latest review decision.",
+            brownfield=SimpleNamespace(
+                entry_ids=["OLB-a218da0878b7"],
+                reviewed_count=13,
+                remaining_count=0,
+                checkpoint={"reviewed_candidates": [{"description": f"candidate {idx}"} for idx in range(13)]},
+            ),
+        )
+        mock_services["local_store"] = mock_store
+        mock_services["legacy_behavior_service"] = AsyncMock(get_pending_behaviors=AsyncMock(return_value=[]))
+
+        with _patch_services(mock_services):
+            app = _get_app()
+            result = runner.invoke(app, ["status"])
+
+        assert result.exit_code == 0, f"stdout={result.stdout}"
+        assert "Brownfield progress: 1 behavior reviewed" in result.stdout
+        assert "13 review" in result.stdout
+        assert "items checked" in result.stdout
+        assert "13 reviewed" not in result.stdout
 
     def test_status_prefers_project_name_with_id_as_secondary_metadata(
         self, ces_project: Path, monkeypatch: pytest.MonkeyPatch

@@ -2160,7 +2160,7 @@ class TestRunCommand:
 
         assert result.exit_code == 0, f"stdout={result.stdout}"
         out = result.stdout
-        assert "Brownfield review progress: 1 reviewed, 3 remaining" in out
+        assert "Brownfield review progress: 1 review item checked, 3 review items remaining" in out
         assert "Current group: Critical Flows" in out
         assert "CES will resume this checkpoint when you run `ces continue`." in out
 

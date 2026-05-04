@@ -32,7 +32,7 @@ from rich.table import Table
 
 import ces.cli._output as _output_mod
 from ces.cli._async import run_async
-from ces.cli._builder_report import build_builder_run_report, serialize_builder_run_report
+from ces.cli._builder_report import build_builder_run_report, format_brownfield_progress, serialize_builder_run_report
 from ces.cli._context import find_project_root, get_project_config, get_project_id
 from ces.cli._errors import handle_error
 from ces.cli._factory import get_services
@@ -349,11 +349,7 @@ def _build_overview_panel(project_id: str, data: dict, project_name: str | None 
         if getattr(builder_session, "recovery_reason", None):
             lines.append(f"Recovery path: {builder_session.recovery_reason}")
     if builder_snapshot is not None and getattr(builder_snapshot, "brownfield", None) is not None:
-        lines.append(
-            "Brownfield progress: "
-            f"{builder_snapshot.brownfield.reviewed_count} reviewed, "
-            f"{builder_snapshot.brownfield.remaining_count} remaining"
-        )
+        lines.append(f"Brownfield progress: {format_brownfield_progress(builder_snapshot.brownfield)}")
     elif pending_brownfield_count:
         suffix = "decision" if pending_brownfield_count == 1 else "decisions"
         lines.append(f"Brownfield queue: {pending_brownfield_count} pending brownfield {suffix}")
