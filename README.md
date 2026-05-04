@@ -84,7 +84,7 @@ ces --help
 Install a pinned release:
 
 ```bash
-uv tool install controlled-execution-system==0.1.6
+uv tool install controlled-execution-system==0.1.7
 ```
 
 Upgrade an existing install:
@@ -298,7 +298,7 @@ uv run pytest tests/ -m integration -q
 
 Merging or pushing code to `master` runs CI, but it does not publish to PyPI.
 PyPI publishing is tag-driven: update the version, update the changelog, push
-the version-bump commit, then push a `v*` tag such as `v0.1.6`. The tag
+the version-bump commit, then push a `v*` tag such as `v0.1.7`. The tag
 triggers `.github/workflows/publish.yml`, which runs tests, builds the wheel
 and source distribution, smoke-tests the installed CLI, and publishes to PyPI
 through trusted publishing. Follow [docs/RELEASE.md](docs/RELEASE.md) for the
