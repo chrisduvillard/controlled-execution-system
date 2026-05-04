@@ -190,8 +190,60 @@ def test_builder_report_reads_verification_findings_from_manual_superseded_evide
 
     assert report is not None
     assert report.runtime_tool_allowlist_enforced is False
-    assert report.verification_findings == ("Acceptance criterion has no evidence: 'export works'",)
+    assert report.verification_findings == ()
+    assert report.superseded_verification_findings == ("Acceptance criterion has no evidence: 'export works'",)
     assert report.manual_completion_supersedes_rejected_auto_review is True
+
+
+def test_recovered_builder_report_separates_active_and_superseded_verification_findings() -> None:
+    """ReleasePulse RP-CES-004: recovered status must not expose stale blockers as active failures."""
+    from ces.cli._builder_report import build_builder_run_report, render_builder_run_report_markdown
+
+    snapshot = SimpleNamespace(
+        request="Build ReleasePulse",
+        project_mode="greenfield",
+        stage="completed",
+        next_action="start_new_session",
+        next_step="Start a new task",
+        latest_activity="CES self-recovery completed",
+        latest_artifact="approval",
+        brief=SimpleNamespace(prl_draft_path=None),
+        manifest=SimpleNamespace(manifest_id="M-rp", workflow_state="rejected"),
+        runtime_execution=SimpleNamespace(exit_code=0, reported_model="gpt-5.5"),
+        evidence={
+            "packet_id": "EP-recovery",
+            "triage_color": "green",
+            "content": {
+                "recovery": {"auto_evidence": True, "auto_complete": True},
+                "independent_verification": {"passed": True, "commands": []},
+                "superseded_evidence": {
+                    "packet_id": "EP-runtime",
+                    "content": {
+                        "verification_result": {
+                            "passed": False,
+                            "findings": [{"message": "missing artifact: coverage.json"}],
+                        }
+                    },
+                },
+            },
+        },
+        approval=SimpleNamespace(decision="approve"),
+        session=SimpleNamespace(session_id="BS-rp"),
+        brownfield=None,
+    )
+
+    report = build_builder_run_report(snapshot)
+
+    assert report is not None
+    assert report.latest_outcome == "approved"
+    assert report.workflow_state == "approved"
+    assert report.verification_findings == ()
+    assert report.superseded_verification_findings == ("missing artifact: coverage.json",)
+    assert report.manual_completion_supersedes_rejected_auto_review is True
+    markdown = render_builder_run_report_markdown(report)
+    assert "## Verification Findings" not in markdown
+    assert "## Superseded Verification Findings" in markdown
+    assert "missing artifact: coverage.json" in markdown
 
 
 def test_builder_report_surfaces_completion_contract_and_independent_verification() -> None:

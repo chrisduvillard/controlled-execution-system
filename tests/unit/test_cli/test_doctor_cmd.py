@@ -100,6 +100,64 @@ class TestCesDoctor:
         assert payload["runtime_auth"]["codex"]["auth_checked"] is False
         assert payload["runtime_auth"]["codex"]["auth_ok"] is None
 
+    def test_doctor_project_root_json_checks_target_project_from_orchestrator_cwd(
+        self, tmp_path: Path, monkeypatch: object
+    ) -> None:
+        """ReleasePulse RP-CES-001: doctor supports --project-root like adjacent commands."""
+        import json
+        import shutil
+
+        orchestrator = tmp_path / "orchestrator"
+        target = tmp_path / "target-project"
+        orchestrator.mkdir()
+        (target / ".ces").mkdir(parents=True)
+        (target / ".ces" / "config.yaml").write_text("project_id: releasepulse\n", encoding="utf-8")
+        (target / "pyproject.toml").write_text("[project]\nname = 'releasepulse'\n", encoding="utf-8")
+        (target / "uv.lock").write_text("version = 1\n", encoding="utf-8")
+        monkeypatch.chdir(orchestrator)  # type: ignore[attr-defined]
+        monkeypatch.setattr(shutil, "which", lambda name: "/usr/bin/codex" if name == "codex" else None)  # type: ignore[attr-defined]
+
+        app = _get_app()
+        result = runner.invoke(app, ["doctor", "--project-root", str(target), "--json"])
+
+        assert result.exit_code == 0, result.stdout
+        payload = json.loads(result.stdout)
+        assert payload["project_root"] == str(target.resolve())
+        assert payload["project_dir"] == {"exists": True, "path": str(target.resolve() / ".ces")}
+        assert payload["dependency_freshness"]["dependency lockfile"]["ok"] is True
+
+    def test_doctor_project_root_verify_runtime_probe_uses_target_cwd(
+        self, tmp_path: Path, monkeypatch: object
+    ) -> None:
+        """ReleasePulse RP-CES-001: --verify-runtime probes from the explicit project root."""
+        import json
+        import shutil
+
+        target = tmp_path / "target-project"
+        (target / ".ces").mkdir(parents=True)
+        (target / ".ces" / "config.yaml").write_text("project_id: releasepulse\n", encoding="utf-8")
+        monkeypatch.chdir(tmp_path)  # type: ignore[attr-defined]
+        monkeypatch.setattr(shutil, "which", lambda name: "/usr/bin/codex" if name == "codex" else None)  # type: ignore[attr-defined]
+
+        seen_cwd: list[Path] = []
+
+        def fake_probe(runtime: str, executable: str, cwd: Path) -> tuple[bool, str]:
+            del runtime, executable
+            seen_cwd.append(cwd)
+            return True, f"cwd={cwd}"
+
+        monkeypatch.setattr("ces.cli.doctor_cmd._probe_runtime_auth", fake_probe)
+        app = _get_app()
+        result = runner.invoke(
+            app,
+            ["doctor", "--project-root", str(target), "--verify-runtime", "--runtime", "codex", "--json"],
+        )
+
+        assert result.exit_code == 0, result.stdout
+        payload = json.loads(result.stdout)
+        assert seen_cwd == [target.resolve()]
+        assert payload["runtime_auth"]["codex"]["detail"] == f"cwd={target.resolve()}"
+
     def test_doctor_verify_runtime_option_marks_auth_checked(self, tmp_path: Path, monkeypatch: object) -> None:
         """RunLens dogfood: init guidance command `ces doctor --verify-runtime` must exist."""
         import json
