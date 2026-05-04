@@ -392,4 +392,3 @@ class TestStatusWatch:
         data = json.loads(result.stdout)
         assert data["builder_run"]["workflow_state"] == "approved"
         assert data["builder_run"]["review_state"] == "approved"
-

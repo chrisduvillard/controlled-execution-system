@@ -168,4 +168,3 @@ def test_complete_updates_manifest_workflow_state_to_approved(tmp_path: Path, mo
     kwargs = manifest.model_copy.call_args.kwargs["update"]
     assert str(kwargs["workflow_state"].value) == "approved"
     manifest_manager.save_manifest.assert_awaited_once_with(approved_manifest)
-

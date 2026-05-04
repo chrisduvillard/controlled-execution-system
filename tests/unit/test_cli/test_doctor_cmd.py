@@ -411,4 +411,3 @@ class TestCesDoctorSecurity:
         assert "runtime=codex" in detail
         assert "exit_code=42" in detail
         assert "codex login" in detail
-

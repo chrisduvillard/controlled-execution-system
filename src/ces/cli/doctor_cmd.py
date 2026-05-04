@@ -367,7 +367,9 @@ def run_doctor(
         security_ok = all(ok for ok, _detail in security_checks.values())
 
     runtime_available = (
-        bool(providers.get(f"{runtime} CLI")) if runtime in {"codex", "claude"} else providers["claude CLI"] or providers["codex CLI"]
+        bool(providers.get(f"{runtime} CLI"))
+        if runtime in {"codex", "claude"}
+        else providers["claude CLI"] or providers["codex CLI"]
     )
     checked_auth = [status for status in runtime_auth.values() if bool(status.get("auth_checked"))]
     runtime_auth_ok = all(bool(status["auth_ok"]) for status in checked_auth)

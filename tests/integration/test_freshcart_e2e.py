@@ -438,7 +438,8 @@ class TestJsonModeDataCommands:
         services, _ = _build_e2e_services()
 
         @asynccontextmanager
-        async def _fake_services():
+        async def _fake_services(*args: Any, **kwargs: Any):
+            del args, kwargs
             yield services
 
         old_cwd = os.getcwd()
@@ -459,7 +460,8 @@ class TestJsonModeDataCommands:
         services, _ = _build_e2e_services()
 
         @asynccontextmanager
-        async def _fake_services():
+        async def _fake_services(*args: Any, **kwargs: Any):
+            del args, kwargs
             yield services
 
         old_cwd = os.getcwd()
