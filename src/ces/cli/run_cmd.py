@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -100,6 +101,69 @@ def _with_workflow_state(manifest: object, workflow_state: object) -> object:
         return manifest.model_copy(update={"workflow_state": workflow_state})
     try:
         setattr(manifest, "workflow_state", workflow_state)
+    except (AttributeError, TypeError):
+        pass
+    return manifest
+
+
+_PATHISH_RE = re.compile(
+    r"(?<![\w./-])([A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)+|[A-Za-z0-9_.-]+\.[A-Za-z0-9]{1,8})(?![\w./-])"
+)
+_BACKTICK_RE = re.compile(r"`([^`]+)`")
+
+
+def _candidate_scope_paths(text: str) -> list[str]:
+    """Extract conservative repo-relative paths from operator brownfield text."""
+    if not text:
+        return []
+    candidates: list[str] = []
+    fragments = [match.group(1) for match in _BACKTICK_RE.finditer(text)]
+    fragments.extend(part.strip() for part in re.split(r"[\n,;]", text) if part.strip())
+    fragments.extend(match.group(1) for match in _PATHISH_RE.finditer(text))
+    for raw in fragments:
+        candidate = raw.strip().strip("'\"()[]{}.,:;")
+        if not candidate or candidate.startswith(("http://", "https://", "/", "~")):
+            continue
+        if " " in candidate and not _PATHISH_RE.fullmatch(candidate):
+            continue
+        if candidate in {".", ".."} or ".." in Path(candidate).parts:
+            continue
+        if candidate not in candidates:
+            candidates.append(candidate)
+    return candidates
+
+
+def _manifest_with_effective_brownfield_scope(
+    manifest: object,
+    brief: BuilderBriefDraft,
+    delta: WorkspaceDelta | None = None,
+) -> object:
+    """Populate brownfield manifest scope from operator truth paths and runtime edits.
+
+    Brownfield governance should fail closed before runtime when no scope clues are
+    available, but ReleasePulse showed that explicit source-of-truth paths and
+    observed runtime edits must be reflected before completion evidence is
+    validated. Otherwise users see unhelpful `allowed=()` false governance
+    failures after a successful implementation.
+    """
+    if getattr(brief, "project_mode", "") != "brownfield":
+        return manifest
+    existing = tuple(getattr(manifest, "affected_files", ()) or ())
+    paths = list(existing)
+    for value in [getattr(brief, "source_of_truth", "") or "", *(getattr(brief, "critical_flows", None) or [])]:
+        for candidate in _candidate_scope_paths(str(value)):
+            if candidate not in paths:
+                paths.append(candidate)
+    if delta is not None:
+        for changed in delta.changed_files:
+            if changed not in paths:
+                paths.append(changed)
+    if tuple(paths) == existing:
+        return manifest
+    if isinstance(manifest, TaskManifest):
+        return manifest.model_copy(update={"affected_files": tuple(paths)})
+    try:
+        setattr(manifest, "affected_files", tuple(paths))
     except (AttributeError, TypeError):
         pass
     return manifest
@@ -218,6 +282,14 @@ def _prompt_pack(
             lines.append(f"Source Of Truth: {brief.source_of_truth}")
         if brief.critical_flows:
             lines.extend(["Critical Flows:", *[f"- {item}" for item in brief.critical_flows]])
+        if manifest is not None and getattr(manifest, "manifest_id", None):
+            lines.extend(
+                [
+                    "",
+                    f"Completion claim identity: task_id must be the active manifest ID: {manifest.manifest_id}",
+                    "Do not use OLB-* legacy behavior IDs as task_id; list those only as related legacy context.",
+                ]
+            )
         if promoted_prl_statements:
             lines.extend(["", "Promoted Legacy Requirements:", *[f"- {item}" for item in promoted_prl_statements]])
     criteria = brief.acceptance_criteria
@@ -658,6 +730,7 @@ async def _run_brief_flow(
             brief_id,
             manifest_id=manifest.manifest_id,
         )
+    manifest = _manifest_with_effective_brownfield_scope(manifest, brief_draft)
     manifest = await _ensure_signed_manifest(manager, manifest)
     contract_path = _write_completion_contract_for_build(
         project_root=project_root,
@@ -757,6 +830,11 @@ async def _run_brief_flow(
     )
     workspace_delta = workspace_before.diff(WorkspaceSnapshot.capture(project_root))
     manifest_for_verification = _manifest_with_effective_greenfield_scope(manifest, brief_draft, workspace_delta)
+    manifest_for_verification = _manifest_with_effective_brownfield_scope(
+        manifest_for_verification,
+        brief_draft,
+        workspace_delta,
+    )
     execution = _normalize_runtime_execution(run_result)
     runtime_safety = safety_profile_for_runtime(
         execution.get("runtime_name", getattr(runtime_adapter, "runtime_name", "unknown")),
@@ -797,7 +875,7 @@ async def _run_brief_flow(
     # so sensors have real files to analyze instead of skipping silently.
     # Prioritise src/ files so sensors always see production code even when
     # the 500-file cap is reached before traversal finishes the tree.
-    sensor_affected_files = list(manifest.affected_files or [])
+    sensor_affected_files = list(getattr(manifest_for_verification, "affected_files", ()) or [])
     if not sensor_affected_files:
         _discovered = list(project_root.rglob("*.py"))
         _all_files = [
@@ -958,7 +1036,11 @@ async def _run_brief_flow(
         auto_blockers.append("workspace changes exceeded manifest scope")
     if sensor_policy.blocking:
         auto_blockers.append("risk-aware sensor policy found blocking issues")
-    if yes and brief_draft.project_mode == "brownfield" and not getattr(manifest, "affected_files", ()):
+    if (
+        yes
+        and brief_draft.project_mode == "brownfield"
+        and not getattr(manifest_for_verification, "affected_files", ())
+    ):
         auto_blockers.append("brownfield scope unknown: manifest affected_files is empty")
     if yes and runtime_side_effects_block_auto_approval(
         runtime_safety,

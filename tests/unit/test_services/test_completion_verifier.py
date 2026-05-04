@@ -127,6 +127,21 @@ class TestVerifierSchemaChecks:
         assert any(f.kind == VerificationFindingKind.SCHEMA_VIOLATION for f in result.findings)
 
     @pytest.mark.asyncio
+    async def test_olb_task_id_mismatch_explains_manifest_identity_mixup(self, tmp_path: Path) -> None:
+        verifier = CompletionVerifier(sensors={})
+        manifest = _make_manifest(manifest_id="M-active")
+        claim = _make_claim(task_id="OLB-a218da0878b7")
+
+        result = await verifier.verify(manifest, claim, tmp_path)
+
+        assert result.passed is False
+        finding = next(f for f in result.findings if f.kind == VerificationFindingKind.SCHEMA_VIOLATION)
+        assert "OLB-a218da0878b7" in finding.message
+        assert "M-active" in finding.message
+        assert "legacy behavior" in finding.hint
+        assert "task_id='M-active'" in finding.hint
+
+    @pytest.mark.asyncio
     async def test_unaddressed_criterion_fails(self, tmp_path: Path) -> None:
         verifier = CompletionVerifier(sensors={})
         manifest = _make_manifest(
