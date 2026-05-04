@@ -27,6 +27,11 @@ async def export_builder_report(
         "--output-dir",
         help="Directory where the builder run report artifacts should be written.",
     ),
+    project_root: Path | None = typer.Option(
+        None,
+        "--project-root",
+        help="CES project root to report on; defaults to cwd/.ces discovery.",
+    ),
     json_output: bool = typer.Option(
         False,
         "--json",
@@ -37,10 +42,10 @@ async def export_builder_report(
     if json_output:
         set_json_mode(True)
     try:
-        project_root = find_project_root()
-        resolved_output_dir = output_dir if output_dir.is_absolute() else project_root / output_dir
+        resolved_project_root = find_project_root(project_root) if project_root is not None else find_project_root()
+        resolved_output_dir = output_dir if output_dir.is_absolute() else resolved_project_root / output_dir
 
-        async with get_services() as services:
+        async with get_services(project_root=resolved_project_root) as services:
             local_store = services.get("local_store")
             get_snapshot = getattr(local_store, "get_latest_builder_session_snapshot", None)
             if not callable(get_snapshot):

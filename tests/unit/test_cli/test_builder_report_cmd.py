@@ -22,7 +22,8 @@ def _get_app():
 
 def _patch_services(mock_services: dict[str, Any]):
     @asynccontextmanager
-    async def _fake_get_services():
+    async def _fake_get_services(*args: Any, **kwargs: Any):
+        mock_services.setdefault("_get_services_calls", []).append({"args": args, "kwargs": kwargs})
         yield mock_services
 
     return patch("ces.cli.report_cmd.get_services", new=_fake_get_services)
@@ -109,6 +110,43 @@ def test_report_builder_accepts_command_local_json_flag(tmp_path: Path, monkeypa
     assert result.exit_code == 0, f"stdout={result.stdout}"
     payload = json.loads(result.stdout)
     assert payload["builder_run"]["request"] == "Modernize billing exports"
+
+
+def test_report_builder_accepts_project_root(tmp_path: Path) -> None:
+    project = tmp_path / "target"
+    project.mkdir()
+    ces_dir = project / ".ces"
+    ces_dir.mkdir()
+    (ces_dir / "config.yaml").write_text("project_id: local-proj\npreferred_runtime: codex\n", encoding="utf-8")
+
+    mock_store = MagicMock()
+    mock_store.get_latest_builder_session_snapshot.return_value = SimpleNamespace(
+        request="Build MiniLog",
+        project_mode="greenfield",
+        stage="completed",
+        next_action="start_new_session",
+        next_step="Start a new task",
+        latest_activity="CES recorded approval",
+        latest_artifact="approval",
+        brief_only_fallback=False,
+        brief=SimpleNamespace(prl_draft_path=None),
+        manifest=SimpleNamespace(manifest_id="M-123", workflow_state="merged"),
+        runtime_execution=SimpleNamespace(exit_code=0, reported_model="gpt-5.5"),
+        evidence={"packet_id": "EP-123", "triage_color": "green"},
+        approval=SimpleNamespace(decision="approve"),
+        session=SimpleNamespace(session_id="BS-123"),
+        brownfield=None,
+    )
+
+    services = {"local_store": mock_store}
+    with _patch_services(services):
+        result = runner.invoke(_get_app(), ["report", "builder", "--project-root", str(project), "--json"])
+
+    assert result.exit_code == 0, result.stdout
+    payload = json.loads(result.stdout)
+    assert payload["builder_run"]["request"] == "Build MiniLog"
+    assert (project / ".ces" / "exports" / "builder-run-report-bs-123.md").is_file()
+    assert services["_get_services_calls"][0]["kwargs"] == {"project_root": project.resolve()}
 
 
 def test_builder_report_exposes_entry_level_brownfield_counts_when_item_count_is_inflated() -> None:

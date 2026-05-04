@@ -44,14 +44,36 @@ def run_auto_evidence_recovery(
     Existing runtime/evidence metadata is copied under ``superseded_evidence`` in
     the recovered evidence packet instead of being overwritten.
     """
-    plan = build_recovery_plan(project_root=project_root, local_store=local_store)
+    plan = build_recovery_plan(project_root=project_root, local_store=local_store, mutate_stale=not dry_run)
     if not plan.session_id:
         raise RuntimeError("No builder session found. Start with `ces build`.")
+    if not plan.blocked or not plan.can_run_auto_evidence:
+        return RecoveryExecutionResult(
+            verification=VerificationRunResult(passed=False, commands=()),
+            completed=False,
+            dry_run=dry_run,
+            new_evidence_packet_id=None,
+            manifest_id=plan.manifest_id,
+            session_id=plan.session_id,
+            next_action="run_continue" if "ces continue" in plan.next_commands else "status",
+            message=plan.explanation,
+        )
     if not plan.contract_path:
         raise RuntimeError("No completion contract found. Run `ces verify --json` first.")
 
     contract = CompletionContract.read(Path(plan.contract_path))
     contract = _refresh_contract_if_unverifiable(project_root, contract)
+    if not contract.inferred_commands:
+        return RecoveryExecutionResult(
+            verification=VerificationRunResult(passed=False, commands=()),
+            completed=False,
+            dry_run=dry_run,
+            new_evidence_packet_id=None,
+            manifest_id=plan.manifest_id,
+            session_id=plan.session_id,
+            next_action="run_continue",
+            message="No verification commands are available yet; run `ces continue` to retry the builder session.",
+        )
     verification = run_verification_commands(project_root, contract.inferred_commands)
     if dry_run:
         return RecoveryExecutionResult(
