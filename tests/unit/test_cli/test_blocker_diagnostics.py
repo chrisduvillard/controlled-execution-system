@@ -29,6 +29,8 @@ def _report(**overrides: object) -> BuilderRunReport:
         "prl_draft_path": None,
         "reported_model": "gpt-test",
         "verification_findings": (),
+        "independent_verification_passed": None,
+        "completion_contract_path": None,
         "manual_completion_supersedes_rejected_auto_review": False,
         "brownfield_reviewed_count": 0,
         "brownfield_remaining_count": 0,

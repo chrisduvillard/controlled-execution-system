@@ -28,6 +28,7 @@ from ces.cli import (
     status_cmd,
     triage_cmd,
     vault_cmd,
+    verify_cmd,
     why_cmd,
 )
 from ces.cli._output import set_json_mode
@@ -96,6 +97,9 @@ app.command(name="run", help="Legacy alias for the guided local-first build flow
 app.command(name="classify", help="Classify a task manifest.")(classify_cmd.classify_task)
 app.command(name="execute", help="Execute an agent task locally within manifest boundaries.")(execute_cmd.execute_task)
 app.command(name="review", help="Run review pipeline and display evidence summary.")(review_cmd.review_task)
+app.command(name="verify", help="Run independent local verification for the current project.")(
+    verify_cmd.verify_project
+)
 app.command(name="triage", help="Pre-screen evidence with triage color.")(triage_cmd.triage_evidence)
 app.command(name="approve", help="Approve or reject evidence.")(approve_cmd.approve_evidence)
 app.command(name="gate", help="Evaluate a phase gate.")(gate_cmd.evaluate_gate)
