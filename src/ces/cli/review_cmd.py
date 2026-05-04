@@ -13,6 +13,7 @@ Exports:
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 import typer
 from rich.panel import Panel
@@ -110,6 +111,11 @@ async def review_task(
         "--full",
         help="Show complete evidence packet contents",
     ),
+    project_root: Path | None = typer.Option(
+        None,
+        "--project-root",
+        help="CES project root to inspect; defaults to the current directory discovery.",
+    ),
 ) -> None:
     """Run the review pipeline and display evidence summary.
 
@@ -117,10 +123,10 @@ async def review_task(
     Use --verbose or --full for complete evidence details.
     """
     try:
-        find_project_root()
-        project_id = get_project_id()
+        resolved_project_root = find_project_root(project_root) if project_root is not None else find_project_root()
+        project_id = get_project_id(resolved_project_root)
 
-        async with get_services() as services:
+        async with get_services(project_root=resolved_project_root) as services:
             manager = services["manifest_manager"]
             review_router = services["review_router"]
             evidence_synthesizer = services["evidence_synthesizer"]
@@ -142,6 +148,26 @@ async def review_task(
                 raise typer.BadParameter(f"Manifest not found: {resolved_manifest_id}")
 
             manifest_state = _coerce_workflow_state_value(getattr(manifest, "workflow_state", None))
+            if manifest_state == WorkflowState.REJECTED.value and builder_run is not None:
+                if _output_mod._json_mode:
+                    typer.echo(
+                        json.dumps(
+                            {
+                                "manifest_id": resolved_manifest_id,
+                                "builder_run": serialize_builder_run_report(builder_run),
+                            },
+                            indent=2,
+                        )
+                    )
+                    return
+                console.print(
+                    Panel(
+                        "\n".join(summarize_builder_run(builder_run)),
+                        title="Builder Truth",
+                        border_style="cyan",
+                    )
+                )
+                return
 
             # WorkflowEngine: honor the persisted workflow state instead of
             # force-starting review from in_flight.
@@ -204,7 +230,7 @@ async def review_task(
 
             diff_context = await DiffExtractor.extract_diff(
                 base_ref="HEAD~1",
-                working_dir=find_project_root(),
+                working_dir=resolved_project_root,
             )
 
             # Dispatch review to LLM reviewers (if executor is wired)

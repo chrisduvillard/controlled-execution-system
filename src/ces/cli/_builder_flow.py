@@ -524,8 +524,19 @@ class BuilderFlowOrchestrator:
 
 
 def _split_list(raw: str) -> list[str]:
-    normalized = raw.replace("\n", ",")
-    return [part.strip() for part in normalized.split(",") if part.strip()]
+    """Split operator-entered list text without breaking comma-rich criteria.
+
+    `ces build --acceptance ...` passes each option value through as a distinct
+    newline-delimited item before it reaches this helper. Splitting those items
+    again on commas corrupts normal acceptance criteria such as "add, list,
+    render, delete, export commands". Preserve lines as atomic items and keep
+    semicolons as the compact inline separator for prompt-mode multi-entry text.
+    """
+    normalized = raw.replace("\r\n", "\n").replace("\r", "\n")
+    parts: list[str] = []
+    for line in normalized.split("\n"):
+        parts.extend(part.strip() for part in line.split(";") if part.strip())
+    return parts
 
 
 def _as_bullets(values: list[str]) -> list[str]:

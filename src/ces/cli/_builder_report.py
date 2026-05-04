@@ -34,6 +34,8 @@ class BuilderRunReport:
     mcp_grounding_supported: bool | None
     prl_draft_path: str | None
     reported_model: str | None
+    verification_findings: tuple[str, ...]
+    manual_completion_supersedes_rejected_auto_review: bool
     brownfield_reviewed_count: int
     brownfield_remaining_count: int
 
@@ -77,7 +79,8 @@ def build_builder_run_report(snapshot: Any) -> BuilderRunReport | None:
         latest_artifact=_text(getattr(snapshot, "latest_artifact", None)),
         brief_only_fallback=bool(getattr(snapshot, "brief_only_fallback", False)),
     )
-    runtime_safety = _evidence_content(evidence).get("runtime_safety", {}) if isinstance(evidence, dict) else {}
+    runtime_safety = _runtime_safety_content(evidence if isinstance(evidence, dict) else None)
+    verification_findings = _verification_findings(evidence if isinstance(evidence, dict) else None)
     return BuilderRunReport(
         session_id=_text(getattr(session, "session_id", None)),
         request=request,
@@ -106,6 +109,10 @@ def build_builder_run_report(snapshot: Any) -> BuilderRunReport | None:
         mcp_grounding_supported=_optional_bool(runtime_safety.get("mcp_grounding_supported")),
         prl_draft_path=_text(getattr(brief, "prl_draft_path", None)),
         reported_model=_text(getattr(runtime_execution, "reported_model", None)),
+        verification_findings=verification_findings,
+        manual_completion_supersedes_rejected_auto_review=(
+            approval_decision == "approved" and bool(verification_findings)
+        ),
         brownfield_reviewed_count=int(getattr(brownfield, "reviewed_count", 0) or 0),
         brownfield_remaining_count=int(getattr(brownfield, "remaining_count", 0) or 0),
     )
@@ -157,6 +164,11 @@ def summarize_builder_run(report: BuilderRunReport) -> list[str]:
         lines.append(f"Runtime side-effect waiver accepted: {report.runtime_side_effect_waived}")
     if report.mcp_grounding_supported is not None:
         lines.append(f"MCP grounding supported: {report.mcp_grounding_supported}")
+    if report.manual_completion_supersedes_rejected_auto_review:
+        lines.append("Manual completion superseded failed auto-approval: True")
+    if report.verification_findings:
+        lines.append("Verification findings:")
+        lines.extend(f"- {finding}" for finding in report.verification_findings[:5])
     return lines
 
 
@@ -207,9 +219,13 @@ def render_builder_run_report_markdown(report: BuilderRunReport) -> str:
         f"- Runtime side-effect waiver accepted: {report.runtime_side_effect_waived}",
         f"- MCP grounding supported: {_render_optional_bool(report.mcp_grounding_supported)}",
         f"- Reported model: {report.reported_model or 'unknown'}",
+        f"- Manual completion superseded failed auto-approval: {report.manual_completion_supersedes_rejected_auto_review}",
     ]
     if report.prl_draft_path:
         lines.append(f"- PRL draft: {report.prl_draft_path}")
+    if report.verification_findings:
+        lines.extend(["", "## Verification Findings", ""])
+        lines.extend(f"- {finding}" for finding in report.verification_findings)
     if report.project_mode == "brownfield":
         lines.append(
             "- Brownfield progress: "
@@ -300,7 +316,45 @@ def _text(value: Any) -> str | None:
     return str(primitive)
 
 
-def _evidence_content(evidence: dict[str, Any]) -> dict[str, Any]:
+def _runtime_safety_content(evidence: dict[str, Any] | None) -> dict[str, Any]:
+    content = _evidence_content(evidence)
+    runtime_safety = content.get("runtime_safety")
+    if isinstance(runtime_safety, dict):
+        return runtime_safety
+    superseded = _superseded_evidence_content(content)
+    runtime_safety = superseded.get("runtime_safety")
+    return runtime_safety if isinstance(runtime_safety, dict) else {}
+
+
+def _verification_findings(evidence: dict[str, Any] | None) -> tuple[str, ...]:
+    content = _evidence_content(evidence)
+    verification = content.get("verification_result")
+    if not isinstance(verification, dict):
+        superseded = _superseded_evidence_content(content)
+        verification = superseded.get("verification_result")
+    if not isinstance(verification, dict) or verification.get("passed") is not False:
+        return ()
+    findings = verification.get("findings", ())
+    messages: list[str] = []
+    if isinstance(findings, list):
+        for finding in findings:
+            if isinstance(finding, dict):
+                message = finding.get("message")
+            else:
+                message = getattr(finding, "message", None)
+            if isinstance(message, str) and message.strip():
+                messages.append(message.strip())
+    return tuple(messages)
+
+
+def _superseded_evidence_content(content: dict[str, Any]) -> dict[str, Any]:
+    superseded = content.get("superseded_evidence")
+    return _evidence_content(superseded) if isinstance(superseded, dict) else {}
+
+
+def _evidence_content(evidence: Any) -> dict[str, Any]:
+    if not isinstance(evidence, dict):
+        return {}
     content = evidence.get("content")
     return content if isinstance(content, dict) else evidence
 

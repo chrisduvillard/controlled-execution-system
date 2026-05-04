@@ -58,7 +58,8 @@ def _make_builder_snapshot() -> tuple[MagicMock, dict[str, Any]]:
 
 def _patch_review_services(mock_services: dict[str, Any]):
     @asynccontextmanager
-    async def _fake_get_services():
+    async def _fake_get_services(*args: Any, **kwargs: Any):
+        del args, kwargs
         yield mock_services
 
     return patch("ces.cli.review_cmd.get_services", new=_fake_get_services)

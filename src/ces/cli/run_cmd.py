@@ -254,6 +254,21 @@ def _coerce_text(value: Any) -> str:
     return primitive if isinstance(primitive, str) else str(primitive)
 
 
+def _completion_verification_blockers(completion_verification: Any) -> list[str]:
+    """Render completion-verification failures as actionable auto-blockers."""
+    if completion_verification is None or bool(getattr(completion_verification, "passed", False)):
+        return []
+    findings = getattr(completion_verification, "findings", ()) or ()
+    messages: list[str] = []
+    for finding in findings:
+        message = getattr(finding, "message", "")
+        if isinstance(message, str) and message.strip():
+            messages.append(message.strip())
+    if not messages:
+        return ["completion evidence failed verification"]
+    return [f"completion evidence failed verification: {message}" for message in messages]
+
+
 def _build_request_preview(
     brief: BuilderBriefDraft,
     *,
@@ -873,8 +888,7 @@ async def _run_brief_flow(
     await manager.save_manifest(manifest)
 
     auto_blockers: list[str] = []
-    if completion_verification is not None and not completion_verification.passed:
-        auto_blockers.append("completion evidence failed verification")
+    auto_blockers.extend(_completion_verification_blockers(completion_verification))
     if workspace_scope_violations:
         auto_blockers.append("workspace changes exceeded manifest scope")
     if sensor_policy.blocking:
