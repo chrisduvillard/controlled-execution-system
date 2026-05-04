@@ -7,6 +7,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.8] - 2026-05-04
+
+Release-confidence hardening for builder-first greenfield and brownfield use.
+This release packages the CES dogfood fixes validated across ReleasePulse,
+Idea Ledger, MdLink Audit, and an installed-wheel TinyCount gauntlet.
+
+### Added
+- Installed-wheel release smoke coverage now includes a real greenfield Codex
+  build followed by product verification and brownfield scan/register handoff.
+- Brownfield scanning now detects simple Python packages that have
+  `__init__.py` plus module files even when the generated project has no
+  `pyproject.toml`, unblocking greenfield-to-brownfield handoffs for small CLIs.
+
+### Changed
+- Builder and brownfield reports now distinguish review entries from grouped
+  behavior counts so approved work does not show misleading status totals.
+- Brownfield critical-flow parsing now preserves comma-rich workflow values from
+  repeated `--critical-flow` flags instead of splitting them into fragments.
+- Recovery now refreshes stale or empty completion contracts when the actual
+  project files and tests provide enough evidence to reconcile a run.
+
+### Fixed
+- Runtime execution no longer inherits stdin, preventing Codex from blocking on
+  non-interactive `Reading additional input from stdin...` prompts.
+- Runtime hangs are bounded by `CES_RUNTIME_TIMEOUT_SECONDS` with an actionable
+  timeout failure, transcript pointer, and recovery guidance.
+- Approved green builder sessions now demote stale pre-approval diagnostics into
+  superseded findings when independent verification passes.
+- Completion verification now accepts intentional non-zero command evidence only
+  when it is tied to explicit negative/error expectations.
+- Brownfield default-scan registration works on generated simple Python CLI
+  projects without requiring manual behavior registration.
+
 ## [0.1.7] - 2026-05-04
 
 0→100 builder robustness release. This release makes CES materially easier to
