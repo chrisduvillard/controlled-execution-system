@@ -1725,6 +1725,46 @@ class TestRunCommand:
         assert "already completed" in result.stdout.lower()
         assert "ces explain" in result.stdout
 
+    def test_continue_accepts_project_root_outside_target_cwd(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        target = tmp_path / "target-project"
+        target.mkdir()
+        ces_dir = target / ".ces"
+        ces_dir.mkdir()
+        (ces_dir / "config.yaml").write_text("project_id: target-proj\npreferred_runtime: codex\n", encoding="utf-8")
+        outside = tmp_path / "outside"
+        outside.mkdir()
+        monkeypatch.chdir(outside)
+
+        mock_store = MagicMock()
+        mock_store.get_latest_builder_session.return_value = MagicMock(
+            session_id="BS-123",
+            request="Build a habit tracker",
+            project_mode="greenfield",
+            stage="completed",
+            next_action="start_new_session",
+            brief_id="BB-123",
+        )
+        mock_services = {
+            "settings": MagicMock(default_runtime="codex"),
+            "manifest_manager": AsyncMock(),
+            "runtime_registry": MagicMock(),
+            "agent_runner": AsyncMock(),
+            "local_store": mock_store,
+            "evidence_synthesizer": MagicMock(),
+            "audit_ledger": AsyncMock(),
+            "sensor_orchestrator": MagicMock(run_all=AsyncMock(return_value=[])),
+            "legacy_behavior_service": AsyncMock(),
+        }
+
+        with _patch_services(mock_services):
+            result = runner.invoke(_get_app(), ["continue", "--project-root", str(target), "--yes"])
+
+        assert result.exit_code == 0, f"stdout={result.stdout}"
+        assert "already completed" in result.stdout.lower()
+        assert mock_services["_get_services_calls"][0]["kwargs"]["project_root"] == target.resolve()
+
     def test_continue_resumes_grouped_brownfield_review_checkpoint(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
@@ -1971,6 +2011,56 @@ class TestRunCommand:
         assert "keep the work inside your technical boundaries" in out
         assert "Current stage: awaiting review" in out
         assert "Review evidence before shipping." in out
+
+    def test_explain_accepts_project_root_outside_target_cwd(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        target = tmp_path / "target-project"
+        target.mkdir()
+        ces_dir = target / ".ces"
+        ces_dir.mkdir()
+        (ces_dir / "config.yaml").write_text("project_id: target-proj\npreferred_runtime: codex\n", encoding="utf-8")
+        outside = tmp_path / "outside"
+        outside.mkdir()
+        monkeypatch.chdir(outside)
+
+        mock_store = MagicMock()
+        mock_store.get_latest_builder_session_snapshot.return_value = SimpleNamespace(
+            request="Modernize billing exports",
+            project_mode="brownfield",
+            stage="completed",
+            next_action="start_new_session",
+            next_step="Start a new task with `ces build` when you're ready for the next request.",
+            latest_activity="CES recorded the latest review decision.",
+            latest_artifact="approval",
+            brief_only_fallback=False,
+            evidence={"summary": "Evidence is ready", "challenge": "Check snapshots", "packet_id": "EP-123"},
+            manifest=SimpleNamespace(
+                manifest_id="M-123",
+                description="Modernize billing exports",
+                workflow_state="approved",
+                risk_tier="B",
+                change_class="Class 2",
+            ),
+            approval=SimpleNamespace(decision="approve", rationale="Looks good"),
+            session=SimpleNamespace(
+                stage="completed",
+                recovery_reason=None,
+                last_error=None,
+            ),
+            brownfield=SimpleNamespace(reviewed_count=3, remaining_count=0),
+        )
+        mock_services = {
+            "local_store": mock_store,
+            "legacy_behavior_service": AsyncMock(get_pending_behaviors=AsyncMock(return_value=[])),
+        }
+
+        with _patch_services(mock_services):
+            result = runner.invoke(_get_app(), ["explain", "--project-root", str(target)])
+
+        assert result.exit_code == 0, f"stdout={result.stdout}"
+        assert "Modernize billing exports" in result.stdout
+        assert mock_services["_get_services_calls"][0]["kwargs"]["project_root"] == target.resolve()
 
     def test_explain_translates_blocked_session_language(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.chdir(tmp_path)
