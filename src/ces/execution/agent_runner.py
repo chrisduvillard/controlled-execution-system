@@ -34,6 +34,7 @@ from ces.execution.providers.protocol import (
     LLMResponse,
 )
 from ces.execution.runtimes.protocol import AgentRuntimeProtocol, AgentRuntimeResult
+from ces.execution.secrets import scrub_secrets_from_text
 from ces.shared.base import CESBaseModel
 from ces.shared.enums import WorkflowState
 
@@ -86,6 +87,46 @@ class AgentRunner:
         self._provider = provider
         self._kill_switch = kill_switch
         self._custody_tracker = ChainOfCustodyTracker()
+
+    @staticmethod
+    def _scrub_runtime_result(result: AgentRuntimeResult) -> AgentRuntimeResult:
+        """Scrub secret-like values from all runtime result text fields."""
+        return result.model_copy(
+            update={
+                "runtime_name": scrub_secrets_from_text(result.runtime_name),
+                "runtime_version": scrub_secrets_from_text(result.runtime_version),
+                "reported_model": scrub_secrets_from_text(result.reported_model)
+                if result.reported_model is not None
+                else None,
+                "invocation_ref": scrub_secrets_from_text(result.invocation_ref),
+                "stdout": scrub_secrets_from_text(result.stdout),
+                "stderr": scrub_secrets_from_text(result.stderr),
+                "transcript_path": scrub_secrets_from_text(result.transcript_path)
+                if result.transcript_path is not None
+                else None,
+            }
+        )
+
+    @staticmethod
+    def _scrub_custody_entry(entry: ChainOfCustodyEntry) -> ChainOfCustodyEntry:
+        """Scrub secret-like runtime metadata before custody persistence."""
+        return entry.model_copy(
+            update={
+                "step": scrub_secrets_from_text(entry.step),
+                "agent_model": scrub_secrets_from_text(entry.agent_model),
+                "agent_role": scrub_secrets_from_text(entry.agent_role),
+                "runtime_name": scrub_secrets_from_text(entry.runtime_name) if entry.runtime_name is not None else None,
+                "runtime_version": scrub_secrets_from_text(entry.runtime_version)
+                if entry.runtime_version is not None
+                else None,
+                "reported_model": scrub_secrets_from_text(entry.reported_model)
+                if entry.reported_model is not None
+                else None,
+                "invocation_ref": scrub_secrets_from_text(entry.invocation_ref)
+                if entry.invocation_ref is not None
+                else None,
+            }
+        )
 
     def _enforce_execution_preconditions(self, manifest: TaskManifest) -> None:
         """Fail closed when execution is halted, stale, or in the wrong state."""
@@ -173,21 +214,24 @@ class AgentRunner:
             working_dir=working_dir,
             allowed_tools=tuple(manifest.allowed_tools),
         )
+        result = self._scrub_runtime_result(result)
 
         # Parse the agent's completion claim from stdout (P1d).
         claim = parse_completion_claim(result.stdout)
         if claim is not None:
             result = result.model_copy(update={"completion_claim": claim})
 
-        entry = ChainOfCustodyEntry(
-            step="builder_execution",
-            agent_model=result.reported_model or f"{result.runtime_name}:default",
-            agent_role="builder",
-            timestamp=datetime.now(timezone.utc),
-            runtime_name=result.runtime_name,
-            runtime_version=result.runtime_version,
-            reported_model=result.reported_model,
-            invocation_ref=result.invocation_ref,
+        entry = self._scrub_custody_entry(
+            ChainOfCustodyEntry(
+                step="builder_execution",
+                agent_model=result.reported_model or f"{result.runtime_name}:default",
+                agent_role="builder",
+                timestamp=datetime.now(timezone.utc),
+                runtime_name=result.runtime_name,
+                runtime_version=result.runtime_version,
+                reported_model=result.reported_model,
+                invocation_ref=result.invocation_ref,
+            )
         )
         return AgentRunResult(
             runtime_result=result,
