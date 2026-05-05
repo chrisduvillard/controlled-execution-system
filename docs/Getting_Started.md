@@ -87,6 +87,7 @@ recovery path together:
 - `ces build` to start a request
 - `ces continue` to resume the same request
 - `ces explain` and `ces status` to understand the current builder truth
+- `ces why`, `ces recover --dry-run`, `ces verify`, and `ces complete` when the current builder run is blocked, interrupted, missing evidence, or finished outside CES
 
 For brownfield work, keep the day-to-day delivery loop builder-first with
 `ces build`, `ces continue`, and `ces explain --view brownfield`. Switch into the
@@ -174,7 +175,22 @@ ces approve --yes
 
 Records the decision in the append-only audit ledger.
 
-## 12. Export a Builder Run Report
+## 12. When a Builder Run Is Blocked
+
+```bash
+ces why
+ces recover --dry-run
+ces verify
+ces complete
+```
+
+Use `ces why` to inspect the blocker category, reason, source, and next command.
+Use `ces recover --dry-run` before mutating CES state. Use `ces verify` when you
+need independent local verification, and `ces complete` only when the work was
+actually completed outside CES and you need to reconcile that fact with the audit
+trail.
+
+## 13. Export a Builder Run Report
 
 ```bash
 ces report builder
@@ -183,7 +199,7 @@ ces report builder
 This writes paired markdown and JSON artifacts under `.ces/exports/` with the
 request, linked artifacts, review state, latest outcome, and next step.
 
-## 13. Brownfield Expert Commands
+## 14. Brownfield Expert Commands
 
 ```bash
 ces brownfield register --system legacy-billing --description "Invoices above $1000 receive a 5% discount"
@@ -200,6 +216,10 @@ ces brownfield promote OLB-<entry-id>
 | `ces continue` | Resume the latest saved builder session |
 | `ces explain` | Plain-language summary of the latest builder state; use `--view` for decisioning or brownfield detail |
 | `ces status` | Builder-first project status; add `--expert` for the full expert view |
+| `ces why` | Explain why the latest builder run is blocked and show the next command |
+| `ces recover --dry-run` | Preview recovery before mutating CES state |
+| `ces verify` | Run independent local verification for the current project |
+| `ces complete` | Reconcile externally completed builder work with the audit trail |
 | `ces report builder` | Export the latest builder run report for audit or reviewer handoff |
 | `ces init <name>` | Optional manual setup before the first build |
 | `ces manifest <desc>` | Create a task manifest |

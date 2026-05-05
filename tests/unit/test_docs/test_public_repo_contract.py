@@ -78,6 +78,15 @@ def test_quickstart_treats_pypi_as_published() -> None:
     assert "uv tool install controlled-execution-system" in quickstart
 
 
+def test_quickstart_distinguishes_preflight_from_runtime_auth_probe() -> None:
+    quickstart = (ROOT / "docs" / "Quickstart.md").read_text(encoding="utf-8")
+
+    assert "ces doctor --runtime-safety" in quickstart
+    assert "ces doctor --verify-runtime --runtime all" in quickstart
+    assert "may contact the runtime provider" in quickstart
+    assert "Bare `ces doctor` is a preflight check" in quickstart
+
+
 def test_install_docs_show_explicit_python_for_python_311_hosts() -> None:
     """Install docs should give operators a direct recovery path from Python 3.11 hosts."""
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
