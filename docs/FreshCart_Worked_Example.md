@@ -341,7 +341,7 @@ review_policy: standard
 ttl_hours: 336  # 2 weeks for Tier C
 ```
 
-**Step 2 — Execution:** Builder Agent (Claude Haiku, fast model) implements the cart module within manifest boundaries.
+**Step 2 — Execution:** Builder Agent invokes the configured local runtime (Codex or Claude Code) and records the manifest, expected scope, evidence, and workspace delta.
 
 **Step 3 — Sensors pass:** All tests green. Lint clean. Types check. No security sensor pack required (internal, no auth/data).
 
@@ -436,15 +436,15 @@ ttl_hours: 48  # Tier A
 
 **Step 4 — Adversarial Review Triad:**
 
-Three agents dispatched in parallel, each receiving PRL-0012 and the implementation independently:
+Three independent reviewer roles are dispatched, each receiving PRL-0012 and the implementation independently:
 
-**Agent 1 (Structural Reviewer, Claude Haiku):**
+**Agent 1 (Structural Reviewer):**
 > "Boundaries respected. No writes outside allowed_files. Contract with Stripe client matches interface spec. Types correct. No issues found."
 
-**Agent 2 (Semantic Reviewer, Claude Opus):**
+**Agent 2 (Semantic Reviewer):**
 > "PRL-0012 acceptance criteria met. Retry logic correctly distinguishes transient vs. non-transient errors. Idempotency key uses order_id + attempt_number. One concern: the notification to the customer after payment_failed uses a fire-and-forget pattern — if the notification service is down, the customer is never informed. Suggest: add a dead-letter queue or retry mechanism for the notification."
 
-**Agent 3 (Red Team Reviewer, GPT-4.1):**
+**Agent 3 (Red Team Reviewer):**
 > "Attempted to break the retry logic. Found: if the Stripe API returns a 429 (rate limit) during the retry window, the current implementation treats it as a transient error and retries immediately. This could cause a retry storm against Stripe's rate limiter. Suggest: add Stripe's Retry-After header handling to the backoff logic."
 
 **Step 5 — Quorum evaluation (§ 10.9.4):**

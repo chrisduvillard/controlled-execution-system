@@ -25,6 +25,20 @@ jobs:
           version: ${{ env.UV_VERSION }}
       - run: uv sync --frozen
 
+      - name: Validate tag and package version agreement
+        shell: bash
+        run: |
+          set -euo pipefail
+          project_version="$(uv run python - <<'PY'
+          import tomllib
+          from pathlib import Path
+          print(tomllib.loads(Path("pyproject.toml").read_text())["project"]["version"])
+          PY
+          )"
+          tag_name="${GITHUB_REF_NAME}"
+          test "$tag_name" = "v${project_version}"
+          grep -q "^## \[${project_version}\]" CHANGELOG.md
+
       - name: Run tests before publishing
         env:
           CES_DATABASE_URL: "sqlite+aiosqlite:///test.db"
@@ -49,11 +63,25 @@ jobs:
           wheels = sorted(Path("dist").glob("controlled_execution_system-*.whl"))
           if len(wheels) != 1:
               raise SystemExit(f"Expected exactly one wheel, found {len(wheels)}: {wheels}")
-          print(wheels[0])
+          print(wheels[0].resolve())
           PY
           )"
           uv tool run --from "$wheel_path" ces --help
           uv tool run --from "$wheel_path" ces init --help
+          smoke_dir="$(mktemp -d)"
+          fake_runtime_dir="$(mktemp -d)"
+          cat > "$fake_runtime_dir/codex" <<'EOF'
+          #!/usr/bin/env bash
+          if [[ "${1:-}" == "--version" ]]; then echo "codex-cli publish-smoke"; exit 0; fi
+          echo "publish smoke runtime stub: execution is not expected" >&2
+          exit 2
+          EOF
+          chmod +x "$fake_runtime_dir/codex"
+          cd "$smoke_dir"
+          uv tool run --from "$wheel_path" ces init publish-smoke
+          test -f .ces/config.yaml
+          test -f .ces/keys/audit.hmac
+          PATH="$fake_runtime_dir:$PATH" uv tool run --python 3.13 --from "$wheel_path" ces doctor --security
 
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1

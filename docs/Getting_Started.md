@@ -12,12 +12,17 @@ workflow surfaces inside one repository.
 git clone https://github.com/chrisduvillard/controlled-execution-system.git
 cd controlled-execution-system
 uv sync
+uv run ces --help
 ```
+
+If you are working from a source checkout, use `uv run ces ...` unless you have
+installed the package as a tool. For normal day-to-day use, prefer the PyPI tool
+install shown in the Quickstart.
 
 ## 2. Verify a Local Runtime
 
 ```bash
-ces doctor
+uv run ces doctor
 ```
 
 You need `codex` or `claude` on PATH for real local execution. `CES_DEMO_MODE=1`
@@ -133,7 +138,7 @@ Shows classification confidence with color coding:
 ces execute M-<manifest-id> --runtime auto
 ```
 
-The agent executes locally within manifest boundaries using the selected runtime.
+The selected runtime executes locally. CES records the manifest, expected scope, evidence, and workspace delta; Claude receives an allowed-tools list, while Codex runs under its disclosed local sandbox mode and is governed by CES evidence/delta gates rather than manifest tool allowlist enforcement.
 
 ## 9. Review the Evidence
 
@@ -212,7 +217,7 @@ ces brownfield promote OLB-<entry-id>
 | `ces emergency declare` | Expert operations emergency declaration; for example, `ces emergency declare "Security incident detected"` |
 | `ces brownfield ...` | Expert legacy behavior capture, review, and promotion |
 
-All commands support `--json` for machine-readable output.
+Use the global form `ces --json <command>` for machine-readable output. Some commands also expose command-local `--json` flags where documented.
 
 ## Architecture Overview
 

@@ -32,7 +32,8 @@ in the error log tell you which of these four fields is mismatched.
 # On a clean master checkout, confirm no pending work:
 git status            # clean
 git fetch             # no remote drift
-gh run list --limit 1 --branch master   # latest run must be green
+gh run list --workflow=ci.yml --limit 1 --branch master   # latest CI run must be green
+gh run list --workflow=codeql.yml --limit 1 --branch master # latest CodeQL run must be green
 
 # Tests must pass locally at the enforced local-first gate:
 uv run pytest tests/ -m "not integration" --cov=ces --cov-fail-under=90 -q -W error

@@ -58,6 +58,20 @@ GSD, BMAD Method, and Superpowers can improve how an agent plans, reasons, or
 follows engineering habits; CES wraps the resulting work in a local execution
 contract with saved state, evidence, review, approval, and audit history.
 
+## Why trust this release?
+
+The `0.1.10` release line was hardened through a real operator dogfood gauntlet
+before public sharing: greenfield project creation, brownfield discovery and
+review, interrupted-runtime recovery, continuation, status/report export,
+installed-package smokes, and sequential regression-fix PRs. The resulting fixes
+covered runtime process cleanup, `--project-root` consistency, explicit recovery
+no-op messaging, runtime transcript visibility, brownfield report wording, and
+Python 3.11 install guidance.
+
+CES is intentionally honest about its boundary: it is a local governance and
+evidence system around Codex CLI or Claude Code, not a hosted control plane, not a sandbox, and
+not a substitute for the runtime's own credentials, sandboxing, or human review.
+
 [Quickstart](docs/Quickstart.md) |
 [Getting Started](docs/Getting_Started.md) |
 [Operator Playbook](docs/Operator_Playbook.md) |
@@ -69,7 +83,7 @@ contract with saved state, evidence, review, approval, and audit history.
 
 Prerequisites:
 
-- Python 3.12+
+- Python 3.12 or 3.13
 - [uv](https://docs.astral.sh/uv/)
 - A local agent runtime on `PATH`: Codex CLI or Claude Code
 
@@ -81,7 +95,7 @@ uv tool update-shell
 ces --help
 ```
 
-On machines where the ambient `python3` is Python 3.11, `pip install controlled-execution-system` can fail before CES starts with a resolver message such as `No matching distribution` because the published package requires Python 3.12+. Ask uv to create the tool environment with a supported interpreter explicitly, such as Python 3.13:
+On machines where the ambient `python3` is Python 3.11, `pip install controlled-execution-system` can fail before CES starts with a resolver message such as `No matching distribution` because the published package requires Python 3.12 or 3.13. Ask uv to create the tool environment with a supported interpreter explicitly, such as Python 3.13:
 
 ```bash
 uv tool install --python 3.13 controlled-execution-system
@@ -90,7 +104,7 @@ uv tool install --python 3.13 controlled-execution-system
 Install a pinned release:
 
 ```bash
-uv tool install controlled-execution-system==0.1.9
+uv tool install controlled-execution-system==0.1.10
 ```
 
 Upgrade an existing install:
@@ -304,9 +318,9 @@ uv run pytest tests/ -m integration -q
 
 Merging or pushing code to `master` runs CI, but it does not publish to PyPI.
 PyPI publishing is tag-driven: update the version, update the changelog, push
-the version-bump commit, then push a `v*` tag such as `v0.1.9`. The tag
+the version-bump commit, then push a `v*` tag such as `v0.1.10`. The tag
 triggers `.github/workflows/publish.yml`, which runs tests, builds the wheel
-and source distribution, smoke-tests the installed CLI, and publishes to PyPI
+and source distribution, smoke-tests the installed CLI with help and real project initialization, validates the tag/version agreement, and publishes to PyPI
 through trusted publishing. Follow [docs/RELEASE.md](docs/RELEASE.md) for the
 maintainer checklist.
 

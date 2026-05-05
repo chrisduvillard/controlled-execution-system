@@ -47,8 +47,12 @@ to confirm manifest and audit state before continuing.
 Verify the local audit chain with:
 
 ```bash
-ces audit --verify-integrity
+ces audit --limit 20
 ```
+
+There is not currently a public `ces audit --verify-integrity` command. Integrity
+verification is an operator/database procedure for now; see the Operations
+Runbook before making incident-response claims from raw database rows.
 
 ## Resetting Local State
 

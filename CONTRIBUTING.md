@@ -10,7 +10,7 @@ rather than as public issues.
 
 ### Prerequisites
 
-- Python 3.12+
+- Python 3.12 or 3.13
 - [uv](https://docs.astral.sh/uv/) (package manager)
 - A supported local runtime (`codex` or `claude`) for governed builder runs.
 

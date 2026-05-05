@@ -24,12 +24,12 @@ CES is a local-first governance layer between "an AI wrote this code" and "this 
 
 - **Manifest signing** — Ed25519 signatures on task manifests (D-13). Keys are generated and persisted per-project in `.ces/keys/` at `ces init` time and loaded from disk on every CLI invocation, so signatures produced by one command can be verified by later commands.
 - **Audit chain integrity** — HMAC-SHA256 hash chain on the append-only audit ledger (T-06-02). Each project gets a 32-byte random HMAC secret at `ces init`, stored mode `0600` under `.ces/keys/audit.hmac`.
-- **Workspace-scoped runtime execution** — Runtime adapters pass an `--allowedTools` allowlist to the Claude CLI (default: `Read Grep Glob Edit Write`) and do **not** run with `acceptEdits`. `Bash` and `WebFetch` require explicit opt-in via `TaskManifest.allowed_tools`.
+- **Runtime execution boundary** — Runtime adapters pass an `--allowedTools` allowlist to the Claude CLI (default: `Read Grep Glob Edit Write`) and do **not** run with `acceptEdits`. `Bash` and `WebFetch` require explicit opt-in via `TaskManifest.allowed_tools`.
 - **Runtime boundary disclosure** — Codex is invoked with `--sandbox danger-full-access` in this local deployment; CES records this as not workspace-scoped and not manifest-tool-allowlist-enforced, because the Codex adapter does not enforce `TaskManifest.allowed_tools`.
 - **Evidence-gated builder flow** — Governed builder runs require a `ces:completion` claim, persist actual workspace deltas, and block unattended approval when completion evidence, manifest scope, or risk-aware sensor policy fails.
 - **No secrets in task packages** — Secrets are never included in manifests, guide packs, or evidence packets. Subprocess stdout/stderr are scrubbed (regex on known secret prefixes and `KEY=VALUE` assignments) before persistence to `.ces/state.db` and before inclusion in evidence.
-- **Kill switch** — Every LLM-calling service checks `kill_switch.is_halted()` before dispatch. Flipping the kill switch halts all in-flight and subsequent LLM work project-wide.
-- **Adversarial review diversity** — Tier A review requires three distinct underlying models for the STRUCTURAL/SEMANTIC/RED_TEAM triad. When fewer distinct providers are installed, the `degraded_model_diversity` flag is set on the aggregated review so evidence packets surface the degraded guarantee rather than silently trusting a non-adversarial result.
+- **Kill switch** — CES LLM-dispatch paths are designed to check `kill_switch.is_halted()` before dispatch. Treat the kill switch as a fail-closed project control for CES-managed work, not as an operating-system process killer for already-running external runtime CLIs.
+- **Adversarial review diversity** — Tier A review is strongest when the STRUCTURAL/SEMANTIC/RED_TEAM triad uses distinct underlying models. When fewer distinct providers are configured, the `degraded_model_diversity` flag is set on the aggregated review so evidence packets surface the degraded guarantee rather than silently trusting a non-adversarial result.
 
 For the archival threat matrix, see [docs/Security_Audit.md](docs/Security_Audit.md).
 
@@ -42,13 +42,13 @@ For the archival threat matrix, see [docs/Security_Audit.md](docs/Security_Audit
 | Threat | Mitigation |
 |--------|------------|
 | Unauthorized modification of approved manifests | Ed25519 signature + on-disk public key; `ManifestManager.verify_manifest` returns `False` for tampered content. |
-| Tampering with the audit ledger after the fact | HMAC-SHA256 chain with timing-safe comparison; a forged entry breaks the chain on the next `audit verify`. |
+| Tampering with the audit ledger after the fact | HMAC-SHA256 chain with timing-safe comparison; forged entries fail internal ledger integrity verification. There is not yet a public `ces audit verify` command. |
 | Host command execution via prompt-injected repo content (hostile README/comment/issue body steering the agent to run `rm -rf ~`) | Claude runs with `--allowedTools` dropping `Bash`/`WebFetch` by default and `--permission-mode default`; Codex runs under `--sandbox danger-full-access` for this local deployment, so CES compensates by requiring explicit runtime side-effect acceptance, persisting the workspace delta, and surfacing runtime-boundary disclosures. |
 | Secret exfiltration via LLM output (agent reads `.env` and echoes it) | Regex scrubber (`scrub_secrets_from_text`) redacts known prefixes (`sk-`, `AKIA`, `ghp_`, `xoxb-`) and `KEY=VALUE` assignments before persisting runtime output. |
 | Environment secret leakage to LLM subprocesses | Allowlisted env filter (`build_subprocess_env`) strips non-runtime env vars before spawning `claude`/`codex`. |
 | World-readable state on shared hosts | `.ces/keys/` is `0o700`; all key files and `.ces/state.db` are `0o600`. Verifiable via `ces doctor --security`. |
 | Reviewer-model collusion (one model approving its own output) | Model-diversity validator; builder model excluded from reviewer roster; `degraded_model_diversity` flag when diversity can't be met. |
-| In-flight emergencies | Kill switch halts all LLM dispatch across control + harness services. |
+| In-flight emergencies | Kill switch halts CES-managed LLM dispatch before new work starts; it is not an operating-system process killer for already-running external runtime CLIs. |
 
 ### What CES does NOT defend against
 
@@ -70,7 +70,7 @@ Tier A changes (highest risk per the classification engine) trigger a triad revi
 - A hostile diff tuned to silence one model (say, Claude) still faces a reviewer running GPT, whose weights have not seen the same injection template verbatim.
 - `bootstrap.register_cli_fallback` previously aliased one CLI to both `claude` and `gpt` prefixes when only one was installed, silently collapsing the triad to a single model. **0.1.2+ surfaces this via `AggregatedReview.degraded_model_diversity=True`** so the evidence packet records that the review was less adversarial than Tier A policy requires.
 
-**Operator responsibility:** install two or more CLI providers (`claude` AND `codex`) before running Tier A reviews. Check `ces doctor` for provider availability. Do not approve a Tier A evidence packet whose `degraded_model_diversity` is `true` unless you have compensating controls (e.g. mandatory human review).
+**Operator responsibility:** configure enough independent review providers for the risk tier you want to claim, then check `ces doctor` and the evidence packet. Do not approve a Tier A evidence packet whose `degraded_model_diversity` is `true` unless you have compensating controls (for example, mandatory human review).
 
 ---
 
@@ -107,7 +107,7 @@ CES's guarantees presume the operator takes four actions:
 
 ## Changelog
 
-Security-relevant changes are called out in [CHANGELOG.md](CHANGELOG.md) under a `### Security` subsection of each release. Notable past releases:
+Security-relevant changes are called out in [CHANGELOG.md](CHANGELOG.md) under `### Security` or the relevant Added/Changed/Fixed subsection. Notable past releases:
 
 - **0.1.2** — B1/B2/B3 hardening: persistent signing keys, HMAC fail-closed, `acceptEdits` removed from the Claude runtime, stdout/stderr scrubbing, state DB permissions, kill-switch gap fixes, env allowlist for the CLI provider, `git diff` ref injection mitigation.
 - **0.1.3** — `ces doctor --security` added; `ces init` now tightens `state.db` permissions at creation time.

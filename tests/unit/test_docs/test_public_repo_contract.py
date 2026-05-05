@@ -103,3 +103,43 @@ def test_getting_started_links_existing_prd_target() -> None:
 
     assert "(historical/PRD.md)" in getting_started
     assert (ROOT / "docs" / "historical" / "PRD.md").is_file()
+
+
+def test_public_docs_surface_launch_trust_and_boundaries() -> None:
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    quickstart = (ROOT / "docs" / "Quickstart.md").read_text(encoding="utf-8")
+
+    assert "Why trust this release?" in readme
+    assert "dogfood gauntlet" in readme
+    assert "not a hosted control plane" in readme
+    assert "not a substitute for the runtime's own credentials" in readme
+    assert "Before you start" in quickstart
+    assert "does not ship one" in quickstart
+    assert "Keep `.ces/`" in quickstart
+    assert "untracked unless you intentionally share" in quickstart
+
+
+def test_project_version_surfaces_are_launch_consistent() -> None:
+    project = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))["project"]
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    changelog = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
+    init_py = (ROOT / "src" / "ces" / "__init__.py").read_text(encoding="utf-8")
+
+    assert project["requires-python"] == ">=3.12,<3.14"
+    assert f"controlled-execution-system=={project['version']}" in readme
+    assert f"v{project['version']}" in readme
+    assert f"## [{project['version']}]" in changelog
+    assert f'__version__ = "{project["version"]}"' in init_py
+
+
+def test_public_docs_do_not_overclaim_runtime_or_audit_boundaries() -> None:
+    security = (ROOT / "SECURITY.md").read_text(encoding="utf-8")
+    getting_started = (ROOT / "docs" / "Getting_Started.md").read_text(encoding="utf-8")
+    db_ops = (ROOT / "docs" / "Database_Operations.md").read_text(encoding="utf-8")
+
+    assert "Codex runs under its disclosed local sandbox mode" in getting_started
+    assert "rather than manifest tool allowlist enforcement" in getting_started
+    assert "not as an operating-system process killer" in security
+    assert "degraded_model_diversity" in security
+    assert "public `ces audit --verify-integrity` command" in db_ops
+    assert "ces audit --verify-integrity" not in db_ops.replace("public `ces audit --verify-integrity` command", "")
