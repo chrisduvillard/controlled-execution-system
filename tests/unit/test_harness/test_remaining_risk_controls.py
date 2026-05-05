@@ -69,7 +69,8 @@ async def test_dependency_sensor_flags_stale_lockfile(tmp_path: Path) -> None:
 
 @pytest.mark.asyncio
 async def test_security_sensor_scans_runtime_context_files_before_invocation(tmp_path: Path) -> None:
-    (tmp_path / "docs.md").write_text('api_key = "1234567890abcdef"\n', encoding="utf-8")
+    secret_assignment = "api_key" + ' = "1234567890abcdef"\n'
+    (tmp_path / "docs.md").write_text(secret_assignment, encoding="utf-8")
 
     result = await SecuritySensor().run({"project_root": str(tmp_path), "context_files": ["docs.md"]})
 

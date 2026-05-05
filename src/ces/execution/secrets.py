@@ -7,6 +7,7 @@ import re
 
 # Secret key name patterns (case-insensitive matching).
 SECRET_KEY_PATTERNS = re.compile(r"(SECRET|KEY|TOKEN|PASSWORD|CREDENTIAL|API_KEY)", re.IGNORECASE)
+SECRET_KV_KEY_PATTERN = r"[A-Z0-9_]*(?:SECRET|KEY|TOKEN|PASSWORD|CREDENTIAL|API_KEY)[A-Z0-9_]*"  # noqa: S105
 
 # Secret value prefix patterns -- known API key formats.
 SECRET_VALUE_PREFIXES = ("sk-", "pk-", "ghp_", "ghs_", "AKIA", "xoxb-", "xoxp-")
@@ -15,7 +16,7 @@ _SECRET_VALUE_IN_TEXT_RE = re.compile(
     r"\b(?:" + "|".join(re.escape(p) for p in SECRET_VALUE_PREFIXES) + r")[A-Za-z0-9_\-./+=]+",
 )
 _SECRET_KV_IN_TEXT_RE = re.compile(
-    r"\b(" + SECRET_KEY_PATTERNS.pattern + r"[A-Z0-9_]*)\s*[:=]\s*['\"]?([^\s'\"]+)",
+    r"\b(" + SECRET_KV_KEY_PATTERN + r")\s*[:=]\s*['\"]?([^\s'\"]+)",
     re.IGNORECASE,
 )
 

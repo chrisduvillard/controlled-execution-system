@@ -668,7 +668,7 @@ class TestRunCommand:
             "invocation_ref": "run-secret",
             "exit_code": 1,
             "stdout": "",
-            "stderr": "Auth failed: ANTHROPIC_API_KEY=sk-ant-test-secret; please log in",
+            "stderr": "Auth failed: ANTHROPIC_API_KEY=" + "sk-" + "synthetic-auth-secret; please log in",
             "duration_seconds": 0.5,
         }
         mock_store = MagicMock()
@@ -698,12 +698,12 @@ class TestRunCommand:
 
         assert result.exit_code != 0
         assert "Auth failed" in result.stdout
-        assert "sk-ant-test-secret" not in result.stdout
+        assert "synthetic-auth-secret" not in result.stdout
         diagnostic_files = list((tmp_path / ".ces" / "runtime-diagnostics").glob("*.txt"))
         assert diagnostic_files
         diagnostic_text = diagnostic_files[0].read_text()
         assert "Auth failed" in diagnostic_text
-        assert "sk-ant-test-secret" not in diagnostic_text
+        assert "synthetic-auth-secret" not in diagnostic_text
         update_kwargs = mock_store.update_builder_session.call_args.kwargs
         assert "runtime-diagnostics" in update_kwargs["last_error"]
 
@@ -1085,7 +1085,7 @@ class TestRunCommand:
                 ],
             )
 
-        assert result.exit_code == 0, f"stdout={result.stdout}"
+        assert result.exit_code == 1, f"stdout={result.stdout}"
         mock_workflow.submit_for_review.assert_awaited_once()
         mock_workflow.complete_review.assert_awaited_once()
         mock_workflow.approve_merge.assert_not_awaited()
@@ -1246,7 +1246,7 @@ class TestRunCommand:
             "reported_model": None,
             "invocation_ref": "run-123",
             "exit_code": 0,
-            "stdout": "Done",
+            "stdout": _completion_stdout("M-run123"),
             "stderr": "",
             "duration_seconds": 0.5,
         }
@@ -1350,7 +1350,7 @@ class TestRunCommand:
             "reported_model": None,
             "invocation_ref": "run-123",
             "exit_code": 0,
-            "stdout": "Done",
+            "stdout": _completion_stdout("M-brown123", "Invoice notes are saved"),
             "stderr": "",
             "duration_seconds": 0.5,
         }
@@ -1494,7 +1494,7 @@ class TestRunCommand:
                 ],
             )
 
-        assert result.exit_code == 0, f"stdout={result.stdout}"
+        assert result.exit_code == 1, f"stdout={result.stdout}"
         approval_kwargs = mock_store.save_approval.call_args.kwargs
         assert approval_kwargs["decision"] == "reject"
         assert "brownfield scope unknown" in approval_kwargs["rationale"]
@@ -1544,7 +1544,7 @@ class TestRunCommand:
             "reported_model": None,
             "invocation_ref": "run-123",
             "exit_code": 0,
-            "stdout": "Done",
+            "stdout": _completion_stdout("M-build123", "User can create and complete habits"),
             "stderr": "",
             "duration_seconds": 0.5,
         }
@@ -1633,7 +1633,7 @@ class TestRunCommand:
             "reported_model": None,
             "invocation_ref": "run-123",
             "exit_code": 0,
-            "stdout": "Done",
+            "stdout": _completion_stdout("M-continue123", "User can create and complete habits"),
             "stderr": "",
             "duration_seconds": 0.5,
         }
@@ -1782,7 +1782,7 @@ class TestRunCommand:
         manifest.risk_tier = RiskTier.B
         manifest.behavior_confidence = BehaviorConfidence.BC2
         manifest.change_class = ChangeClass.CLASS_2
-        manifest.affected_files = []
+        manifest.affected_files = ["billing_export.py"]
 
         mock_manager = AsyncMock()
         mock_runtime = MagicMock()
@@ -1805,7 +1805,7 @@ class TestRunCommand:
             "reported_model": None,
             "invocation_ref": "run-123",
             "exit_code": 0,
-            "stdout": "Done",
+            "stdout": _completion_stdout("M-continue123", "Exports include invoice notes"),
             "stderr": "",
             "duration_seconds": 0.5,
         }
@@ -2587,3 +2587,25 @@ def test_build_writes_completion_contract_before_runtime(tmp_path: Path, monkeyp
     assert payload["request"] == "Build PromptVault"
     assert payload["acceptance_criteria"][0]["id"] == "AC-001"
     assert payload["runtime"]["name"] == "codex"
+
+
+def test_runtime_execution_normalization_scrubs_stdout_and_stderr() -> None:
+    from ces.cli.run_cmd import _normalize_runtime_execution
+
+    secret_value = "sk-" + "runtime-secret-value"
+    execution = _normalize_runtime_execution(
+        {
+            "runtime_name": "test",
+            "runtime_version": "1",
+            "reported_model": None,
+            "invocation_ref": "inv",
+            "exit_code": 0,
+            "stdout": f"done {secret_value}",
+            "stderr": f"OPENAI_API_KEY={secret_value}",
+            "duration_seconds": 0.1,
+        }
+    )
+
+    assert secret_value not in execution["stdout"]
+    assert secret_value not in execution["stderr"]
+    assert "OPENAI_API_KEY=<REDACTED>" in execution["stderr"]

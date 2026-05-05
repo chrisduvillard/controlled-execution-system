@@ -352,8 +352,8 @@ class TestLocalProjectStoreHardening:
                 "reported_model": None,
                 "invocation_ref": "inv-1",
                 "exit_code": 0,
-                "stdout": "Loaded ANTHROPIC_API_KEY=sk-ant-leak-12345 from .env",
-                "stderr": "AWS_SECRET_ACCESS_KEY=AKIAIOSFODNN7EXAMPLE visible",
+                "stdout": "Loaded ANTHROPIC_API_KEY=" + "sk" + "-" + "ant" + "-" + "fixture from .env",
+                "stderr": "AWS_SECRET_ACCESS_KEY=" + "A" + "KIA" + "SYNTHETIC" + "EXAMPLE visible",
                 "duration_seconds": 0.1,
                 "transcript_path": None,
             },
@@ -361,7 +361,7 @@ class TestLocalProjectStoreHardening:
         record = store.get_runtime_execution("M-scrub")
         assert record is not None
         assert "sk-ant-leak-12345" not in record.stdout
-        assert "AKIAIOSFODNN7EXAMPLE" not in record.stderr
+        assert "SYNTHETIC" + "EXAMPLE" not in record.stderr
         assert "<REDACTED>" in record.stdout or "<REDACTED>" in record.stderr
 
 

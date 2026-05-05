@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.11] - 2026-05-05
+
+### Security / launch hardening
+
+- Tighten source distribution contents so PyPI no longer ships internal `.hermes/`, GitHub workflow, MCP, script, or test-fixture material.
+- Sanitize detector fixtures and gitleaks allowlist examples so the public repo no longer contains complete token-shaped dummy credentials.
+- Scrub Claude runtime stdout/stderr before runtime results can be persisted, matching the Codex adapter path.
+- Defense-in-depth: normalize runtime execution payloads with stdout/stderr scrubbing before evidence persistence.
+
+### Fixed
+
+- `ces build --yes` now exits non-zero when unattended auto-approval is blocked by completion evidence, independent verification, scope, sensor, or runtime-boundary gates.
+- `ces recover --auto-evidence --auto-complete` now only auto-completes sessions blocked by missing completion/verification evidence; other blocked states remain review-only.
+
 ## [0.1.10] - 2026-05-05
 
 Public-launch hardening after a full greenfield, brownfield, recovery, reporting,

@@ -9,10 +9,5 @@ regexes = [
   '''1234567890abcdef''',
   '''do-not-use-in-production''',
   '''KEY_PRIVATE_FILENAME = "ed25519_private.key"''',
-  '''AKIAIOSFODNN7EXAMPLE''',
-  '''xoxb-1234567890''',
-  '''xoxb-1234567890-ABCDEF1234''',
-  '''ghp_1234567890abcdefABCDEF''',
-  '''ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghij''',
-  '''ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklm''',
+  '''***''',
 ]

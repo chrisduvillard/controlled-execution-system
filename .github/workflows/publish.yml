@@ -67,6 +67,7 @@ jobs:
           PY
           )"
           uv tool run --from "$wheel_path" ces --help
+          uv tool run --from "$wheel_path" ces --version
           uv tool run --from "$wheel_path" ces init --help
           smoke_dir="$(mktemp -d)"
           fake_runtime_dir="$(mktemp -d)"

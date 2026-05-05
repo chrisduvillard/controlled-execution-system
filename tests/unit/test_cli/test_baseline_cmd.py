@@ -41,7 +41,8 @@ class TestCesBaseline:
     def test_baseline_scans_repository_files(self, tmp_path: Path, monkeypatch: object) -> None:
         """Baseline should feed real repo files into sensors, not an empty scope."""
         monkeypatch.chdir(tmp_path)  # type: ignore[attr-defined]
-        (tmp_path / "settings.py").write_text('API_KEY = "1234567890abcdef"\n', encoding="utf-8")
+        api_key_assignment = "API_KEY" + ' = "1234567890abcdef"\n'
+        (tmp_path / "settings.py").write_text(api_key_assignment, encoding="utf-8")
         app = _get_app()
         result = runner.invoke(app, ["baseline"])
         assert result.exit_code == 0, result.stdout

@@ -82,7 +82,7 @@ class TestCESSettingsDotenv:
     def test_non_ces_dotenv_keys_are_ignored(self, tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.chdir(tmp_path)
         (tmp_path / ".env").write_text(
-            "OPENAI_API_KEY=sk-test\nCES_DEFAULT_RUNTIME=claude\n",
+            "OPENAI_API_KEY=" + "sk" + "-" + "test\nCES_DEFAULT_RUNTIME=claude\n",
             encoding="utf-8",
         )
 

@@ -1,6 +1,6 @@
 [project]
 name = "controlled-execution-system"
-version = "0.1.10"
+version = "0.1.11"
 description = "Deterministic governance controls for AI agent-driven software delivery"
 requires-python = ">=3.12,<3.14"
 readme = "README.md"
@@ -100,6 +100,13 @@ exclude = [
     "/.coverage",
     "/.mypy_cache",
     "/.planning",
+    "/.hermes",
+    "/.github",
+    "/.gitleaks.toml",
+    "/.mcp.json",
+    "/tests",
+    "/scripts",
+    "/docs/plans",
     "/.pytest_cache",
     "/.ruff_cache",
     "/.tmp",

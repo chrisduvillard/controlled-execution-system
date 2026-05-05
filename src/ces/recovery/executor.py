@@ -119,6 +119,7 @@ def run_auto_evidence_recovery(
         )
 
     old_evidence = _existing_evidence(local_store, plan.evidence_packet_id, plan.manifest_id)
+    effective_auto_complete = auto_complete and _safe_to_auto_complete(local_store)
     packet_id = _save_recovery_evidence(
         local_store=local_store,
         manifest_id=plan.manifest_id,
@@ -128,10 +129,10 @@ def run_auto_evidence_recovery(
         contract=contract,
         verification=verification,
         old_evidence=old_evidence,
-        auto_complete=auto_complete,
+        auto_complete=effective_auto_complete,
     )
 
-    if not auto_complete:
+    if not effective_auto_complete:
         _update_session(
             local_store,
             plan.session_id,
@@ -142,6 +143,11 @@ def run_auto_evidence_recovery(
             last_error=None,
             evidence_packet_id=packet_id,
         )
+        message = "Independent verification passed and recovered evidence is ready for review."
+        if auto_complete:
+            message = (
+                "Independent verification passed, but this blocked state requires manual review before completion."
+            )
         return RecoveryExecutionResult(
             verification=verification,
             completed=False,
@@ -150,7 +156,7 @@ def run_auto_evidence_recovery(
             manifest_id=plan.manifest_id,
             session_id=plan.session_id,
             next_action="review_evidence",
-            message="Independent verification passed and recovered evidence is ready for review.",
+            message=message,
         )
 
     local_store.save_approval(
@@ -191,6 +197,41 @@ def _refresh_contract_if_unverifiable(project_root: Path, contract: CompletionCo
         acceptance_criteria=tuple(criterion.text for criterion in contract.acceptance_criteria),
         runtime_name=str(contract.runtime.get("name") or "unknown"),
         runtime_metadata={key: value for key, value in contract.runtime.items() if key != "name"},
+    )
+
+
+def _safe_to_auto_complete(local_store: Any) -> bool:
+    """Only auto-complete sessions blocked by missing completion/verification evidence."""
+    get_latest = getattr(local_store, "get_latest_builder_session", None)
+    if not callable(get_latest):
+        return False
+    session = get_latest()
+    if session is None:
+        return False
+    reason_text = " ".join(
+        str(getattr(session, attr, "") or "")
+        for attr in ("last_action", "recovery_reason", "last_error", "next_action")
+    ).lower()
+    evidence_markers = (
+        "completion evidence",
+        "missing completion",
+        "missing verification",
+        "independent verification",
+        "verification evidence",
+        "verification_failed",
+        "completion contract",
+    )
+    disallowed_markers = (
+        "scope",
+        "runtime side-effect",
+        "side effect",
+        "sensor",
+        "merge_blocked",
+        "interrupted",
+        "execution_started",
+    )
+    return any(marker in reason_text for marker in evidence_markers) and not any(
+        marker in reason_text for marker in disallowed_markers
     )
 
 

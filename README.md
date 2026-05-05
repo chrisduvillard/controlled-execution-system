@@ -60,7 +60,7 @@ contract with saved state, evidence, review, approval, and audit history.
 
 ## Why trust this release?
 
-The `0.1.10` release line was hardened through a real operator dogfood gauntlet
+The `0.1.11` release line was hardened through a real operator dogfood gauntlet
 before public sharing: greenfield project creation, brownfield discovery and
 review, interrupted-runtime recovery, continuation, status/report export,
 installed-package smokes, and sequential regression-fix PRs. The resulting fixes
@@ -104,7 +104,7 @@ uv tool install --python 3.13 controlled-execution-system
 Install a pinned release:
 
 ```bash
-uv tool install controlled-execution-system==0.1.10
+uv tool install controlled-execution-system==0.1.11
 ```
 
 Upgrade an existing install:
@@ -318,7 +318,7 @@ uv run pytest tests/ -m integration -q
 
 Merging or pushing code to `master` runs CI, but it does not publish to PyPI.
 PyPI publishing is tag-driven: update the version, update the changelog, push
-the version-bump commit, then push a `v*` tag such as `v0.1.10`. The tag
+the version-bump commit, then push a `v*` tag such as `v0.1.11`. The tag
 triggers `.github/workflows/publish.yml`, which runs tests, builds the wheel
 and source distribution, smoke-tests the installed CLI with help and real project initialization, validates the tag/version agreement, and publishes to PyPI
 through trusted publishing. Follow [docs/RELEASE.md](docs/RELEASE.md) for the

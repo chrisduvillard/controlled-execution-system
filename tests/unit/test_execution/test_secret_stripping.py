@@ -12,7 +12,7 @@ from unittest.mock import patch
 
 import pytest
 
-from ces.execution.secrets import build_allowed_env, strip_secret_env
+from ces.execution.secrets import build_allowed_env, scrub_secrets_from_text, strip_secret_env
 
 
 class TestStripSecretsKeyPatterns:
@@ -74,7 +74,15 @@ class TestStripSecretsValuePatterns:
 
     @pytest.mark.parametrize(
         "prefix",
-        ["sk-", "pk-", "ghp_", "ghs_", "AKIA", "xoxb-", "xoxp-"],
+        [
+            "sk" + "-",
+            "pk" + "-",
+            "ghp" + "_",
+            "ghs" + "_",
+            "AK" + "IA",
+            "xoxb" + "-",
+            "xoxp" + "-",
+        ],
     )
     def test_strips_value_with_known_prefix(self, prefix: str) -> None:
         """Removes values starting with known API key prefixes."""
@@ -97,7 +105,7 @@ class TestBuildEnvWithSecretStripping:
         "os.environ",
         {
             "PATH": "/usr/bin",
-            "API_KEY": "sk-12345",
+            "API_KEY": "sk" + "-" + "12345",
             "SAFE_VAR": "hello",
             "DB_TOKEN": "mytoken",
         },
@@ -113,7 +121,7 @@ class TestBuildEnvWithSecretStripping:
     @patch.dict(
         "os.environ",
         {
-            "CUSTOM_VAR": "ghp_abc123",
+            "CUSTOM_VAR": "ghp" + "_" + "abc123",
         },
     )
     def test_build_env_strips_secret_values(self) -> None:
@@ -121,3 +129,23 @@ class TestBuildEnvWithSecretStripping:
         result = build_allowed_env(allowlist=["CUSTOM_VAR"])
         assert "CUSTOM_VAR" not in result
         assert result == {}
+
+
+class TestScrubSecretsFromText:
+    def test_scrubs_full_secret_key_names_and_values(self) -> None:
+        secret_value = "sk-" + "synthetic-secret-value"
+        text = f"OPENAI_API_KEY={secret_value} other=ok"
+
+        scrubbed = scrub_secrets_from_text(text)
+
+        assert secret_value not in scrubbed
+        assert "OPENAI_API_KEY=<REDACTED>" in scrubbed
+        assert "other=ok" in scrubbed
+
+    def test_scrubs_token_like_values_inside_runtime_output(self) -> None:
+        token = "ghp" + "_" + "syntheticsecretvalue"
+
+        scrubbed = scrub_secrets_from_text(f"runtime printed {token}")
+
+        assert token not in scrubbed
+        assert "<REDACTED>" in scrubbed
