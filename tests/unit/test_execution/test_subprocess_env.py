@@ -21,7 +21,7 @@ class TestBuildSubprocessEnv:
         assert env["PATH"] == "/usr/bin:/bin"
 
     def test_non_allowlisted_secret_is_stripped(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "AKIA-leak-do-not-pass")
+        monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "AK" + "IA" + "-leak-do-not-pass")
         monkeypatch.setenv("DATABASE_URL", "postgres://user:pw@host/db")
         env = build_subprocess_env()
         assert "AWS_SECRET_ACCESS_KEY" not in env
@@ -37,9 +37,9 @@ class TestBuildSubprocessEnv:
 
     def test_extra_keys_are_added(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Adapter-specific keys (e.g. ANTHROPIC_API_KEY) are admitted via extra_keys."""
-        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk" + "-" + "ant-test")
         env = build_subprocess_env(extra_keys=("ANTHROPIC_API_KEY",))
-        assert env["ANTHROPIC_API_KEY"] == "sk-ant-test"
+        assert env["ANTHROPIC_API_KEY"] == "sk" + "-" + "ant-test"
         # Without extra_keys, the same var is stripped.
         env_default = build_subprocess_env()
         assert "ANTHROPIC_API_KEY" not in env_default

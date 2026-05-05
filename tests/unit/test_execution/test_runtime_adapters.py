@@ -34,10 +34,10 @@ class TestRuntimeAdapterEnvScrubbing:
             "HOME": "/home/tester",
             "LANG": "en_US.UTF-8",
             "LC_ALL": "en_US.UTF-8",
-            "OPENAI_API_KEY": "sk-openai",
+            "OPENAI_API_KEY": "sk" + "-" + "openai",
             "CODEX_HOME": "/home/tester/.codex",
             "AWS_SECRET_ACCESS_KEY": "aws-secret",
-            "GITHUB_TOKEN": "ghp-secret",
+            "GITHUB_TOKEN": "ghp" + "-" + "secret",
         },
         clear=True,
     )
@@ -72,7 +72,7 @@ class TestRuntimeAdapterEnvScrubbing:
             "HOME": "/home/tester",
             "LANG": "en_US.UTF-8",
             "LC_ALL": "en_US.UTF-8",
-            "OPENAI_API_KEY": "sk-openai",
+            "OPENAI_API_KEY": "sk" + "-" + "openai",
             "CODEX_HOME": "/home/tester/.codex",
         }
         command = mock_popen.call_args.args[0]
@@ -97,11 +97,11 @@ class TestRuntimeAdapterEnvScrubbing:
             "PATH": "/usr/bin",
             "HOME": "/home/tester",
             "LANG": "en_US.UTF-8",
-            "ANTHROPIC_API_KEY": "sk-ant-123",
+            "ANTHROPIC_API_KEY": "sk" + "-" + "ant-123",
             "CLAUDE_CODE": "1",
             "HTTPS_PROXY": "http://proxy.internal:8080",
             "AWS_SECRET_ACCESS_KEY": "aws-secret",
-            "SLACK_BOT_TOKEN": "xoxb-secret",
+            "SLACK_BOT_TOKEN": "xoxb" + "-" + "secret",
         },
         clear=True,
     )
@@ -137,11 +137,42 @@ class TestRuntimeAdapterEnvScrubbing:
             "PATH": "/usr/bin",
             "HOME": "/home/tester",
             "LANG": "en_US.UTF-8",
-            "ANTHROPIC_API_KEY": "sk-ant-123",
+            "ANTHROPIC_API_KEY": "sk" + "-" + "ant-123",
             "CLAUDE_CODE": "1",
             "HTTPS_PROXY": "http://proxy.internal:8080",
         }
         assert mock_popen.call_args.kwargs["cwd"] == tmp_path
+
+    @patch.dict(
+        "os.environ",
+        {
+            "PATH": "/usr/bin",
+            "HOME": "/home/tester",
+        },
+        clear=True,
+    )
+    def test_claude_runtime_scrubs_stdout_and_stderr_before_returning_result(self, tmp_path: Path) -> None:
+        adapter = ClaudeRuntimeAdapter()
+        adapter.version = MagicMock(return_value="1.0.0")
+        secret_value = "sk-" + "claude-secret-value"
+
+        def _popen(*args, **kwargs):
+            payload = f'{{"model":"claude-sonnet","result":"done {secret_value}"}}'
+            kwargs["stdout"].write(payload.encode("utf-8"))
+            kwargs["stderr"].write(f"OPENAI_API_KEY={secret_value}".encode())
+            return _completed_process()
+
+        with patch("ces.execution.runtimes.adapters.subprocess.Popen", side_effect=_popen):
+            result = adapter.run_task(
+                manifest_description="Implement feature",
+                prompt_pack="Prompt pack",
+                working_dir=tmp_path,
+            )
+
+        assert secret_value not in result.stdout
+        assert secret_value not in result.stderr
+        assert "<REDACTED>" in result.stdout
+        assert "OPENAI_API_KEY=<REDACTED>" in result.stderr
 
     @patch.dict(
         "os.environ",

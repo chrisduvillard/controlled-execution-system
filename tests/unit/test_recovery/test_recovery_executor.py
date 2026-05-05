@@ -269,3 +269,61 @@ def test_auto_evidence_does_not_complete_when_verification_fails(tmp_path: Path)
     assert session is not None
     assert session.stage == "blocked"
     assert session.next_action == "fix_verification"
+
+
+def test_auto_complete_refuses_generic_review_state_without_specific_evidence_marker(tmp_path: Path) -> None:
+    store, project_root = _seed_project(tmp_path)
+    session = store.get_latest_builder_session()
+    assert session is not None
+    store.update_builder_session(
+        session.session_id,
+        stage="blocked",
+        next_action="review_evidence",
+        last_action="approval_rejected",
+        recovery_reason="needs_review",
+        last_error="manual review required",
+    )
+    _write_passing_contract(project_root)
+
+    result = run_auto_evidence_recovery(project_root=project_root, local_store=store, auto_complete=True)
+
+    assert result.verification.passed is True
+    assert result.completed is False
+    assert result.new_evidence_packet_id is not None
+    latest = store.get_latest_builder_session()
+    assert latest is not None
+    assert latest.stage == "awaiting_review"
+    assert latest.next_action == "review_evidence"
+    approval = store.get_approval("M-123")
+    assert approval is None or approval.decision != "approve"
+    assert "manual review" in result.message.lower()
+
+
+def test_auto_complete_refuses_scope_blocked_session_even_if_verification_passes(tmp_path: Path) -> None:
+    scoped_root = tmp_path / "scope-blocked"
+    scoped_root.mkdir()
+    store, project_root = _seed_project(scoped_root)
+    session = store.get_latest_builder_session()
+    assert session is not None
+    store.update_builder_session(
+        session.session_id,
+        stage="blocked",
+        next_action="review_evidence",
+        last_action="approval_rejected",
+        recovery_reason="scope_violation",
+        last_error="workspace changes exceeded manifest scope",
+    )
+    _write_passing_contract(project_root)
+
+    result = run_auto_evidence_recovery(project_root=project_root, local_store=store, auto_complete=True)
+
+    assert result.verification.passed is True
+    assert result.completed is False
+    assert result.new_evidence_packet_id is not None
+    latest = store.get_latest_builder_session()
+    assert latest is not None
+    assert latest.stage == "awaiting_review"
+    assert latest.next_action == "review_evidence"
+    approval = store.get_approval("M-123")
+    assert approval is None or approval.decision != "approve"
+    assert "manual review" in result.message.lower()

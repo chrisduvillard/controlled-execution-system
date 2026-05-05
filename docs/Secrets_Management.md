@@ -18,7 +18,7 @@ uses on your machine.
 ### Local shell
 
 ```bash
-export CES_AUDIT_HMAC_SECRET="replace-with-a-unique-secret"
+export CES_AUDIT_HMAC_SECRET=<unique-local-value>
 export CES_DEMO_MODE=0
 ```
 
@@ -27,7 +27,7 @@ export CES_DEMO_MODE=0
 Keep secrets out of the repo and load them from your shell environment:
 
 ```bash
-export CES_AUDIT_HMAC_SECRET="replace-with-a-unique-secret"
+export CES_AUDIT_HMAC_SECRET=<unique-local-value>
 ```
 
 ### External secret stores

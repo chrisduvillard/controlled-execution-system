@@ -267,7 +267,7 @@ class TestRuntimeSecretStripping:
     def test_runtime_secret_stripping(self) -> None:
         """build_allowed_env with allowlist strips API_KEY but keeps PATH."""
         # Set up host environment with both safe and secret vars
-        with patch.dict(os.environ, {"PATH": "/usr/bin", "API_KEY": "sk-secret123"}):
+        with patch.dict(os.environ, {"PATH": "/usr/bin", "API_KEY": "sk-" + "secret123"}):
             env = build_allowed_env(allowlist=["PATH", "API_KEY"])
 
         # PATH should be kept (not secret-like)
@@ -279,14 +279,14 @@ class TestRuntimeSecretStripping:
         """strip_secret_env removes values starting with known API key prefixes."""
         env = {
             "SAFE_VAR": "some_value",
-            "ANOTHER": "sk-live-secret-key-12345",
-            "GITHUB": "ghp_abcdef123456",
+            "ANOTHER": "sk-" + "synthetic-example-value",
+            "GITHUB": "ghp" + "_" + "syntheticexamplevalue",
         }
         result = strip_secret_env(env)
 
         assert "SAFE_VAR" in result
-        assert "ANOTHER" not in result  # sk- prefix
-        assert "GITHUB" not in result  # ghp_ prefix
+        assert "ANOTHER" not in result  # API key prefix
+        assert "GITHUB" not in result  # GitHub token prefix
 
     def test_build_env_empty_without_allowlist(self) -> None:
         """build_allowed_env returns empty dict when no allowlist is given."""

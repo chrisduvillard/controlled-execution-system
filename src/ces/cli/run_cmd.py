@@ -40,6 +40,7 @@ from ces.control.spec.template_loader import TemplateLoader
 from ces.execution.completion_parser import parse_completion_claim
 from ces.execution.providers.bootstrap import resolve_primary_provider
 from ces.execution.runtime_safety import runtime_side_effects_block_auto_approval, safety_profile_for_runtime
+from ces.execution.secrets import scrub_secrets_from_text
 from ces.execution.workspace_delta import WorkspaceDelta, WorkspaceSnapshot
 from ces.harness.prompts.engineering_charter import attach_engineering_charter
 from ces.harness.sensors.security import SecuritySensor
@@ -254,23 +255,28 @@ async def _ensure_signed_manifest(manager: object, manifest: object) -> object:
 
 def _normalize_runtime_execution(result: Any) -> dict[str, Any]:
     if isinstance(result, dict):
-        return result
-    runtime_result = getattr(result, "runtime_result", None)
-    if runtime_result is not None and hasattr(runtime_result, "model_dump"):
-        return runtime_result.model_dump(mode="json")
-    if hasattr(result, "model_dump"):
-        return result.model_dump(mode="json")
-    return {
-        "runtime_name": getattr(result, "runtime_name"),
-        "runtime_version": getattr(result, "runtime_version"),
-        "reported_model": getattr(result, "reported_model", None),
-        "invocation_ref": getattr(result, "invocation_ref"),
-        "exit_code": getattr(result, "exit_code"),
-        "stdout": getattr(result, "stdout", ""),
-        "stderr": getattr(result, "stderr", ""),
-        "duration_seconds": getattr(result, "duration_seconds", 0.0),
-        "transcript_path": getattr(result, "transcript_path", None),
-    }
+        execution = dict(result)
+    else:
+        runtime_result = getattr(result, "runtime_result", None)
+        if runtime_result is not None and hasattr(runtime_result, "model_dump"):
+            execution = runtime_result.model_dump(mode="json")
+        elif hasattr(result, "model_dump"):
+            execution = result.model_dump(mode="json")
+        else:
+            execution = {
+                "runtime_name": getattr(result, "runtime_name"),
+                "runtime_version": getattr(result, "runtime_version"),
+                "reported_model": getattr(result, "reported_model", None),
+                "invocation_ref": getattr(result, "invocation_ref"),
+                "exit_code": getattr(result, "exit_code"),
+                "stdout": getattr(result, "stdout", ""),
+                "stderr": getattr(result, "stderr", ""),
+                "duration_seconds": getattr(result, "duration_seconds", 0.0),
+                "transcript_path": getattr(result, "transcript_path", None),
+            }
+    execution["stdout"] = scrub_secrets_from_text(str(execution.get("stdout") or ""))
+    execution["stderr"] = scrub_secrets_from_text(str(execution.get("stderr") or ""))
+    return execution
 
 
 def _promoted_prl_context(local_store: Any) -> list[str]:
@@ -1243,6 +1249,8 @@ async def _run_brief_flow(
                     border_style="red",
                 )
             )
+    if yes and (auto_blockers or merge_blocked):
+        raise typer.Exit(code=1)
 
 
 @run_async

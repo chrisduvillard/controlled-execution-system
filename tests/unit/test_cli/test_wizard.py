@@ -265,7 +265,14 @@ class TestWizardFlow:
             "reported_model": None,
             "invocation_ref": "run-wiz",
             "exit_code": 0,
-            "stdout": "Done",
+            "stdout": (
+                "Done\n"
+                "```ces:completion\n"
+                '{"task_id": "M-wizard", "summary": "did it", "files_changed": [], '
+                '"criteria_satisfied": [{"criterion": "tests pass", "evidence": "manual", '
+                '"evidence_kind": "manual_inspection"}], "open_questions": [], "scope_deviations": []}\n'
+                "```"
+            ),
             "stderr": "",
             "duration_seconds": 0.5,
         }

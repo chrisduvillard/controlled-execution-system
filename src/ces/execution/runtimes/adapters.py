@@ -450,8 +450,8 @@ class ClaudeRuntimeAdapter(_BaseRuntimeAdapter):
             except subprocess.TimeoutExpired:
                 exit_code = _TIMEOUT_EXIT_CODE
                 stderr_file.write(("\n" + self._timeout_message(timeout_seconds)).encode("utf-8"))
-            stdout = self._read_limited_file(stdout_file)
-            stderr = self._read_limited_file(stderr_file)
+            stdout = scrub_secrets_from_text(self._read_limited_file(stdout_file))
+            stderr = scrub_secrets_from_text(self._read_limited_file(stderr_file))
         reported_model = None
         try:
             parsed = json.loads(stdout) if stdout else {}

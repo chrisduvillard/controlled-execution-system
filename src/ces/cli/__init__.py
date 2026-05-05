@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import typer
 
+from ces import __version__
 from ces.cli import (
     approve_cmd,
     audit_cmd,
@@ -54,6 +55,12 @@ app = typer.Typer(
 )
 
 
+def _version_callback(show_version: bool) -> None:
+    if show_version:
+        typer.echo(f"controlled-execution-system {__version__}")
+        raise typer.Exit
+
+
 @app.callback()
 def main(
     json_output: bool = typer.Option(
@@ -61,8 +68,17 @@ def main(
         "--json",
         help="Output results as JSON instead of Rich tables.",
     ),
+    version: bool = typer.Option(
+        False,
+        "--version",
+        "-V",
+        callback=_version_callback,
+        is_eager=True,
+        help="Show the installed CES version and exit.",
+    ),
 ) -> None:
     """Controlled Execution System - Deterministic governance for AI agents."""
+    _ = version
     set_json_mode(json_output)
 
 
