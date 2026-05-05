@@ -120,15 +120,22 @@ def _print_recovery_result(result) -> None:
     for command in result.verification.commands:
         table.add_row(command.command, str(command.exit_code), "PASS" if command.passed else "FAIL")
     console.print(table)
+    if not getattr(result, "recovery_applicable", True):
+        title = "[yellow]Self-Recovery Skipped[/yellow]"
+        border_style = "yellow"
+    elif result.verification.passed:
+        title = "[green]Self-Recovery Complete[/green]"
+        border_style = "green"
+    else:
+        title = "[red]Self-Recovery Blocked[/red]"
+        border_style = "red"
     console.print(
         Panel(
             f"Passed: {result.verification.passed}\n"
             f"Completed: {result.completed}\n"
             f"Evidence packet: {result.new_evidence_packet_id or '(none)'}\n"
             f"Next: {result.next_action}\n\n{result.message}",
-            title="[green]Self-Recovery Complete[/green]"
-            if result.verification.passed
-            else "[red]Self-Recovery Blocked[/red]",
-            border_style="green" if result.verification.passed else "red",
+            title=title,
+            border_style=border_style,
         )
     )
