@@ -81,6 +81,12 @@ uv tool update-shell
 ces --help
 ```
 
+On machines where the ambient `python3` is Python 3.11, `pip install controlled-execution-system` can fail before CES starts with a resolver message such as `No matching distribution` because the published package requires Python 3.12+. Ask uv to create the tool environment with a supported interpreter explicitly, such as Python 3.13:
+
+```bash
+uv tool install --python 3.13 controlled-execution-system
+```
+
 Install a pinned release:
 
 ```bash
