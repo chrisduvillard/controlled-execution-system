@@ -152,3 +152,32 @@ def test_public_docs_do_not_overclaim_runtime_or_audit_boundaries() -> None:
     assert "degraded_model_diversity" in security
     assert "public `ces audit --verify-integrity` command" in db_ops
     assert "ces audit --verify-integrity" not in db_ops.replace("public `ces audit --verify-integrity` command", "")
+
+
+def test_freshcart_operating_model_example_is_archived_not_active_public_contract() -> None:
+    active_stub = (ROOT / "docs" / "FreshCart_Worked_Example.md").read_text(encoding="utf-8")
+    archived = ROOT / "docs" / "historical" / "FreshCart_Worked_Example.md"
+
+    assert archived.is_file()
+    assert "historical operating-model archive" in active_stub
+    assert "not the current shipped CES product contract" in active_stub
+    assert "not a sandbox" in active_stub
+    assert "local control, evidence, review, and recovery layer" in active_stub
+    assert "historical/FreshCart_Worked_Example.md" in active_stub
+
+    active_stub_lower = active_stub.lower()
+    for overclaim in (
+        "Auto-merge",
+        "Auto-deploy",
+        "auto-merge",
+        "auto-deploy",
+        "auto-rollback",
+        "canary observation",
+        "Adversarial Review Triad",
+        "Approval Triage Agent",
+        "Deploy Controller",
+        "deploy-controller",
+        "Zero human intervention",
+    ):
+        assert overclaim not in active_stub
+        assert overclaim.lower() not in active_stub_lower
