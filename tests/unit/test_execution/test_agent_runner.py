@@ -382,18 +382,29 @@ class _RuntimeStub:
 
     runtime_name = "stub"
 
-    def __init__(self, stdout: str) -> None:
+    def __init__(
+        self,
+        stdout: str,
+        *,
+        stderr: str = "",
+        runtime_name: str = "stub",
+        runtime_version: str = "0.0",
+        reported_model: str | None = None,
+        invocation_ref: str = "stub-123",
+        transcript_path: str | None = None,
+    ) -> None:
         from ces.execution.runtimes.protocol import AgentRuntimeResult
 
         self._result = AgentRuntimeResult(
-            runtime_name="stub",
-            runtime_version="0.0",
-            reported_model=None,
-            invocation_ref="stub-123",
+            runtime_name=runtime_name,
+            runtime_version=runtime_version,
+            reported_model=reported_model,
+            invocation_ref=invocation_ref,
             exit_code=0,
             stdout=stdout,
-            stderr="",
+            stderr=stderr,
             duration_seconds=0.1,
+            transcript_path=transcript_path,
         )
         self.last_prompt: str | None = None
 
@@ -433,6 +444,43 @@ class TestAgentRunnerClaimParsing:
         assert result.runtime_result.completion_claim is not None
         assert result.runtime_result.completion_claim.task_id == "test-manifest-001"
         assert result.runtime_result.completion_claim.files_changed == ("src/a.py",)
+
+    @pytest.mark.asyncio
+    async def test_runtime_result_and_custody_metadata_are_secret_scrubbed(self) -> None:
+        runner = AgentRunner(provider=MockProvider(), kill_switch=MockKillSwitch())
+        manifest = _make_manifest()
+        token = "ghp" + "_" + "syntheticruntimeversionvalue"
+        model_token = "sk" + "-" + "syntheticreportedmodelvalue"
+        ref_token = "ghs" + "_" + "syntheticinvocationrefvalue"
+        path_token = "xoxb" + "-" + "synthetictranscriptpathvalue"
+        runtime = _RuntimeStub(
+            stdout=f"runtime stdout {token}",
+            stderr=f"runtime stderr {model_token}",
+            runtime_name=f"runtime {token}",
+            runtime_version=f"runtime version {token}",
+            reported_model=f"model {model_token}",
+            invocation_ref=f"invocation {ref_token}",
+            transcript_path=f"transcripts/{path_token}.txt",
+        )
+
+        result = await runner.execute_runtime(
+            manifest=manifest,
+            runtime=runtime,
+            prompt_pack="initial prompt",
+            working_dir=MagicMock(),
+        )
+
+        assert result.runtime_result is not None
+        dumped = (
+            result.runtime_result.model_dump_json()
+            + "\n"
+            + "\n".join(entry.model_dump_json() for entry in result.chain_of_custody)
+        )
+        assert token not in dumped
+        assert model_token not in dumped
+        assert ref_token not in dumped
+        assert path_token not in dumped
+        assert "<REDACTED>" in dumped
 
     @pytest.mark.asyncio
     async def test_claim_none_when_no_block(self) -> None:
