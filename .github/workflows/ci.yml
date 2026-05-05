@@ -6,6 +6,12 @@ on:
   pull_request:
     branches: [master]
 
+env:
+  # Pin uv so setup-uv does not select a brand-new release before the
+  # releases.astral.sh mirror has synced it, which creates noisy fallback
+  # warnings in otherwise-green runs.
+  UV_VERSION: "0.11.8"
+
 jobs:
   lint:
     runs-on: ubuntu-latest
@@ -13,7 +19,7 @@ jobs:
       - uses: actions/checkout@v6
       - uses: astral-sh/setup-uv@v7
         with:
-          version: ">=0.11.3"
+          version: ${{ env.UV_VERSION }}
       - run: uv sync --frozen --group ci
       - run: uv run ruff check src/ tests/
       - run: uv run ruff format --check src/ tests/
@@ -24,7 +30,7 @@ jobs:
       - uses: actions/checkout@v6
       - uses: astral-sh/setup-uv@v7
         with:
-          version: ">=0.11.3"
+          version: ${{ env.UV_VERSION }}
       - run: uv sync --frozen --group ci
       - run: uv run mypy src/ces/ --ignore-missing-imports
 
@@ -34,7 +40,7 @@ jobs:
       - uses: actions/checkout@v6
       - uses: astral-sh/setup-uv@v7
         with:
-          version: ">=0.11.3"
+          version: ${{ env.UV_VERSION }}
       - run: uv sync --frozen --group ci
       - name: Audit dependencies for known CVEs
         run: |
@@ -47,7 +53,7 @@ jobs:
       - uses: actions/checkout@v6
       - uses: astral-sh/setup-uv@v7
         with:
-          version: ">=0.11.3"
+          version: ${{ env.UV_VERSION }}
       - run: uv sync --frozen --group ci
       - name: Run local-first tests with coverage
         run: uv run pytest tests/ -m "not integration" --cov=ces --cov-fail-under=90 --cov-report=term-missing -q -W error
@@ -62,7 +68,7 @@ jobs:
       - uses: actions/checkout@v6
       - uses: astral-sh/setup-uv@v7
         with:
-          version: ">=0.11.3"
+          version: ${{ env.UV_VERSION }}
       - name: Resolve latest allowed dependencies
         run: uv lock --upgrade
       - run: uv sync --group ci
