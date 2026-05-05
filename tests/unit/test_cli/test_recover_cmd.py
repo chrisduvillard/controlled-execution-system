@@ -166,6 +166,60 @@ def test_recover_dry_run_reports_stale_running_session_without_mutation(tmp_path
     assert unchanged.last_action == "execution_started"
 
 
+def test_recover_auto_evidence_json_completed_session_reports_noop_not_failed_verification(
+    tmp_path: Path, monkeypatch
+) -> None:
+    _seed_project(tmp_path)
+    store = LocalProjectStore(tmp_path / ".ces" / "state.db", project_id="proj")
+    session = store.get_latest_builder_session()
+    assert session is not None
+    store.update_builder_session(
+        session.session_id,
+        stage="completed",
+        next_action="start_new_session",
+        last_action="runtime_approved",
+        recovery_reason=None,
+        last_error=None,
+    )
+    monkeypatch.chdir(tmp_path)
+
+    result = runner.invoke(_get_app(), ["recover", "--auto-evidence", "--auto-complete", "--json"])
+
+    assert result.exit_code == 0, result.stdout
+    payload = json.loads(result.stdout)
+    assert payload["mode"] == "auto-evidence"
+    assert payload["result"]["verification_attempted"] is False
+    assert payload["result"]["recovery_applicable"] is False
+    assert payload["result"]["next_action"] == "status"
+    assert "auto-evidence recovery was not run" in payload["result"]["message"].lower()
+    assert (
+        LocalProjectStore(tmp_path / ".ces" / "state.db", project_id="proj").get_latest_builder_session().stage
+        == "completed"
+    )  # type: ignore[union-attr]
+
+
+def test_recover_auto_evidence_text_completed_session_labels_planner_noop(tmp_path: Path, monkeypatch) -> None:
+    _seed_project(tmp_path)
+    store = LocalProjectStore(tmp_path / ".ces" / "state.db", project_id="proj")
+    session = store.get_latest_builder_session()
+    assert session is not None
+    store.update_builder_session(
+        session.session_id,
+        stage="completed",
+        next_action="start_new_session",
+        last_action="runtime_approved",
+        recovery_reason=None,
+        last_error=None,
+    )
+    monkeypatch.chdir(tmp_path)
+
+    result = runner.invoke(_get_app(), ["recover", "--auto-evidence", "--auto-complete"])
+
+    assert result.exit_code == 0, result.stdout
+    assert "Self-Recovery Skipped" in result.stdout
+    assert "Auto-evidence recovery was not run" in result.stdout
+
+
 def test_recover_auto_evidence_json_can_complete(tmp_path: Path, monkeypatch) -> None:
     _seed_project(tmp_path)
     monkeypatch.chdir(tmp_path)

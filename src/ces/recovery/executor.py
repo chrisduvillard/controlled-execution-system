@@ -23,6 +23,8 @@ class RecoveryExecutionResult:
     session_id: str | None
     next_action: str
     message: str
+    verification_attempted: bool = True
+    recovery_applicable: bool = True
 
     def to_dict(self) -> dict[str, Any]:
         data = asdict(self)
@@ -56,7 +58,9 @@ def run_auto_evidence_recovery(
             manifest_id=plan.manifest_id,
             session_id=plan.session_id,
             next_action="run_continue" if "ces continue" in plan.next_commands else "status",
-            message=plan.explanation,
+            message=f"Auto-evidence recovery was not run because the recovery planner did not allow it. {plan.explanation}",
+            verification_attempted=False,
+            recovery_applicable=False,
         )
     if not plan.contract_path:
         raise RuntimeError("No completion contract found. Run `ces verify --json` first.")
@@ -73,6 +77,7 @@ def run_auto_evidence_recovery(
             session_id=plan.session_id,
             next_action="run_continue",
             message="No verification commands are available yet; run `ces continue` to retry the builder session.",
+            verification_attempted=False,
         )
     verification = run_verification_commands(project_root, contract.inferred_commands)
     if dry_run:

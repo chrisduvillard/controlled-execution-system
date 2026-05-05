@@ -171,6 +171,33 @@ def test_auto_evidence_refuses_non_blocked_session_without_mutation(tmp_path: Pa
     assert store.get_latest_builder_session() == before
 
 
+def test_auto_evidence_completed_session_is_explicit_planner_noop(tmp_path: Path) -> None:
+    store, project_root = _seed_project(tmp_path)
+    session = store.get_latest_builder_session()
+    assert session is not None
+    store.update_builder_session(
+        session.session_id,
+        stage="completed",
+        next_action="start_new_session",
+        last_action="runtime_approved",
+        recovery_reason=None,
+        last_error=None,
+    )
+    _write_passing_contract(project_root)
+    before = store.get_latest_builder_session()
+
+    result = run_auto_evidence_recovery(project_root=project_root, local_store=store, auto_complete=True)
+
+    assert result.completed is False
+    assert result.verification_attempted is False
+    assert result.recovery_applicable is False
+    assert result.new_evidence_packet_id is None
+    assert result.next_action == "status"
+    assert "auto-evidence recovery was not run" in result.message.lower()
+    assert "not blocked" in result.message.lower()
+    assert store.get_latest_builder_session() == before
+
+
 def test_auto_evidence_dry_run_reports_stale_running_session_without_mutation(tmp_path: Path) -> None:
     store, project_root = _seed_project(tmp_path)
     session = store.get_latest_builder_session()
