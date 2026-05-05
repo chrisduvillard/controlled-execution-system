@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import shutil
+import subprocess
 import tomllib
 from pathlib import Path
 
@@ -35,6 +37,22 @@ def test_production_deployment_guide_uses_real_package_name() -> None:
 
     assert "uv tool install controlled-execution-system" in guide
     assert "uv tool install ces" not in guide
+
+
+def test_hermes_local_state_is_ignored_and_not_tracked() -> None:
+    """Hermes agent scratch state should never become part of the public repo contract."""
+    gitignore = (ROOT / ".gitignore").read_text(encoding="utf-8")
+
+    assert ".hermes/" in gitignore
+
+    git = shutil.which("git")
+    assert git is not None
+    tracked = subprocess.check_output(  # noqa: S603 - fixed git executable and literal args only
+        [git, "ls-files", ".hermes", ".hermes/**"],
+        cwd=ROOT,
+        text=True,
+    ).splitlines()
+    assert tracked == []
 
 
 def test_secret_docs_use_file_backed_audit_hmac_as_local_default() -> None:
