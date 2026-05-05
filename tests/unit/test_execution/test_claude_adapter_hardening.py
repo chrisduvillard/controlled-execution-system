@@ -15,14 +15,13 @@ These tests assert the command array ClaudeRuntimeAdapter produces:
        refusing ``Bash`` unless the caller explicitly opts in).
 
 We assert at the command-array level: the ``claude`` binary itself is never
-launched in these tests. The enforcement surface is ``subprocess.run``'s
+launched in these tests. The enforcement surface is ``subprocess.Popen``'s
 argv — if the flags are right here, the runtime behaviour follows.
 """
 
 from __future__ import annotations
 
 from pathlib import Path
-from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -33,13 +32,18 @@ from ces.execution.runtimes.adapters import (
 )
 
 
-def _fake_run_capturing_argv(captured: list) -> object:
-    """Return a subprocess.run side-effect that records argv and exits 0."""
+def _fake_popen_capturing_argv(captured: list) -> object:
+    """Return a subprocess.Popen side-effect that records argv and exits 0."""
 
     def _side_effect(*args, **kwargs):
         captured.append(args[0])
         kwargs["stdout"].write(b'{"model":"claude","result":"ok"}')
-        return SimpleNamespace(returncode=0)
+        process = MagicMock()
+        process.pid = 12345
+        process.communicate.return_value = (None, None)
+        process.returncode = 0
+        process.poll.return_value = 0
+        return process
 
     return _side_effect
 
@@ -53,8 +57,8 @@ class TestClaudeAdapterDropsAcceptEdits:
         captured: list = []
 
         with patch(
-            "ces.execution.runtimes.adapters.subprocess.run",
-            side_effect=_fake_run_capturing_argv(captured),
+            "ces.execution.runtimes.adapters.subprocess.Popen",
+            side_effect=_fake_popen_capturing_argv(captured),
         ):
             adapter.run_task(
                 manifest_description="Probe",
@@ -76,8 +80,8 @@ class TestClaudeAdapterEnforcesToolAllowlist:
         captured: list = []
 
         with patch(
-            "ces.execution.runtimes.adapters.subprocess.run",
-            side_effect=_fake_run_capturing_argv(captured),
+            "ces.execution.runtimes.adapters.subprocess.Popen",
+            side_effect=_fake_popen_capturing_argv(captured),
         ):
             adapter.run_task(
                 manifest_description="Probe",
@@ -98,8 +102,8 @@ class TestClaudeAdapterEnforcesToolAllowlist:
         captured: list = []
 
         with patch(
-            "ces.execution.runtimes.adapters.subprocess.run",
-            side_effect=_fake_run_capturing_argv(captured),
+            "ces.execution.runtimes.adapters.subprocess.Popen",
+            side_effect=_fake_popen_capturing_argv(captured),
         ):
             adapter.run_task(
                 manifest_description="Probe",
@@ -117,8 +121,8 @@ class TestClaudeAdapterEnforcesToolAllowlist:
         captured: list = []
 
         with patch(
-            "ces.execution.runtimes.adapters.subprocess.run",
-            side_effect=_fake_run_capturing_argv(captured),
+            "ces.execution.runtimes.adapters.subprocess.Popen",
+            side_effect=_fake_popen_capturing_argv(captured),
         ):
             adapter.run_task(
                 manifest_description="Probe",
@@ -147,8 +151,8 @@ class TestClaudeAdapterEnforcesToolAllowlist:
         captured: list = []
 
         with patch(
-            "ces.execution.runtimes.adapters.subprocess.run",
-            side_effect=_fake_run_capturing_argv(captured),
+            "ces.execution.runtimes.adapters.subprocess.Popen",
+            side_effect=_fake_popen_capturing_argv(captured),
         ):
             adapter.run_task(
                 manifest_description="Probe",

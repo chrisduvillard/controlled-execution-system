@@ -5,12 +5,16 @@ from __future__ import annotations
 import json
 import os
 import shutil
+import signal
 import stat
 import subprocess
 import tempfile
 import time
 import uuid
+from collections.abc import Mapping
 from pathlib import Path
+from types import FrameType
+from typing import Any
 
 from ces.execution._subprocess_env import build_subprocess_env
 from ces.execution.runtimes.protocol import AgentRuntimeResult
@@ -67,6 +71,129 @@ class _BaseRuntimeAdapter:
             "inspect the runtime transcript, then retry with `ces continue` or set "
             "CES_RUNTIME_TIMEOUT_SECONDS to a larger positive value if this task legitimately needs more time."
         )
+
+    @staticmethod
+    def _supports_process_groups() -> bool:
+        return os.name != "nt" and hasattr(os, "killpg") and hasattr(os, "getpgid")
+
+    @classmethod
+    def _process_group_exists(cls, pgid: int) -> bool:
+        try:
+            os.killpg(pgid, 0)
+        except ProcessLookupError:
+            return False
+        except OSError:
+            return False
+        return True
+
+    @classmethod
+    def _wait_for_process_group_exit(
+        cls,
+        process: subprocess.Popen[bytes],
+        pgid: int,
+        *,
+        timeout_seconds: float,
+    ) -> bool:
+        deadline = time.monotonic() + timeout_seconds
+        while time.monotonic() < deadline:
+            if process.poll() is None:
+                try:
+                    process.wait(timeout=0.05)
+                except subprocess.TimeoutExpired:
+                    pass
+            if not cls._process_group_exists(pgid):
+                return True
+            time.sleep(0.05)
+        return not cls._process_group_exists(pgid)
+
+    @classmethod
+    def _terminate_process_tree(cls, process: subprocess.Popen[bytes], pgid: int | None = None) -> None:
+        """Terminate the runtime subprocess group so spawned CLI children do not outlive CES."""
+        if cls._supports_process_groups() and pgid is not None:
+            try:
+                os.killpg(pgid, signal.SIGTERM)
+            except ProcessLookupError:
+                return
+            except OSError:
+                if process.poll() is None:
+                    process.terminate()
+                    try:
+                        process.wait(timeout=5)
+                    except subprocess.TimeoutExpired:
+                        process.kill()
+                return
+            if cls._wait_for_process_group_exit(process, pgid, timeout_seconds=5):
+                return
+            try:
+                os.killpg(pgid, signal.SIGKILL)
+            except ProcessLookupError:
+                return
+            except OSError:
+                if process.poll() is None:
+                    process.kill()
+                return
+            cls._wait_for_process_group_exit(process, pgid, timeout_seconds=5)
+            return
+
+        if process.poll() is not None:
+            return
+        process.terminate()
+        try:
+            process.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            try:
+                process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                return
+
+    def _run_controlled_subprocess(
+        self,
+        command: list[str],
+        *,
+        stdout_file: object,
+        stderr_file: object,
+        env: Mapping[str, str],
+        timeout_seconds: int,
+        cwd: Path | None = None,
+    ) -> int:
+        """Run a local runtime in its own process group and clean it up on interruption."""
+        popen_kwargs: dict[str, Any] = {
+            "stdin": subprocess.DEVNULL,
+            "stdout": stdout_file,
+            "stderr": stderr_file,
+            "env": dict(env),
+        }
+        if cwd is not None:
+            popen_kwargs["cwd"] = cwd
+        if self._supports_process_groups():
+            popen_kwargs["start_new_session"] = True
+        process = subprocess.Popen(command, **popen_kwargs)
+        process_group_id: int | None = None
+        if self._supports_process_groups():
+            try:
+                process_group_id = os.getpgid(process.pid)
+            except ProcessLookupError:
+                process_group_id = None
+        previous_handlers: dict[int, signal.Handlers] = {}
+
+        def _handle_parent_signal(signum: int, _frame: FrameType | None) -> None:
+            self._terminate_process_tree(process, process_group_id)
+            raise SystemExit(128 + signum)
+
+        signal_numbers = (signal.SIGTERM, signal.SIGINT)
+        if self._supports_process_groups():
+            for signum in signal_numbers:
+                previous_handlers[signum] = signal.signal(signum, _handle_parent_signal)
+        try:
+            process.communicate(timeout=timeout_seconds)
+            return int(process.returncode or 0)
+        except subprocess.TimeoutExpired:
+            self._terminate_process_tree(process, process_group_id)
+            raise
+        finally:
+            for signum, handler in previous_handlers.items():
+                signal.signal(signum, handler)
 
     @staticmethod
     def _prepare_project_transcript_path(working_dir: Path, invocation_ref: str) -> Path:
@@ -216,16 +343,13 @@ class CodexRuntimeAdapter(_BaseRuntimeAdapter):
         timeout_seconds = self._runtime_timeout_seconds()
         with tempfile.TemporaryFile() as stdout_file, tempfile.TemporaryFile() as stderr_file:
             try:
-                result = subprocess.run(
+                exit_code = self._run_controlled_subprocess(
                     command,
-                    stdin=subprocess.DEVNULL,
-                    stdout=stdout_file,
-                    stderr=stderr_file,
-                    check=False,
+                    stdout_file=stdout_file,
+                    stderr_file=stderr_file,
                     env=self._build_env(),
-                    timeout=timeout_seconds,
+                    timeout_seconds=timeout_seconds,
                 )
-                exit_code = result.returncode
             except subprocess.TimeoutExpired:
                 exit_code = _TIMEOUT_EXIT_CODE
                 stderr_file.write(("\n" + self._timeout_message(timeout_seconds)).encode("utf-8"))
@@ -288,17 +412,14 @@ class ClaudeRuntimeAdapter(_BaseRuntimeAdapter):
         timeout_seconds = self._runtime_timeout_seconds()
         with tempfile.TemporaryFile() as stdout_file, tempfile.TemporaryFile() as stderr_file:
             try:
-                result = subprocess.run(
+                exit_code = self._run_controlled_subprocess(
                     command,
-                    stdin=subprocess.DEVNULL,
-                    stdout=stdout_file,
-                    stderr=stderr_file,
-                    check=False,
-                    cwd=working_dir,
+                    stdout_file=stdout_file,
+                    stderr_file=stderr_file,
                     env=self._build_env(),
-                    timeout=timeout_seconds,
+                    timeout_seconds=timeout_seconds,
+                    cwd=working_dir,
                 )
-                exit_code = result.returncode
             except subprocess.TimeoutExpired:
                 exit_code = _TIMEOUT_EXIT_CODE
                 stderr_file.write(("\n" + self._timeout_message(timeout_seconds)).encode("utf-8"))
