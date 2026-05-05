@@ -222,6 +222,23 @@ class _BaseRuntimeAdapter:
         return Path(transcript_path)
 
     @staticmethod
+    def _runtime_transcript_seed(invocation_ref: str) -> str:
+        return (
+            "CES runtime invocation started\n"
+            f"Invocation: {invocation_ref}\n"
+            "Runtime output streams here during execution and is scrubbed for known secret patterns when CES finalizes it.\n"
+        )
+
+    @classmethod
+    def _initialize_runtime_transcript(cls, transcript_path: Path, invocation_ref: str) -> None:
+        """Seed transcript files so operators can find in-flight runtime evidence immediately."""
+        transcript_path.write_text(cls._runtime_transcript_seed(invocation_ref), encoding="utf-8")
+        try:
+            os.chmod(transcript_path, stat.S_IRUSR | stat.S_IWUSR)
+        except OSError:
+            pass
+
+    @staticmethod
     def _decode_limited_output(data: bytes) -> str:
         truncated = len(data) > _MAX_RUNTIME_OUTPUT_BYTES
         payload = data[:_MAX_RUNTIME_OUTPUT_BYTES]
@@ -323,7 +340,9 @@ class CodexRuntimeAdapter(_BaseRuntimeAdapter):
         del allowed_tools
         started = time.monotonic()
         invocation_ref = f"codex-{uuid.uuid4().hex[:12]}"
-        message_file = self._prepare_project_transcript_path(working_dir, invocation_ref)
+        transcript_file = self._prepare_project_transcript_path(working_dir, invocation_ref)
+        last_message_file = self._prepare_project_transcript_path(working_dir, f"{invocation_ref}-last-message")
+        self._initialize_runtime_transcript(transcript_file, invocation_ref)
         # Chris's CES/Codex deployment always runs Codex with full host access.
         # Codex workspace-write uses bubblewrap, which cannot execute shell tools
         # on the target Ubuntu host (`bwrap: loopback: Failed RTM_NEWADDR`).
@@ -338,10 +357,10 @@ class CodexRuntimeAdapter(_BaseRuntimeAdapter):
             "danger-full-access",
             "--skip-git-repo-check",
             "--output-last-message",
-            str(message_file),
+            str(last_message_file),
         ]
         timeout_seconds = self._runtime_timeout_seconds()
-        with tempfile.TemporaryFile() as stdout_file, tempfile.TemporaryFile() as stderr_file:
+        with transcript_file.open("ab+") as stdout_file, tempfile.TemporaryFile() as stderr_file:
             try:
                 exit_code = self._run_controlled_subprocess(
                     command,
@@ -353,10 +372,18 @@ class CodexRuntimeAdapter(_BaseRuntimeAdapter):
             except subprocess.TimeoutExpired:
                 exit_code = _TIMEOUT_EXIT_CODE
                 stderr_file.write(("\n" + self._timeout_message(timeout_seconds)).encode("utf-8"))
-            stdout = self._read_limited_file(stdout_file)
+            stdout_file.flush()
+            transcript = self._read_scrubbed_limited_path(transcript_file)
+            stdout = transcript.removeprefix(self._runtime_transcript_seed(invocation_ref))
             stderr = self._read_limited_file(stderr_file)
-        if message_file.exists():
-            stdout = self._read_scrubbed_limited_path(message_file)
+        if last_message_file.exists():
+            message_stdout = self._read_scrubbed_limited_path(last_message_file)
+            try:
+                last_message_file.unlink()
+            except OSError:
+                pass
+            if message_stdout.strip():
+                stdout = message_stdout
         return AgentRuntimeResult(
             runtime_name=self.runtime_name,
             runtime_version=self.version(),
@@ -366,7 +393,7 @@ class CodexRuntimeAdapter(_BaseRuntimeAdapter):
             stdout=stdout,
             stderr=stderr,
             duration_seconds=time.monotonic() - started,
-            transcript_path=str(message_file) if message_file.exists() else None,
+            transcript_path=str(transcript_file) if transcript_file.exists() else None,
         )
 
 
