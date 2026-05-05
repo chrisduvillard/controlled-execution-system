@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.9] - 2026-05-05
+
+Runtime recovery hardening for interrupted builder sessions.
+
+### Added
+- Builder-session reconciliation now detects stale `running` sessions and turns
+  them into explicit blocked/retryable recovery state before status and recovery
+  planning decisions.
+- Recovery diagnostics now preserve interrupted runtime context in builder
+  reports, including a dedicated stale-runtime report section.
+
+### Changed
+- `ces continue` now terminalizes stale active manifests before retrying a
+  half-failed builder session, preventing duplicate in-flight manifests.
+- `ces report builder` accepts `--project-root`, matching other builder-first
+  operator commands.
+
+### Fixed
+- `ces recover --dry-run` now points interrupted stale sessions at `ces continue`
+  instead of reporting a non-actionable running state.
+- `ces recover --auto-evidence` no longer mutates stale non-blocked runtime
+  sessions into zero-command recovery attempts.
+
 ## [0.1.8] - 2026-05-04
 
 Release-confidence hardening for builder-first greenfield and brownfield use.
