@@ -37,6 +37,30 @@ def test_production_deployment_guide_uses_real_package_name() -> None:
     assert "uv tool install ces" not in guide
 
 
+def test_secret_docs_use_file_backed_audit_hmac_as_local_default() -> None:
+    """Public secret docs should not tell local operators to use env-first dev defaults."""
+    production = (ROOT / "docs" / "Production_Deployment_Guide.md").read_text(encoding="utf-8")
+    secrets = (ROOT / "docs" / "Secrets_Management.md").read_text(encoding="utf-8")
+    combined = f"{production}\n{secrets}"
+
+    assert ".ces/keys/audit.hmac" in production
+    assert ".ces/keys/audit.hmac" in secrets
+    assert "ces init" in secrets
+    assert "CES_AUDIT_HMAC_SECRET` | Optional override" in production
+    assert "managed/CI environments" in secrets
+    assert "will not overwrite an existing `.ces/` directory" in secrets
+    assert "dev default" not in combined.lower()
+    assert "export CES_AUDIT_HMAC_SECRET=<unique-local-value>" not in secrets
+
+
+def test_getting_started_gate_reference_includes_required_scope_argument() -> None:
+    """Getting Started command table should match the shipped Typer gate signature."""
+    getting_started = (ROOT / "docs" / "Getting_Started.md").read_text(encoding="utf-8")
+
+    assert "| `ces gate <phase> <scope>` | Evaluate phase gate |" in getting_started
+    assert "| `ces gate <phase>` |" not in getting_started
+
+
 def test_publish_workflow_keeps_strict_tests_and_cli_smoke() -> None:
     """Release publishing must keep warning-strict tests and wheel smoke coverage."""
     workflow = (ROOT / ".github" / "workflows" / "publish.yml").read_text(encoding="utf-8")
