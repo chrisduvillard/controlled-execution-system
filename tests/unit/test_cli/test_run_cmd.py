@@ -15,6 +15,7 @@ from typer.testing import CliRunner
 
 from ces.control.models.manifest import TaskManifest
 from ces.control.models.merge_decision import MergeDecision
+from ces.local_store import LocalProjectStore
 from ces.shared.enums import ArtifactStatus, BehaviorConfidence, ChangeClass, RiskTier, WorkflowState
 
 runner = CliRunner()
@@ -195,6 +196,52 @@ def test_brownfield_prompt_pack_tells_runtime_to_claim_manifest_id_not_olb_id() 
 
     assert "task_id must be the active manifest ID: M-active" in prompt
     assert "Do not use OLB-* legacy behavior IDs as task_id" in prompt
+
+
+def _manifest_stub(manifest_id: str, workflow_state: WorkflowState) -> SimpleNamespace:
+    now = datetime.now(timezone.utc)
+    return SimpleNamespace(
+        manifest_id=manifest_id,
+        description="Build MiniLog",
+        risk_tier=RiskTier.C,
+        behavior_confidence=BehaviorConfidence.BC1,
+        change_class=ChangeClass.CLASS_3,
+        status=ArtifactStatus.DRAFT,
+        workflow_state=workflow_state,
+        content_hash=None,
+        expires_at=now,
+        created_at=now,
+        model_dump=lambda mode="json": {"manifest_id": manifest_id, "description": "Build MiniLog"},
+    )
+
+
+@pytest.mark.asyncio
+async def test_continue_after_interrupted_session_terminalizes_previous_manifest(tmp_path: Path) -> None:
+    from ces.cli.run_cmd import _supersede_previous_manifest_on_interrupted_continue
+
+    (tmp_path / ".ces").mkdir()
+    store = LocalProjectStore(tmp_path / ".ces" / "state.db", project_id="proj")
+    store.save_manifest(_manifest_stub("M-old", WorkflowState.IN_FLIGHT))
+    store.save_manifest(_manifest_stub("M-new", WorkflowState.MERGED))
+    current_session = SimpleNamespace(
+        manifest_id="M-old",
+        runtime_manifest_id="M-old",
+        recovery_reason="runtime_interrupted",
+        last_action="runtime_interrupted",
+    )
+
+    changed = await _supersede_previous_manifest_on_interrupted_continue(
+        current_session=current_session,
+        new_manifest_id="M-new",
+        manager=AsyncMock(),
+        local_store=store,
+    )
+
+    assert changed == "M-old"
+    old = store.get_manifest_row("M-old")
+    assert old is not None
+    assert old.workflow_state == "rejected"
+    assert "M-old" not in {row.manifest_id for row in store.get_active_manifest_rows()}
 
 
 class TestRunCommand:

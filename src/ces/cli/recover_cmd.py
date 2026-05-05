@@ -73,15 +73,15 @@ async def recover_builder_session(
             }
             if _output_mod._json_mode:
                 typer.echo(json.dumps(payload, indent=2))
-                if not result.verification.passed:
+                if not result.verification.passed and result.next_action == "fix_verification":
                     raise typer.Exit(code=1)
                 return
             _print_recovery_result(result)
-            if not result.verification.passed:
+            if not result.verification.passed and result.next_action == "fix_verification":
                 raise typer.Exit(code=1)
             return
 
-        plan = build_recovery_plan(project_root=resolved_root, local_store=local_store)
+        plan = build_recovery_plan(project_root=resolved_root, local_store=local_store, mutate_stale=not dry_run)
         payload = {"mode": "plan", "project_root": str(resolved_root), "plan": plan.to_dict()}
         if _output_mod._json_mode:
             typer.echo(json.dumps(payload, indent=2))

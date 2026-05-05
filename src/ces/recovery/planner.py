@@ -6,6 +6,8 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
+from ces.recovery.reconciler import reconcile_stale_builder_session
+
 
 @dataclass(frozen=True)
 class RecoveryPlan:
@@ -25,8 +27,13 @@ class RecoveryPlan:
         return data
 
 
-def build_recovery_plan(project_root: Path, local_store: Any) -> RecoveryPlan:
+def build_recovery_plan(project_root: Path, local_store: Any, *, mutate_stale: bool = True) -> RecoveryPlan:
     """Inspect the latest builder session and explain safe recovery actions."""
+    reconciliation = reconcile_stale_builder_session(
+        project_root=project_root,
+        local_store=local_store,
+        mutate=mutate_stale,
+    )
     session = _latest_session(local_store)
     if session is None:
         return RecoveryPlan(
@@ -49,6 +56,19 @@ def build_recovery_plan(project_root: Path, local_store: Any) -> RecoveryPlan:
     contract_exists = contract_path.is_file()
     next_commands: list[str] = []
     explanation_parts: list[str] = []
+
+    if reconciliation.stale:
+        return RecoveryPlan(
+            session_id=str(getattr(session, "session_id", "")),
+            manifest_id=manifest_id,
+            evidence_packet_id=evidence_packet_id,
+            blocked=True,
+            can_run_auto_evidence=False,
+            can_auto_complete=False,
+            contract_path=str(contract_path) if contract_exists else None,
+            explanation=reconciliation.message or "Latest builder session was interrupted and is ready to retry.",
+            next_commands=("ces continue", "ces status"),
+        )
 
     if not blocked:
         explanation_parts.append(f"Latest builder session is not blocked; stage is `{stage or 'unknown'}`.")

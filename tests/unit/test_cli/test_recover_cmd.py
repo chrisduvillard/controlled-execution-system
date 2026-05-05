@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -95,6 +96,21 @@ def _seed_project(project_root: Path) -> None:
     contract.write(project_root / ".ces" / "completion-contract.json")
 
 
+def _seed_running_project(project_root: Path) -> None:
+    _seed_project(project_root)
+    store = LocalProjectStore(project_root / ".ces" / "state.db", project_id="proj")
+    session = store.get_latest_builder_session()
+    assert session is not None
+    store.update_builder_session(
+        session.session_id,
+        stage="running",
+        next_action="review_evidence",
+        last_action="execution_started",
+        recovery_reason=None,
+        last_error=None,
+    )
+
+
 def test_recover_dry_run_json_shows_plan_without_mutation(tmp_path: Path, monkeypatch) -> None:
     _seed_project(tmp_path)
     monkeypatch.chdir(tmp_path)
@@ -108,6 +124,46 @@ def test_recover_dry_run_json_shows_plan_without_mutation(tmp_path: Path, monkey
     assert "ces recover --auto-evidence" in payload["plan"]["next_commands"]
     store = LocalProjectStore(tmp_path / ".ces" / "state.db", project_id="proj")
     assert store.get_latest_builder_session().stage == "blocked"  # type: ignore[union-attr]
+
+
+def test_recover_auto_evidence_json_refuses_non_blocked_without_mutation(tmp_path: Path, monkeypatch) -> None:
+    _seed_running_project(tmp_path)
+    monkeypatch.chdir(tmp_path)
+    store = LocalProjectStore(tmp_path / ".ces" / "state.db", project_id="proj")
+    before = store.get_latest_builder_session()
+
+    result = runner.invoke(_get_app(), ["recover", "--auto-evidence", "--auto-complete", "--json"])
+
+    assert result.exit_code == 0, result.stdout
+    payload = json.loads(result.stdout)
+    assert payload["result"]["completed"] is False
+    assert payload["result"]["new_evidence_packet_id"] is None
+    assert "not blocked" in payload["result"]["message"].lower()
+    assert LocalProjectStore(tmp_path / ".ces" / "state.db", project_id="proj").get_latest_builder_session() == before
+
+
+def test_recover_dry_run_reports_stale_running_session_without_mutation(tmp_path: Path, monkeypatch) -> None:
+    _seed_running_project(tmp_path)
+    monkeypatch.chdir(tmp_path)
+    store = LocalProjectStore(tmp_path / ".ces" / "state.db", project_id="proj")
+    session = store.get_latest_builder_session()
+    assert session is not None
+    with store._connect() as conn:
+        conn.execute(
+            "UPDATE builder_sessions SET updated_at = ? WHERE session_id = ?",
+            ((datetime.now(timezone.utc) - timedelta(hours=2)).isoformat(), session.session_id),
+        )
+
+    result = runner.invoke(_get_app(), ["recover", "--dry-run", "--json"])
+
+    assert result.exit_code == 0, result.stdout
+    payload = json.loads(result.stdout)
+    assert payload["plan"]["blocked"] is True
+    assert payload["plan"]["next_commands"][0] == "ces continue"
+    unchanged = LocalProjectStore(tmp_path / ".ces" / "state.db", project_id="proj").get_latest_builder_session()
+    assert unchanged is not None
+    assert unchanged.stage == "running"
+    assert unchanged.last_action == "execution_started"
 
 
 def test_recover_auto_evidence_json_can_complete(tmp_path: Path, monkeypatch) -> None:

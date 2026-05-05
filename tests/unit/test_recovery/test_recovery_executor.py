@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -144,6 +145,81 @@ def test_auto_evidence_refreshes_stale_empty_contract_after_greenfield_files_exi
         "python -m pytest -q",
         "python -m compileall tests",
     ]
+
+
+def test_auto_evidence_refuses_non_blocked_session_without_mutation(tmp_path: Path) -> None:
+    store, project_root = _seed_project(tmp_path)
+    session = store.get_latest_builder_session()
+    assert session is not None
+    store.update_builder_session(
+        session.session_id,
+        stage="running",
+        next_action="review_evidence",
+        last_action="execution_started",
+        recovery_reason=None,
+        last_error=None,
+    )
+    _write_passing_contract(project_root)
+    before = store.get_latest_builder_session()
+
+    result = run_auto_evidence_recovery(project_root=project_root, local_store=store, auto_complete=True)
+
+    assert result.completed is False
+    assert result.new_evidence_packet_id is None
+    assert result.next_action in {"status", "run_continue"}
+    assert "not blocked" in result.message.lower() or "cannot run" in result.message.lower()
+    assert store.get_latest_builder_session() == before
+
+
+def test_auto_evidence_dry_run_reports_stale_running_session_without_mutation(tmp_path: Path) -> None:
+    store, project_root = _seed_project(tmp_path)
+    session = store.get_latest_builder_session()
+    assert session is not None
+    store.update_builder_session(
+        session.session_id,
+        stage="running",
+        next_action="review_evidence",
+        last_action="execution_started",
+        recovery_reason=None,
+        last_error=None,
+    )
+    with store._connect() as conn:
+        conn.execute(
+            "UPDATE builder_sessions SET updated_at = ? WHERE session_id = ?",
+            ((datetime.now(timezone.utc) - timedelta(hours=2)).isoformat(), session.session_id),
+        )
+    _write_passing_contract(project_root)
+
+    result = run_auto_evidence_recovery(project_root=project_root, local_store=store, dry_run=True, auto_complete=True)
+
+    assert result.completed is False
+    assert result.new_evidence_packet_id is None
+    assert result.next_action == "run_continue"
+    unchanged = store.get_latest_builder_session()
+    assert unchanged is not None
+    assert unchanged.stage == "running"
+    assert unchanged.last_action == "execution_started"
+
+
+def test_auto_evidence_empty_verification_commands_do_not_mutate_or_fail_product(tmp_path: Path) -> None:
+    store, project_root = _seed_project(tmp_path)
+    contract = CompletionContract(
+        request="Build demo",
+        acceptance_criteria=(AcceptanceCriterion(id="AC-001", text="Unimplemented product exists"),),
+        project_type="unknown",
+        inferred_commands=(),
+    )
+    contract.write(project_root / ".ces" / "completion-contract.json")
+    before = store.get_latest_builder_session()
+
+    result = run_auto_evidence_recovery(project_root=project_root, local_store=store, auto_complete=True)
+
+    assert result.completed is False
+    assert result.verification.commands == ()
+    assert result.new_evidence_packet_id is None
+    assert result.next_action == "run_continue"
+    assert "no verification commands" in result.message.lower()
+    assert store.get_latest_builder_session() == before
 
 
 def test_auto_evidence_does_not_complete_when_verification_fails(tmp_path: Path) -> None:

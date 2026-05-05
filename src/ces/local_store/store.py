@@ -439,6 +439,30 @@ class LocalProjectStore:
             rows = fetch_all_manifests(conn, self._project_id)
         return [row_to_manifest_record(row) for row in rows]
 
+    def update_manifest_workflow_state(self, manifest_id: str, workflow_state: str) -> LocalManifestRow | None:
+        """Update only a manifest workflow state, preserving full manifest content."""
+        current = self.get_manifest_row(manifest_id)
+        if current is None:
+            return None
+        content = dict(current.content or {})
+        content["workflow_state"] = workflow_state
+        with self._connect() as conn:
+            conn.execute(
+                """
+                UPDATE manifests
+                SET workflow_state = ?, content = ?, updated_at = ?
+                WHERE manifest_id = ? AND project_id = ?
+                """,
+                (
+                    workflow_state,
+                    json.dumps(content, default=_json_default),
+                    datetime.now(timezone.utc).isoformat(),
+                    manifest_id,
+                    self._project_id,
+                ),
+            )
+        return self.get_manifest_row(manifest_id)
+
     def save_runtime_execution(self, manifest_id: str, execution: dict[str, Any]) -> None:
         # Scrub any stray secrets (API keys, env assignments) out of subprocess
         # output before persisting. Without this, an agent that reads `.env` or

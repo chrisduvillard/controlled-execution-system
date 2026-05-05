@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -63,6 +64,38 @@ def _seed_blocked_session(tmp_path: Path) -> tuple[LocalProjectStore, Path]:
     return store, project_root
 
 
+def _seed_running_session(tmp_path: Path) -> tuple[LocalProjectStore, Path, str]:
+    project_root = tmp_path
+    (project_root / ".ces").mkdir()
+    store = LocalProjectStore(project_root / ".ces" / "state.db", project_id="proj")
+    brief_id = store.save_builder_brief(
+        request="Build MiniLog",
+        project_mode="greenfield",
+        constraints=[],
+        acceptance_criteria=["CLI works"],
+        must_not_break=[],
+        open_questions={},
+        manifest_id="M-stale",
+    )
+    session_id = store.save_builder_session(
+        brief_id=brief_id,
+        request="Build MiniLog",
+        project_mode="greenfield",
+        stage="running",
+        next_action="review_evidence",
+        last_action="execution_started",
+        manifest_id="M-stale",
+        runtime_manifest_id="M-stale",
+    )
+    stale_at = (datetime.now(timezone.utc) - timedelta(hours=2)).isoformat()
+    with store._connect() as conn:
+        conn.execute(
+            "UPDATE builder_sessions SET updated_at = ? WHERE session_id = ?",
+            (stale_at, session_id),
+        )
+    return store, project_root, session_id
+
+
 def test_plan_recommends_auto_evidence_when_contract_exists(tmp_path: Path) -> None:
     store, project_root = _seed_blocked_session(tmp_path)
     contract_path = project_root / ".ces" / "completion-contract.json"
@@ -87,3 +120,16 @@ def test_plan_recommends_dry_run_when_no_verification_contract(tmp_path: Path) -
     assert plan.can_auto_complete is False
     assert "ces verify --json" in plan.next_commands
     assert "completion contract" in plan.explanation
+
+
+def test_plan_treats_stale_running_session_as_interrupted_and_retryable(tmp_path: Path) -> None:
+    store, project_root, session_id = _seed_running_session(tmp_path)
+
+    plan = build_recovery_plan(project_root=project_root, local_store=store)
+
+    assert plan.session_id == session_id
+    assert plan.blocked is True
+    assert plan.can_run_auto_evidence is False
+    assert "stale" in plan.explanation.lower() or "interrupted" in plan.explanation.lower()
+    assert "ces continue" in plan.next_commands
+    assert "ces recover --auto-evidence" not in plan.next_commands

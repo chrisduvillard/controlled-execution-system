@@ -37,6 +37,7 @@ from ces.cli._context import find_project_root, get_project_config, get_project_
 from ces.cli._errors import handle_error
 from ces.cli._factory import get_services
 from ces.cli._output import console, set_json_mode
+from ces.recovery.reconciler import reconcile_stale_builder_session
 
 
 def _redact_actor(actor: object) -> str:
@@ -382,6 +383,7 @@ async def _gather_status_data(
     services: dict,
     project_id: str | None = None,
     project_config: dict[str, Any] | None = None,
+    project_root: Path | None = None,
 ) -> dict:
     """Gather all local status data from CES services.
 
@@ -401,6 +403,9 @@ async def _gather_status_data(
     trust_manager = services["trust_manager"]
     manifest_manager = services["manifest_manager"]
     audit_ledger = services.get("audit_ledger")
+    local_store = services.get("local_store")
+    if local_store is not None and project_root is not None:
+        reconcile_stale_builder_session(project_root=project_root, local_store=local_store)
 
     # Trust profiles — TrustManager does not have a bulk query method yet,
     # so we return an empty list. Phase 9 will wire this.
@@ -556,7 +561,12 @@ async def show_status(
         interval = max(0.5, interval)
 
         async with get_services(project_root=resolved_project_root) as services:
-            data = await _gather_status_data(services, project_id=project_id, project_config=project_config)
+            data = await _gather_status_data(
+                services,
+                project_id=project_id,
+                project_config=project_config,
+                project_root=resolved_project_root,
+            )
 
             if _output_mod._json_mode:
                 typer.echo(
@@ -575,6 +585,7 @@ async def show_status(
                                 services,
                                 project_id=project_id,
                                 project_config=project_config,
+                                project_root=resolved_project_root,
                             )
                             tables = [_build_overview_panel(project_id, data, project_config.get("project_name"))]
                             if expert:

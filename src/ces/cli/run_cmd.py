@@ -45,6 +45,7 @@ from ces.harness.prompts.engineering_charter import attach_engineering_charter
 from ces.harness.sensors.security import SecuritySensor
 from ces.harness.services.change_impact import build_observability_acceptance_template
 from ces.harness.services.risk_sensor_policy import evaluate_sensor_policy
+from ces.recovery.reconciler import clear_builder_runtime_lock, write_builder_runtime_lock
 from ces.shared.enums import (
     ActorType,
     BehaviorConfidence,
@@ -105,6 +106,52 @@ def _with_workflow_state(manifest: object, workflow_state: object) -> object:
     except (AttributeError, TypeError):
         pass
     return manifest
+
+
+def _should_supersede_previous_manifest(current_session: Any, new_manifest_id: str) -> str | None:
+    previous = getattr(current_session, "runtime_manifest_id", None) or getattr(current_session, "manifest_id", None)
+    if not previous or previous == new_manifest_id:
+        return None
+    if getattr(current_session, "recovery_reason", None) == "runtime_interrupted":
+        return str(previous)
+    if getattr(current_session, "last_action", None) in {"runtime_interrupted", "stale_runtime_detected"}:
+        return str(previous)
+    return None
+
+
+async def _supersede_previous_manifest_on_interrupted_continue(
+    *,
+    current_session: Any,
+    new_manifest_id: str,
+    manager: Any,
+    local_store: Any,
+) -> str | None:
+    previous = _should_supersede_previous_manifest(current_session, new_manifest_id)
+    if previous is None:
+        return None
+    previous_row = local_store.get_manifest_row(previous) if hasattr(local_store, "get_manifest_row") else None
+    if previous_row is None or getattr(previous_row, "workflow_state", None) in {
+        "merged",
+        "deployed",
+        "expired",
+        "rejected",
+        "failed",
+        "cancelled",
+    }:
+        return None
+
+    update_state = getattr(local_store, "update_manifest_workflow_state", None)
+    if callable(update_state):
+        update_state(previous, WorkflowState.REJECTED.value)
+
+    get_manifest = getattr(manager, "get_manifest", None)
+    save_manifest = getattr(manager, "save_manifest", None)
+    if callable(get_manifest) and callable(save_manifest):
+        maybe_manifest = get_manifest(previous)
+        previous_manifest = await maybe_manifest if hasattr(maybe_manifest, "__await__") else maybe_manifest
+        if previous_manifest is not None:
+            await save_manifest(_with_workflow_state(previous_manifest, WorkflowState.REJECTED))
+    return previous
 
 
 _PATHISH_RE = re.compile(
@@ -733,6 +780,13 @@ async def _run_brief_flow(
         )
     manifest = _manifest_with_effective_brownfield_scope(manifest, brief_draft)
     manifest = await _ensure_signed_manifest(manager, manifest)
+    if current_session is not None:
+        await _supersede_previous_manifest_on_interrupted_continue(
+            current_session=current_session,
+            new_manifest_id=manifest.manifest_id,
+            manager=manager,
+            local_store=local_store,
+        )
     contract_path = _write_completion_contract_for_build(
         project_root=project_root,
         brief=brief_draft,
@@ -819,16 +873,28 @@ async def _run_brief_flow(
         )
 
     workspace_before = WorkspaceSnapshot.capture(project_root)
-    run_result = await agent_runner.execute_runtime(
-        manifest=manifest,
-        runtime=runtime_adapter,
-        prompt_pack=_prompt_pack(
-            brief_draft,
-            promoted_prl_statements=_promoted_prl_context(local_store),
-            manifest=manifest,
-        ),
-        working_dir=project_root,
+    write_builder_runtime_lock(
+        project_root=project_root,
+        session_id=session_id,
+        manifest_id=manifest.manifest_id,
     )
+    try:
+        run_result = await agent_runner.execute_runtime(
+            manifest=manifest,
+            runtime=runtime_adapter,
+            prompt_pack=_prompt_pack(
+                brief_draft,
+                promoted_prl_statements=_promoted_prl_context(local_store),
+                manifest=manifest,
+            ),
+            working_dir=project_root,
+        )
+    finally:
+        clear_builder_runtime_lock(
+            project_root=project_root,
+            session_id=session_id,
+            manifest_id=manifest.manifest_id,
+        )
     workspace_delta = workspace_before.diff(WorkspaceSnapshot.capture(project_root))
     manifest_for_verification = _manifest_with_effective_greenfield_scope(manifest, brief_draft, workspace_delta)
     manifest_for_verification = _manifest_with_effective_brownfield_scope(
