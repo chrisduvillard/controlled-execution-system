@@ -100,7 +100,9 @@ app.command(name="recover", help="Recover from a blocked builder run with rerunn
 app.command(name="run", help="Legacy alias for the guided local-first build flow.")(run_cmd.run_task)
 
 app.command(name="classify", help="Classify a task manifest.")(classify_cmd.classify_task)
-app.command(name="execute", help="Execute an agent task locally within manifest boundaries.")(execute_cmd.execute_task)
+app.command(name="execute", help="Execute an agent task locally with manifest evidence and delta checks.")(
+    execute_cmd.execute_task
+)
 app.command(name="review", help="Run review pipeline and display evidence summary.")(review_cmd.review_task)
 app.command(name="verify", help="Run independent local verification for the current project.")(
     verify_cmd.verify_project

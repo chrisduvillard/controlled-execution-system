@@ -34,6 +34,25 @@ class TestCesDoctor:
         assert "Python" in result.stdout
         assert f"{sys.version_info.major}.{sys.version_info.minor}" in result.stdout
 
+    def test_python_requirement_rejects_python_314(self, tmp_path: Path, monkeypatch: object) -> None:
+        """Doctor should mirror package metadata: Python 3.12/3.13 only."""
+        import shutil
+        from types import SimpleNamespace
+
+        monkeypatch.chdir(tmp_path)  # type: ignore[attr-defined]
+        monkeypatch.setattr(shutil, "which", lambda name: "/usr/bin/codex" if name == "codex" else None)  # type: ignore[attr-defined]
+        monkeypatch.setattr(
+            "ces.cli.doctor_cmd.sys.version_info",
+            SimpleNamespace(major=3, minor=14, micro=0),
+        )
+
+        app = _get_app()
+        result = runner.invoke(app, ["doctor"])
+
+        assert result.exit_code == 1
+        assert "Python >= 3.12,<3.14" in result.stdout
+        assert "3.14.0" in result.stdout
+
     def test_reports_provider_checks(self, tmp_path: Path, monkeypatch: object) -> None:
         """ces doctor shows provider availability checks."""
         monkeypatch.chdir(tmp_path)  # type: ignore[attr-defined]

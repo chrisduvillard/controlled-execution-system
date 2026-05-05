@@ -5,7 +5,7 @@ builder-first tool with SQLite project state and no hosted control plane.
 
 ## Prerequisites
 
-- Python 3.12+
+- Python 3.12 or 3.13
 - [uv](https://docs.astral.sh/uv/) (install: `curl -LsSf https://astral.sh/uv/install.sh | sh`)
 - A supported local runtime: Codex CLI or Claude Code
 
@@ -17,19 +17,31 @@ From source:
 git clone https://github.com/chrisduvillard/controlled-execution-system.git
 cd controlled-execution-system
 uv sync
+uv run ces --help
 ```
 
-Or install the published package from PyPI:
+For day-to-day use, install the published package from PyPI:
 
 ```bash
 uv tool install controlled-execution-system
 ```
 
-If your default `python3` is Python 3.11, a direct `pip install controlled-execution-system` can stop with `No matching distribution` because CES requires Python 3.12+. Use uv with an explicit supported interpreter, such as Python 3.13:
+If your default `python3` is Python 3.11, a direct `pip install controlled-execution-system` can stop with `No matching distribution` because CES requires Python 3.12 or 3.13. Use uv with an explicit supported interpreter, such as Python 3.13:
 
 ```bash
 uv tool install --python 3.13 controlled-execution-system
 ```
+
+## Before you start
+
+CES governs a local AI runtime; it does not ship one. Make sure Codex CLI or
+Claude Code is installed, authenticated, and available on `PATH` before running
+`ces build`. If a runtime is missing or unauthenticated, CES will still preserve
+local state and diagnostics, but the implementation step cannot complete.
+
+Everything CES writes stays in your project under `.ces/`: SQLite state, audit
+records, evidence, reports, runtime transcripts, and local keys. Keep `.ces/`
+untracked unless you intentionally share an exported report.
 
 ## 2. Verify your runtime
 

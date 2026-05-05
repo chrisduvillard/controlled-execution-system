@@ -5,7 +5,7 @@ local environment satisfies the minimum requirements to run the
 builder-first workflow before any real command fails.
 
 Checks:
-    * Python version (>= 3.12 required).
+    * Python version (3.12 or 3.13 required).
     * Local runtime availability: ``claude`` or ``codex`` CLI on PATH.
       At least one is required for the builder-first ``ces build`` flow.
     * Optional demo-helper availability: CES_DEMO_MODE=1. Demo mode helps
@@ -47,6 +47,8 @@ from ces.execution.runtime_safety import safety_profile_for_runtime
 from ces.shared.crypto import AUDIT_HMAC_FILENAME, DEV_DEFAULT_HMAC_MARKER
 
 _MIN_PYTHON = (3, 12)
+_MAX_PYTHON_EXCLUSIVE = (3, 14)
+_PYTHON_REQUIREMENT_LABEL = "Python >= 3.12,<3.14"
 
 # Module -> extras-group mapping used to detect whether an optional dependency
 # group is installed. Empty by default because CES currently has no
@@ -58,7 +60,7 @@ def _check_python() -> tuple[bool, str]:
     """Return (ok, rendered_version) for the current Python runtime."""
     vi = sys.version_info
     rendered = f"{vi.major}.{vi.minor}.{vi.micro}"
-    ok = (vi.major, vi.minor) >= _MIN_PYTHON
+    ok = _MIN_PYTHON <= (vi.major, vi.minor) < _MAX_PYTHON_EXCLUSIVE
     return ok, rendered
 
 
@@ -448,7 +450,7 @@ def run_doctor(
     table.add_column("Detail")
 
     table.add_row(
-        "Python >= 3.12",
+        _PYTHON_REQUIREMENT_LABEL,
         _status_icon(python_ok),
         python_version,
     )

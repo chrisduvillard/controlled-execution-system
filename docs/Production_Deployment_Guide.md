@@ -20,7 +20,7 @@ uv sync
 ## Runtime Contract
 
 Each CES operator needs:
-- Python 3.12+
+- Python 3.12 or 3.13
 - `uv`
 - `codex` or `claude` available on PATH
 - A writable project checkout where CES can create `.ces/`

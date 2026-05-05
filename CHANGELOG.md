@@ -7,6 +7,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.10] - 2026-05-05
+
+Public-launch hardening after a full greenfield, brownfield, recovery, reporting,
+and install-path dogfood gauntlet. This release packages the sequential fixes
+from PRs #29-#33 so the published PyPI install matches the validated `master`
+state.
+
+### Added
+- Codex runtime executions now stream operator-visible progress into
+  project-local runtime transcript files under `.ces/runtime-transcripts/`.
+- Builder reports now surface runtime transcript paths so stalled or ambiguous
+  runs have inspectable evidence.
+- README and Quickstart now document the Python 3.11 resolver failure mode and
+  the explicit `uv tool install --python 3.13 controlled-execution-system`
+  recovery path.
+- Public README now includes a dogfood-backed trust and boundary section for
+  first-time evaluators.
+
+### Changed
+- `ces continue` and `ces explain` now support `--project-root`, matching the
+  rest of the builder-first operator workflow for source-checkout and
+  cross-project inspection.
+- Brownfield builder reports now distinguish build auto-preserve behavior counts
+  from manually reviewed behavior inventory.
+
+### Fixed
+- Interrupted Codex and Claude runtime processes are now launched under
+  controlled subprocess handling so CES can clean up process groups on timeout or
+  interruption instead of leaving orphaned descendants.
+- `ces recover --auto-evidence` now reports planner-denied no-op recovery
+  explicitly instead of implying failed verification work that was never
+  attempted.
+
 ## [0.1.9] - 2026-05-05
 
 Runtime recovery hardening for interrupted builder sessions.

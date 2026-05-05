@@ -56,3 +56,15 @@ def test_publish_workflow_runs_builder_first_smoke_before_pypi_publish() -> None
     assert "Run builder-first smoke tests" in workflow_text
     assert "tests/integration/test_freshcart_e2e.py" in workflow_text
     assert workflow_text.index("Run builder-first smoke tests") < workflow_text.index("- name: Publish to PyPI")
+
+
+def test_publish_workflow_validates_tag_version_and_runs_real_installed_init_smoke() -> None:
+    workflow_text = (ROOT / ".github" / "workflows" / "publish.yml").read_text(encoding="utf-8")
+
+    assert "Validate tag and package version agreement" in workflow_text
+    assert 'test "$tag_name" = "v${project_version}"' in workflow_text
+    assert 'grep -q "^## \\[${project_version}\\]" CHANGELOG.md' in workflow_text
+    assert "ces init publish-smoke" in workflow_text
+    assert "test -f .ces/config.yaml" in workflow_text
+    assert 'uv tool run --python 3.13 --from "$wheel_path" ces doctor --security' in workflow_text
+    assert "codex-cli publish-smoke" in workflow_text
