@@ -1473,14 +1473,19 @@ async def continue_task(
         "--accept-runtime-side-effects",
         help="Allow unattended approval when the selected runtime cannot enforce manifest tool allowlists.",
     ),
+    project_root: Path | None = typer.Option(
+        None,
+        "--project-root",
+        help="Repo/CES project root to continue; defaults to cwd/.ces discovery.",
+    ),
 ) -> None:
     """Continue from the latest saved builder brief without re-answering prompts."""
     try:
-        project_root = find_project_root()
-        project_config = get_project_config()
+        resolved_project_root = find_project_root(project_root) if project_root is not None else find_project_root()
+        project_config = get_project_config(resolved_project_root)
         reject_server_mode(project_config)
 
-        async with get_services() as services:
+        async with get_services(project_root=resolved_project_root) as services:
             local_store = services.get("local_store")
             session = _load_latest_builder_session(local_store)
             if session is not None and session.stage == "completed":
@@ -1511,7 +1516,7 @@ async def continue_task(
                 full=full,
                 governance=governance,
                 export_prl_draft=export_prl_draft,
-                project_root=project_root,
+                project_root=resolved_project_root,
                 existing_brief_id=getattr(record, "brief_id", None),
                 existing_session_id=getattr(session, "session_id", None),
                 accept_runtime_side_effects=accept_runtime_side_effects,
@@ -1536,12 +1541,17 @@ async def explain_task(
         "--governance",
         help="Include additional CES metadata for the selected explanation view.",
     ),
+    project_root: Path | None = typer.Option(
+        None,
+        "--project-root",
+        help="Repo/CES project root to explain; defaults to cwd/.ces discovery.",
+    ),
 ) -> None:
     """Explain the latest builder brief and its current CES state in plain language."""
     try:
-        find_project_root()
+        resolved_project_root = find_project_root(project_root) if project_root is not None else find_project_root()
         selected_view = _explain_views.normalize_explain_view(view)
-        async with get_services() as services:
+        async with get_services(project_root=resolved_project_root) as services:
             local_store = services.get("local_store")
             snapshot = _explain_views.load_latest_builder_snapshot(local_store)
             session = (
