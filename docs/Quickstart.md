@@ -25,6 +25,12 @@ Or install the published package from PyPI:
 uv tool install controlled-execution-system
 ```
 
+If your default `python3` is Python 3.11, a direct `pip install controlled-execution-system` can stop with `No matching distribution` because CES requires Python 3.12+. Use uv with an explicit supported interpreter, such as Python 3.13:
+
+```bash
+uv tool install --python 3.13 controlled-execution-system
+```
+
 ## 2. Verify your runtime
 
 ```bash

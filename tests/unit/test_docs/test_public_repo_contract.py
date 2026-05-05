@@ -78,6 +78,17 @@ def test_quickstart_treats_pypi_as_published() -> None:
     assert "uv tool install controlled-execution-system" in quickstart
 
 
+def test_install_docs_show_explicit_python_for_python_311_hosts() -> None:
+    """Install docs should give operators a direct recovery path from Python 3.11 hosts."""
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    quickstart = (ROOT / "docs" / "Quickstart.md").read_text(encoding="utf-8")
+
+    for doc in (readme, quickstart):
+        assert "Python 3.11" in doc
+        assert "uv tool install --python 3.13 controlled-execution-system" in doc
+        assert "No matching distribution" in doc
+
+
 def test_troubleshooting_uses_current_coverage_floor_and_runtime_guidance() -> None:
     troubleshooting = (ROOT / "docs" / "Troubleshooting.md").read_text(encoding="utf-8")
 
