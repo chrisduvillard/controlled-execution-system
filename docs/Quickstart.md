@@ -47,7 +47,15 @@ untracked unless you intentionally share an exported report.
 
 ```bash
 ces doctor
+ces doctor --runtime-safety
+# Optional: may contact the runtime provider and consume a small request.
+ces doctor --verify-runtime --runtime all
 ```
+
+Bare `ces doctor` is a preflight check for Python, installed providers, extras,
+and project setup. Use `--runtime-safety` to inspect runtime-boundary disclosures.
+Use `--verify-runtime` only when you deliberately want CES to probe Codex/Claude
+authentication before a build.
 
 `ces build` and `ces execute` require a supported local runtime. `CES_DEMO_MODE=1`
 only affects optional LLM-backed helper steps; it does not replace Codex CLI or

@@ -49,6 +49,10 @@ def test_entry_docs_route_operators_to_builder_reports_and_expert_handoff() -> N
     assert "builder-first" in readme.lower()
     assert "expert workflow" in readme.lower()
     assert "ces report builder" in readme
+    assert "ces why" in readme
+    assert "ces recover --dry-run" in readme
+    assert "ces verify" in readme
+    assert "ces complete" in readme
     assert "Operator Playbook" in readme
     assert "ces status --expert" in readme
     assert "ces status --expert --watch" in readme
@@ -58,6 +62,10 @@ def test_entry_docs_route_operators_to_builder_reports_and_expert_handoff() -> N
     assert "builder-first" in getting_started.lower()
     assert "expert workflow" in getting_started.lower()
     assert "ces report builder" in getting_started
+    assert "ces why" in getting_started
+    assert "ces recover --dry-run" in getting_started
+    assert "ces verify" in getting_started
+    assert "ces complete" in getting_started
     assert "ces status --expert" in getting_started
     assert "ces status --expert --watch" in getting_started
     assert "ces audit --limit 20" in getting_started

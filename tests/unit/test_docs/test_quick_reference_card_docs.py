@@ -17,6 +17,10 @@ def test_quick_reference_card_routes_builder_and_expert_workflows() -> None:
     assert "ces continue" in card
     assert "ces explain" in card
     assert "ces status" in card
+    assert "ces why" in card
+    assert "ces recover --dry-run" in card
+    assert "ces verify" in card
+    assert "ces complete" in card
     assert "ces report builder" in card
     assert "ces manifest" in card
     assert "ces classify" in card
@@ -25,11 +29,30 @@ def test_quick_reference_card_routes_builder_and_expert_workflows() -> None:
     assert "ces approve" in card
     assert "Export a reviewer or audit handoff from the latest builder chain" in card
     assert "Start or resume one delivery request" in card
+    assert "Diagnose or recover a blocked builder run" in card
     assert "`ces build`, `ces continue`, `ces explain`, `ces status`" in card
     assert (
         "Use the [Operator Playbook](Operator_Playbook.md) when you need the "
         "fuller builder-first versus expert workflow boundary for a single request." in card
     )
+
+
+def test_quick_reference_card_preserves_public_product_boundary() -> None:
+    card = (ROOT / "docs" / "Quick_Reference_Card.md").read_text(encoding="utf-8")
+
+    assert "not a sandbox" in card
+    assert "local control, evidence, review, and recovery layer" in card
+    for overclaim in (
+        "Auto-merge",
+        "Auto-deploy",
+        "auto-deploy",
+        "canary observation",
+        "Adversarial Review Triad",
+        "Approval Triage Agent",
+        "production deploy",
+        "Deploy Controller",
+    ):
+        assert overclaim not in card
 
 
 def test_quick_reference_card_uses_supported_brownfield_and_operations_commands() -> None:
