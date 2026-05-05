@@ -50,6 +50,7 @@ Thumbs.db
 
 # Internal development artifacts
 .codex/
+.hermes/
 .planning/
 tasks/
 docs/superpowers/
