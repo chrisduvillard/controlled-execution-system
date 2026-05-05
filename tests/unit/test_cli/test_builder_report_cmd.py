@@ -229,6 +229,52 @@ def test_builder_report_uses_checkpoint_entry_ids_when_snapshot_entry_ids_are_em
     assert "9 behaviors reviewed" not in markdown
 
 
+def test_builder_report_labels_builder_auto_preserve_counts_separately_from_manual_inventory() -> None:
+    """TaskLedger CES-DOG-007: build-created preservation entries should not read like manual scan review totals."""
+    from ces.cli._builder_report import build_builder_run_report, render_builder_run_report_markdown
+
+    snapshot = SimpleNamespace(
+        request="Add update command while preserving TaskLedger flows",
+        project_mode="brownfield",
+        stage="completed",
+        next_action="start_new_session",
+        next_step="Start a new task",
+        latest_activity="CES recorded approval",
+        latest_artifact="approval",
+        brief=SimpleNamespace(prl_draft_path=None),
+        manifest=SimpleNamespace(manifest_id="M-taskledger", workflow_state="approved"),
+        runtime_execution=SimpleNamespace(
+            exit_code=0,
+            reported_model="gpt-5.5",
+            transcript_path=".ces/runtime-transcripts/codex-taskledger.txt",
+        ),
+        evidence={"packet_id": "EP-taskledger", "triage_color": "green"},
+        approval=SimpleNamespace(decision="approve"),
+        session=SimpleNamespace(session_id="BS-taskledger"),
+        brownfield=SimpleNamespace(
+            entry_ids=[f"OLB-{idx}" for idx in range(6)],
+            reviewed_count=6,
+            remaining_count=0,
+            checkpoint={
+                "groups": [
+                    {"key": "must_not_break", "label": "Must Not Break", "items": []},
+                    {"key": "critical_flows", "label": "Critical Flows", "items": []},
+                ],
+                "reviewed_entry_ids": [f"OLB-{idx}" for idx in range(6)],
+                "reviewed_candidates": [{"description": f"preserve {idx}"} for idx in range(6)],
+            },
+        ),
+    )
+
+    report = build_builder_run_report(snapshot)
+
+    assert report is not None
+    markdown = render_builder_run_report_markdown(report)
+    assert "6 build auto-preserve behaviors reviewed" in markdown
+    assert "6 behaviors reviewed" not in markdown
+    assert "Runtime transcript: .ces/runtime-transcripts/codex-taskledger.txt" in markdown
+
+
 def test_builder_report_surfaces_verification_findings_and_manual_supersession(tmp_path: Path, monkeypatch) -> None:
     """PromptVault dogfood: status/report must expose why auto-approval failed after manual completion."""
     from ces.cli._builder_report import build_builder_run_report, render_builder_run_report_markdown

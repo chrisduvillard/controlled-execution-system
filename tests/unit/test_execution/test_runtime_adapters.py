@@ -85,6 +85,8 @@ class TestRuntimeAdapterEnvScrubbing:
         assert result.transcript_path is not None
         transcript_path = Path(result.transcript_path)
         assert transcript_path.parent == tmp_path / ".ces" / "runtime-transcripts"
+        last_message_path = Path(command[-1])
+        assert last_message_path.parent == tmp_path / ".ces" / "runtime-transcripts"
         if os.name != "nt":
             assert stat.S_IMODE(transcript_path.stat().st_mode) == 0o600
             assert stat.S_IMODE(transcript_path.parent.stat().st_mode) == 0o700
@@ -182,6 +184,48 @@ class TestRuntimeAdapterEnvScrubbing:
         assert result.stderr == "eeeeeeee\n...[truncated]"
         assert result.transcript_path is not None
         assert Path(result.transcript_path).parent == tmp_path / ".ces" / "runtime-transcripts"
+
+    @patch.dict(
+        "os.environ",
+        {
+            "PATH": "/usr/bin",
+            "HOME": "/home/tester",
+        },
+        clear=True,
+    )
+    def test_codex_runtime_initializes_transcript_before_process_starts_and_preserves_stdout_fallback(
+        self, tmp_path: Path
+    ) -> None:
+        """Dogfood CES-DOG-006: mid-run transcripts must not stay 0 bytes, and empty last-message files must not erase runtime logs."""
+        adapter = CodexRuntimeAdapter()
+        adapter.version = MagicMock(return_value="1.0.0")
+        observed_initial_transcript = ""
+
+        def _popen(*args, **kwargs):
+            nonlocal observed_initial_transcript
+            transcript_path = Path(kwargs["stdout"].name)
+            observed_initial_transcript = transcript_path.read_text(encoding="utf-8")
+            kwargs["stdout"].write(b"codex progress log\n")
+            return _completed_process()
+
+        with (
+            patch("ces.execution.runtimes.adapters.subprocess.Popen", side_effect=_popen),
+            patch(
+                "ces.execution.runtimes.adapters.uuid.uuid4",
+                return_value=UUID("12345678-1234-5678-1234-567812345678"),
+            ),
+        ):
+            result = adapter.run_task(
+                manifest_description="Implement feature",
+                prompt_pack="Prompt pack",
+                working_dir=tmp_path,
+            )
+
+        assert "CES runtime invocation started" in observed_initial_transcript
+        assert "codex-123456781234" in observed_initial_transcript
+        assert result.stdout == "codex progress log\n"
+        assert result.transcript_path is not None
+        assert Path(result.transcript_path).stat().st_size > 0
 
     @patch.dict(
         "os.environ",
@@ -385,4 +429,4 @@ class TestRuntimeAdapterEnvScrubbing:
         assert secret_value not in result.stdout
         assert secret_value not in transcript
         assert secret_key in result.stdout
-        assert transcript == result.stdout
+        assert "CES runtime invocation started" in transcript

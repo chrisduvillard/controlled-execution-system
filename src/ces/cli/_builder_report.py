@@ -45,6 +45,8 @@ class BuilderRunReport:
     brownfield_entry_remaining_count: int = 0
     brownfield_item_reviewed_count: int = 0
     brownfield_item_remaining_count: int = 0
+    brownfield_progress_kind: str = "behavior_inventory"
+    runtime_transcript_path: str | None = None
 
 
 @dataclass(frozen=True)
@@ -154,6 +156,8 @@ def build_builder_run_report(snapshot: Any) -> BuilderRunReport | None:
         brownfield_entry_remaining_count=brownfield_counts["entry_remaining"],
         brownfield_item_reviewed_count=brownfield_counts["item_reviewed"],
         brownfield_item_remaining_count=brownfield_counts["item_remaining"],
+        brownfield_progress_kind=brownfield_counts["entry_kind"],
+        runtime_transcript_path=_text(getattr(runtime_execution, "transcript_path", None)),
     )
 
 
@@ -207,6 +211,8 @@ def summarize_builder_run(report: BuilderRunReport) -> list[str]:
         lines.append(f"Runtime side-effect waiver accepted: {report.runtime_side_effect_waived}")
     if report.mcp_grounding_supported is not None:
         lines.append(f"MCP grounding supported: {report.mcp_grounding_supported}")
+    if report.runtime_transcript_path:
+        lines.append(f"Runtime transcript: {report.runtime_transcript_path}")
     if report.manual_completion_supersedes_rejected_auto_review:
         lines.append("Manual completion superseded failed auto-approval: True")
     if report.verification_findings:
@@ -267,6 +273,7 @@ def render_builder_run_report_markdown(report: BuilderRunReport) -> str:
         f"- Runtime side-effect waiver accepted: {report.runtime_side_effect_waived}",
         f"- MCP grounding supported: {_render_optional_bool(report.mcp_grounding_supported)}",
         f"- Reported model: {report.reported_model or 'unknown'}",
+        f"- Runtime transcript: {report.runtime_transcript_path or 'none'}",
         f"- Manual completion superseded failed auto-approval: {report.manual_completion_supersedes_rejected_auto_review}",
     ]
     if report.prl_draft_path:
@@ -316,7 +323,15 @@ def format_brownfield_progress(report_or_brownfield: Any) -> str:
 
     behavior = "behavior" if entry_reviewed == 1 else "behaviors"
     remaining_behavior = "behavior" if entry_remaining == 1 else "behaviors"
-    text = f"{entry_reviewed} {behavior} reviewed, {entry_remaining} {remaining_behavior} remaining"
+    entry_kind = (
+        report_or_brownfield.brownfield_progress_kind
+        if isinstance(report_or_brownfield, BuilderRunReport)
+        else counts.get("entry_kind", "behavior_inventory")
+    )
+    if entry_kind == "build_auto_preserve":
+        text = f"{entry_reviewed} build auto-preserve {behavior} reviewed, {entry_remaining} {remaining_behavior} remaining"
+    else:
+        text = f"{entry_reviewed} {behavior} reviewed, {entry_remaining} {remaining_behavior} remaining"
     if item_reviewed != entry_reviewed or item_remaining != entry_remaining:
         reviewed_item = "review item" if item_reviewed == 1 else "review items"
         remaining_item = "review item" if item_remaining == 1 else "review items"
@@ -324,7 +339,7 @@ def format_brownfield_progress(report_or_brownfield: Any) -> str:
     return text
 
 
-def _brownfield_counts(brownfield: Any) -> dict[str, int]:
+def _brownfield_counts(brownfield: Any) -> dict[str, Any]:
     raw_reviewed = int(getattr(brownfield, "reviewed_count", 0) or 0)
     raw_remaining = int(getattr(brownfield, "remaining_count", 0) or 0)
     checkpoint = getattr(brownfield, "checkpoint", None)
@@ -335,6 +350,11 @@ def _brownfield_counts(brownfield: Any) -> dict[str, int]:
     item_reviewed = checkpoint_reviewed if checkpoint_reviewed is not None else raw_reviewed
     item_remaining = raw_remaining
     has_entry_level_truth = bool(entry_ids)
+    entry_kind = (
+        "build_auto_preserve"
+        if _checkpoint_is_build_auto_preserve(checkpoint) or (has_entry_level_truth and checkpoint is None)
+        else "behavior_inventory"
+    )
     entry_reviewed = len(entry_ids) if has_entry_level_truth else raw_reviewed
     entry_remaining = (
         int(getattr(brownfield, "entry_remaining_count", 0) or 0) if has_entry_level_truth else raw_remaining
@@ -344,6 +364,7 @@ def _brownfield_counts(brownfield: Any) -> dict[str, int]:
         "entry_remaining": entry_remaining,
         "item_reviewed": item_reviewed,
         "item_remaining": item_remaining,
+        "entry_kind": entry_kind,
     }
 
 
@@ -354,6 +375,28 @@ def _checkpoint_reviewed_entry_ids(checkpoint: Any) -> tuple[str, ...]:
     if not isinstance(reviewed, list):
         return ()
     return tuple(entry_id for entry_id in reviewed if isinstance(entry_id, str) and entry_id.strip())
+
+
+def _checkpoint_is_build_auto_preserve(checkpoint: Any) -> bool:
+    """Detect build-session must-not-break/critical-flow preservation rows, not manual inventory review."""
+    if not isinstance(checkpoint, dict):
+        return False
+    reviewed_entries = _checkpoint_reviewed_entry_ids(checkpoint)
+    reviewed_candidates = checkpoint.get("reviewed_candidates")
+    groups = checkpoint.get("groups")
+    if not reviewed_entries or not isinstance(reviewed_candidates, list) or not isinstance(groups, list):
+        return False
+    group_keys: set[str] = set()
+    for group in groups:
+        if not isinstance(group, dict):
+            return False
+        key = group.get("key")
+        items = group.get("items")
+        if isinstance(key, str):
+            group_keys.add(key)
+        if not isinstance(items, list) or items:
+            return False
+    return bool(group_keys & {"must_not_break", "critical_flows"})
 
 
 def _checkpoint_reviewed_item_count(checkpoint: Any) -> int | None:
