@@ -9,5 +9,5 @@ regexes = [
   '''1234567890abcdef''',
   '''do-not-use-in-production''',
   '''KEY_PRIVATE_FILENAME = "ed25519_private.key"''',
-  '''***''',
+  '''\*\*\*''',
 ]
