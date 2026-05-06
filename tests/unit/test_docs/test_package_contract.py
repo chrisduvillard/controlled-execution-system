@@ -29,6 +29,16 @@ def test_gitleaks_allowlist_regexes_compile() -> None:
         re.compile(pattern)
 
 
+def test_publish_workflow_runs_release_preflight_quality_gates() -> None:
+    publish_workflow = (_REPO_ROOT / ".github" / "workflows" / "publish.yml").read_text(encoding="utf-8")
+
+    assert "uv sync --frozen --group ci" in publish_workflow
+    assert "uv run ruff check src/ tests/" in publish_workflow
+    assert "uv run ruff format --check src/ tests/" in publish_workflow
+    assert "uv run mypy src/ces/ --ignore-missing-imports" in publish_workflow
+    assert "uv run pip-audit --strict -r /tmp/ces-publish-requirements.txt" in publish_workflow
+
+
 def test_public_version_surfaces_are_consistent() -> None:
     pyproject = tomllib.loads((_REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
     version = pyproject["project"]["version"]

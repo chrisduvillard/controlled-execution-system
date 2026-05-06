@@ -23,7 +23,7 @@ jobs:
       - uses: astral-sh/setup-uv@v7
         with:
           version: ${{ env.UV_VERSION }}
-      - run: uv sync --frozen
+      - run: uv sync --frozen --group ci
 
       - name: Validate tag and package version agreement
         shell: bash
@@ -38,6 +38,20 @@ jobs:
           tag_name="${GITHUB_REF_NAME}"
           test "$tag_name" = "v${project_version}"
           grep -q "^## \[${project_version}\]" CHANGELOG.md
+
+      - name: Lint release sources
+        run: uv run ruff check src/ tests/
+
+      - name: Check release formatting
+        run: uv run ruff format --check src/ tests/
+
+      - name: Typecheck release sources
+        run: uv run mypy src/ces/ --ignore-missing-imports
+
+      - name: Audit release dependency set
+        run: |
+          uv export --frozen --group ci --format requirements-txt --no-emit-project --no-hashes --output-file /tmp/ces-publish-requirements.txt
+          uv run pip-audit --strict -r /tmp/ces-publish-requirements.txt
 
       - name: Run tests before publishing
         env:
