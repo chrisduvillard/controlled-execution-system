@@ -36,6 +36,7 @@ from ces.cli._factory import get_services
 from ces.cli._output import console, set_json_mode
 from ces.cli.ownership import resolve_actor
 from ces.control.models.manifest import TaskManifest
+from ces.control.services.evidence_integrity import compute_reviewed_evidence_hash
 from ces.control.services.workflow_engine import WorkflowEngine
 from ces.execution.providers.bootstrap import resolve_primary_provider
 from ces.shared.enums import ActorType, GateType, WorkflowState
@@ -213,12 +214,22 @@ async def approve_evidence(
                 trust_status = TrustStatus.CANDIDATE
 
             persisted_evidence = None
+            persisted_evidence_payload = None
             if not refresh:
                 persisted_evidence = load_persisted_evidence_view(
                     local_store=local_store,
                     manifest_id=manifest.manifest_id,
                     evidence_packet_id=resolved_evidence_packet_id,
                 )
+                if local_store is not None:
+                    if resolved_evidence_packet_id:
+                        get_by_packet = getattr(local_store, "get_evidence_by_packet_id", None)
+                        if callable(get_by_packet):
+                            persisted_evidence_payload = get_by_packet(resolved_evidence_packet_id)
+                    if persisted_evidence_payload is None:
+                        get_evidence = getattr(local_store, "get_evidence", None)
+                        if callable(get_evidence):
+                            persisted_evidence_payload = get_evidence(manifest.manifest_id)
 
             if persisted_evidence is not None:
                 color_value = persisted_evidence.triage_color
@@ -439,11 +450,23 @@ async def approve_evidence(
                     required_gate = GateType.HYBRID
                 actual_gate = GateType.HUMAN
 
-                evidence_packet_dict: dict = {"summary": summary_preview, "triage_color": color_value}
-                # Populate decision views from review findings
-                if review_data is not None:
+                if persisted_evidence_payload is not None:
+                    evidence_packet_dict = dict(persisted_evidence_payload)
+                else:
+                    evidence_packet_dict = {
+                        "manifest_id": manifest_id,
+                        "manifest_hash": getattr(manifest, "content_hash", ""),
+                        "summary": summary_preview,
+                        "triage_color": color_value,
+                    }
+                # Populate decision views from review findings when building a fresh reviewed packet.
+                if persisted_evidence_payload is None and review_data is not None:
                     decision_views = evidence_synthesizer.assemble_decision_views_from_review(review_data)
                     evidence_packet_dict["decision_views"] = {v.position: v.content for v in decision_views}
+                if "reviewed_evidence_hash" not in evidence_packet_dict:
+                    evidence_packet_dict["reviewed_evidence_hash"] = compute_reviewed_evidence_hash(
+                        evidence_packet_dict
+                    )
                 merge_decision = await merge_controller.validate_merge(
                     manifest_id=manifest_id,
                     manifest_expires_at=getattr(manifest, "expires_at", datetime.now(timezone.utc)),
@@ -451,7 +474,7 @@ async def approve_evidence(
                     manifest_risk_tier=risk_value,
                     manifest_bc=getattr(manifest, "behavior_confidence", "BC2"),
                     evidence_packet=evidence_packet_dict,
-                    evidence_manifest_hash=getattr(manifest, "content_hash", ""),
+                    evidence_manifest_hash=evidence_packet_dict.get("manifest_hash"),
                     required_gate_type=required_gate,
                     actual_gate_type=actual_gate,
                     review_sub_state="decision",

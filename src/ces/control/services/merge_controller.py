@@ -24,6 +24,11 @@ from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
 from ces.control.models.merge_decision import MergeCheck, MergeDecision
+from ces.control.services.evidence_integrity import (
+    compute_reviewed_evidence_hash,
+    extract_evidence_manifest_hash,
+    extract_reviewed_evidence_hash,
+)
 from ces.shared.enums import ActorType, BehaviorConfidence, EventType, GateType, RiskTier
 
 if TYPE_CHECKING:
@@ -236,27 +241,64 @@ class MergeController:
                 detail="Evidence packet is empty",
             )
 
-        if not manifest_content_hash or not evidence_manifest_hash:
+        if not manifest_content_hash:
             return MergeCheck(
                 name="evidence_exists",
                 passed=False,
                 detail="Manifest or evidence hash is missing",
             )
 
-        # Check hash match (T-02-17: evidence must be for this manifest)
-        if evidence_manifest_hash != manifest_content_hash:
+        embedded_manifest_hash = extract_evidence_manifest_hash(evidence_packet)
+        if not embedded_manifest_hash:
+            return MergeCheck(
+                name="evidence_exists",
+                passed=False,
+                detail="Evidence packet is missing embedded manifest hash",
+            )
+
+        if evidence_manifest_hash and evidence_manifest_hash != embedded_manifest_hash:
             return MergeCheck(
                 name="evidence_exists",
                 passed=False,
                 detail=(
-                    f"Evidence manifest hash mismatch: expected {manifest_content_hash}, got {evidence_manifest_hash}"
+                    f"Evidence manifest hash mismatch: packet embeds {embedded_manifest_hash}, "
+                    f"caller supplied {evidence_manifest_hash}"
+                ),
+            )
+
+        # Check hash match (T-02-17: reviewed evidence must be for this manifest)
+        if embedded_manifest_hash != manifest_content_hash:
+            return MergeCheck(
+                name="evidence_exists",
+                passed=False,
+                detail=(
+                    f"Evidence manifest hash mismatch: expected {manifest_content_hash}, got {embedded_manifest_hash}"
+                ),
+            )
+
+        reviewed_evidence_hash = extract_reviewed_evidence_hash(evidence_packet)
+        if not reviewed_evidence_hash:
+            return MergeCheck(
+                name="evidence_exists",
+                passed=False,
+                detail="Evidence packet is missing reviewed evidence hash",
+            )
+
+        actual_reviewed_evidence_hash = compute_reviewed_evidence_hash(evidence_packet)
+        if reviewed_evidence_hash != actual_reviewed_evidence_hash:
+            return MergeCheck(
+                name="evidence_exists",
+                passed=False,
+                detail=(
+                    "Reviewed evidence hash mismatch: "
+                    f"expected {reviewed_evidence_hash}, got {actual_reviewed_evidence_hash}"
                 ),
             )
 
         return MergeCheck(
             name="evidence_exists",
             passed=True,
-            detail="Evidence packet exists and matches manifest",
+            detail="Evidence packet exists and reviewed evidence matches manifest",
         )
 
     def _check_manifest_fresh(self, expires_at: datetime) -> MergeCheck:

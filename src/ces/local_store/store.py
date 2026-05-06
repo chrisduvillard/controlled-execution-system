@@ -19,6 +19,7 @@ from typing import TYPE_CHECKING, Any, Iterator
 
 from ces.brownfield.records import LegacyBehaviorRecord
 from ces.control.models.audit_entry_record import AuditEntryRecord
+from ces.control.services.evidence_integrity import compute_reviewed_evidence_hash
 from ces.execution.secrets import scrub_secrets_from_text
 from ces.local_store.codecs import (
     row_to_approval,
@@ -512,6 +513,13 @@ class LocalProjectStore:
         triage_color: str,
         content: dict[str, Any],
     ) -> None:
+        persisted_content = dict(content)
+        persisted_content.setdefault("manifest_id", manifest_id)
+        persisted_content.setdefault("packet_id", packet_id)
+        persisted_content.setdefault("summary", summary)
+        persisted_content.setdefault("challenge", challenge)
+        persisted_content.setdefault("triage_color", triage_color)
+        persisted_content["reviewed_evidence_hash"] = compute_reviewed_evidence_hash(persisted_content)
         with self._connect() as conn:
             conn.execute(
                 """
@@ -527,7 +535,7 @@ class LocalProjectStore:
                     summary,
                     challenge,
                     triage_color,
-                    json.dumps(content, default=_json_default),
+                    json.dumps(persisted_content, default=_json_default),
                     datetime.now(timezone.utc).isoformat(),
                 ),
             )
