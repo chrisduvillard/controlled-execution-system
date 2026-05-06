@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.12] - 2026-05-06
+
+### Security / launch hardening
+
+- Scrub runtime metadata before persistence so runtime reports cannot retain
+  provider/account identifiers in saved evidence payloads.
+- Keep local Hermes/Codex/Claude state out of public repository tracking and
+  package artifacts.
+
+### Documentation
+
+- Archive the large FreshCart worked example outside the main public docs path
+  and align quick-reference/security guidance with the shipped local-runtime
+  boundary.
+
 ## [0.1.11] - 2026-05-05
 
 ### Security / launch hardening

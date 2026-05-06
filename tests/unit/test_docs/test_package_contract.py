@@ -25,7 +25,12 @@ def test_public_version_surfaces_are_consistent() -> None:
     pyproject = tomllib.loads((_REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
     version = pyproject["project"]["version"]
 
-    assert version == "0.1.11"
+    readme = (_REPO_ROOT / "README.md").read_text(encoding="utf-8")
+    lockfile = (_REPO_ROOT / "uv.lock").read_text(encoding="utf-8")
+
+    assert version == "0.1.12"
     assert (_REPO_ROOT / "src" / "ces" / "__init__.py").read_text(encoding="utf-8").count(version) == 1
-    assert f"controlled-execution-system=={version}" in (_REPO_ROOT / "README.md").read_text(encoding="utf-8")
+    assert f"controlled-execution-system=={version}" in readme
+    assert f"v{version}" in readme
     assert f"## [{version}]" in (_REPO_ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
+    assert f'name = "controlled-execution-system"\nversion = "{version}"' in lockfile
