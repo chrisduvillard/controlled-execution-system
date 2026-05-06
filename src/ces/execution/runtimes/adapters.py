@@ -375,7 +375,7 @@ class CodexRuntimeAdapter(_BaseRuntimeAdapter):
             stdout_file.flush()
             transcript = self._read_scrubbed_limited_path(transcript_file)
             stdout = transcript.removeprefix(self._runtime_transcript_seed(invocation_ref))
-            stderr = self._read_limited_file(stderr_file)
+            stderr = scrub_secrets_from_text(self._read_limited_file(stderr_file))
         if last_message_file.exists():
             message_stdout = self._read_scrubbed_limited_path(last_message_file)
             try:
