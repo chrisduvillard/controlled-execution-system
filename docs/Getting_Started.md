@@ -190,7 +190,9 @@ ces complete
 
 Use `ces why` to inspect the blocker category, reason, source, and next command.
 Use `ces recover --dry-run` before mutating CES state. Use `ces verify` when you
-need independent local verification, and `ces complete` only when the work was
+need independent local verification; it reads an existing completion contract
+when present and otherwise keeps inferred contracts in memory unless you pass
+`ces verify --write-contract`. Use `ces complete` only when the work was
 actually completed outside CES and you need to reconcile that fact with the audit
 trail.
 
@@ -222,7 +224,7 @@ ces brownfield promote OLB-<entry-id>
 | `ces status` | Builder-first project status; add `--expert` for the full expert view |
 | `ces why` | Explain why the latest builder run is blocked and show the next command |
 | `ces recover --dry-run` | Preview recovery before mutating CES state |
-| `ces verify` | Run independent local verification for the current project |
+| `ces verify` | Run independent local verification for the current project without writing inferred contracts by default |
 | `ces complete` | Reconcile externally completed builder work with the audit trail |
 | `ces report builder` | Export the latest builder run report for audit or reviewer handoff |
 | `ces init <name>` | Optional manual setup before the first build |

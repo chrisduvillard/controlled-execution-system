@@ -16,7 +16,7 @@ def _get_app():
     return app
 
 
-def test_verify_generates_contract_and_runs_commands(tmp_path: Path, monkeypatch) -> None:
+def test_verify_infers_contract_without_writing_by_default(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.chdir(tmp_path)
     (tmp_path / ".ces").mkdir()
     (tmp_path / ".ces" / "config.yaml").write_text("project_id: demo\npreferred_runtime: codex\n")
@@ -30,6 +30,24 @@ def test_verify_generates_contract_and_runs_commands(tmp_path: Path, monkeypatch
     payload = json.loads(result.stdout)
     assert payload["project_type"] == "python-package"
     assert payload["verification"]["passed"] is True
+    assert payload["contract_persisted"] is False
+    assert not (tmp_path / ".ces" / "completion-contract.json").exists()
+
+
+def test_verify_writes_inferred_contract_when_requested(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / ".ces").mkdir()
+    (tmp_path / ".ces" / "config.yaml").write_text("project_id: demo\npreferred_runtime: codex\n")
+    (tmp_path / "pyproject.toml").write_text("[project]\nname='demo'\n", encoding="utf-8")
+    (tmp_path / "tests").mkdir()
+    (tmp_path / "tests" / "test_demo.py").write_text("def test_demo():\n    assert True\n", encoding="utf-8")
+
+    result = runner.invoke(_get_app(), ["verify", "--json", "--write-contract"])
+
+    assert result.exit_code == 0, result.stdout
+    payload = json.loads(result.stdout)
+    assert payload["verification"]["passed"] is True
+    assert payload["contract_persisted"] is True
     assert (tmp_path / ".ces" / "completion-contract.json").is_file()
 
 

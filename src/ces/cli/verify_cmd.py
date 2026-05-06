@@ -34,6 +34,11 @@ def verify_project(
         "--json",
         help="Output verification results as JSON. Equivalent to `ces --json verify`.",
     ),
+    write_contract: bool = typer.Option(
+        False,
+        "--write-contract",
+        help="Persist an inferred completion contract when --contract/default contract path is missing.",
+    ),
 ) -> None:
     """Independently verify the current project using inferred or contracted commands."""
     if json_output:
@@ -41,7 +46,8 @@ def verify_project(
     try:
         resolved_root = project_root.resolve() if project_root is not None else find_project_root()
         resolved_contract_path = _resolve_contract_path(resolved_root, contract_path)
-        if resolved_contract_path.is_file():
+        contract_persisted = resolved_contract_path.is_file()
+        if contract_persisted:
             contract = CompletionContract.read(resolved_contract_path)
         else:
             contract = build_completion_contract(
@@ -50,11 +56,14 @@ def verify_project(
                 acceptance_criteria=(),
                 runtime_name="manual",
             )
-            contract.write(resolved_contract_path)
+            if write_contract:
+                contract.write(resolved_contract_path)
+                contract_persisted = True
         verification = run_verification_commands(resolved_root, contract.inferred_commands)
         payload = {
             "project_root": str(resolved_root),
             "contract_path": str(resolved_contract_path),
+            "contract_persisted": contract_persisted,
             "project_type": contract.project_type,
             "verification": verification.to_dict(),
         }
@@ -72,7 +81,9 @@ def verify_project(
         console.print(table)
         console.print(
             Panel(
-                f"Project type: {contract.project_type}\nPassed: {verification.passed}\nNext: ces why",
+                f"Project type: {contract.project_type}\n"
+                f"Contract persisted: {contract_persisted}\n"
+                f"Passed: {verification.passed}\nNext: ces why",
                 title="[green]Verification Complete[/green]"
                 if verification.passed
                 else "[red]Verification Failed[/red]",
