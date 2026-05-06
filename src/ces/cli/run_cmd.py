@@ -39,7 +39,11 @@ from ces.control.spec.parser import SpecParser
 from ces.control.spec.template_loader import TemplateLoader
 from ces.execution.completion_parser import parse_completion_claim
 from ces.execution.providers.bootstrap import resolve_primary_provider
-from ces.execution.runtime_safety import runtime_side_effects_block_auto_approval, safety_profile_for_runtime
+from ces.execution.runtime_safety import (
+    runtime_side_effects_block_auto_approval,
+    runtime_side_effects_require_pre_execution_consent,
+    safety_profile_for_runtime,
+)
 from ces.execution.secrets import scrub_secrets_from_text
 from ces.execution.workspace_delta import WorkspaceDelta, WorkspaceSnapshot
 from ces.harness.prompts.engineering_charter import attach_engineering_charter
@@ -714,6 +718,34 @@ async def _run_brief_flow(
         raise typer.Exit(code=1)
 
     runtime_name = getattr(runtime_adapter, "runtime_name", runtime)
+    pre_execution_safety = safety_profile_for_runtime(runtime_name)
+    if runtime_side_effects_require_pre_execution_consent(
+        pre_execution_safety,
+        accepted=accept_runtime_side_effects,
+    ):
+        message = (
+            f"Runtime `{pre_execution_safety.runtime_name}` requires explicit runtime side-effect consent before "
+            "CES can launch it. "
+            f"{pre_execution_safety.notes} Re-run with `--accept-runtime-side-effects` only if you accept this "
+            "runtime boundary."
+        )
+        if session_id is not None and hasattr(local_store, "update_builder_session"):
+            local_store.update_builder_session(
+                session_id,
+                stage="blocked",
+                next_action="accept_runtime_side_effects",
+                last_action="runtime_side_effects_blocked",
+                recovery_reason="runtime_side_effects_requires_consent",
+                last_error=message,
+            )
+        console.print(
+            Panel(
+                message,
+                title="[yellow]Runtime Side-Effect Consent Required[/yellow]",
+                border_style="yellow",
+            )
+        )
+        raise typer.Exit(code=1)
     actor = resolve_actor()
     proposal = builder_flow.propose_manifest(
         brief=brief_draft,
@@ -1333,7 +1365,10 @@ async def run_task(
     accept_runtime_side_effects: bool = typer.Option(
         False,
         "--accept-runtime-side-effects",
-        help="Allow unattended approval when the selected runtime cannot enforce manifest tool allowlists.",
+        help=(
+            "Explicitly consent before launching a runtime that cannot enforce manifest tool allowlists "
+            "or workspace scoping. Required for Codex full-access execution."
+        ),
     ),
     from_spec: Path | None = typer.Option(
         None,
@@ -1479,7 +1514,10 @@ async def continue_task(
     accept_runtime_side_effects: bool = typer.Option(
         False,
         "--accept-runtime-side-effects",
-        help="Allow unattended approval when the selected runtime cannot enforce manifest tool allowlists.",
+        help=(
+            "Explicitly consent before launching a runtime that cannot enforce manifest tool allowlists "
+            "or workspace scoping. Required for Codex full-access execution."
+        ),
     ),
     project_root: Path | None = typer.Option(
         None,

@@ -376,6 +376,7 @@ class TestWizardFlow:
                     description="Add endpoint",
                     greenfield=False,
                     brownfield_flag=False,
+                    accept_runtime_side_effects=True,
                 )
             )
         finally:
@@ -418,6 +419,7 @@ class TestWizardFlow:
                     description="Add endpoint",
                     greenfield=False,
                     brownfield_flag=False,
+                    accept_runtime_side_effects=True,
                 )
             )
         finally:

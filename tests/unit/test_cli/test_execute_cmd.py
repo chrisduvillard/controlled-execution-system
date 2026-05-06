@@ -65,12 +65,52 @@ class TestExecuteLocalMode:
         }
 
         with _patch_services(mock_services), patch("ces.cli.execute_cmd.WorkflowEngine", return_value=AsyncMock()):
-            result = runner.invoke(_get_app(), ["execute", "M-local", "--runtime", "auto"])
+            result = runner.invoke(
+                _get_app(),
+                ["execute", "M-local", "--runtime", "auto", "--accept-runtime-side-effects"],
+            )
 
         assert result.exit_code == 0, result.stdout
         mock_runtime_registry.resolve_runtime.assert_called_once_with(runtime_name="auto", preferred_runtime="codex")
         mock_runner.execute_runtime.assert_awaited_once()
         mock_services["local_store"].save_runtime_execution.assert_called_once()
+
+    def test_execute_blocks_unsafe_runtime_before_launch_without_explicit_consent(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
+        monkeypatch.chdir(tmp_path)
+        ces_dir = tmp_path / ".ces"
+        ces_dir.mkdir()
+        (ces_dir / "config.yaml").write_text("project_id: local-proj\npreferred_runtime: codex\n")
+
+        mock_runtime = MagicMock(runtime_name="codex")
+        mock_runner = AsyncMock()
+        mock_runner.execute_runtime = AsyncMock()
+        mock_runtime_registry = MagicMock()
+        mock_runtime_registry.resolve_runtime.return_value = mock_runtime
+        mock_manifest = MagicMock(
+            manifest_id="M-local", description="Build cool thing", workflow_state=WorkflowState.IN_FLIGHT
+        )
+        mock_manager = AsyncMock(get_manifest=AsyncMock(return_value=mock_manifest))
+
+        mock_services = {
+            "settings": MagicMock(default_runtime="codex"),
+            "audit_ledger": AsyncMock(),
+            "runtime_registry": mock_runtime_registry,
+            "agent_runner": mock_runner,
+            "manifest_manager": mock_manager,
+            "local_store": MagicMock(save_runtime_execution=MagicMock()),
+        }
+
+        with _patch_services(mock_services), patch("ces.cli.execute_cmd.WorkflowEngine", return_value=AsyncMock()):
+            result = runner.invoke(_get_app(), ["execute", "M-local", "--runtime", "auto"])
+
+        assert result.exit_code != 0
+        assert "requires explicit runtime side-effect consent" in result.stdout
+        assert "--accept-runtime-side-effects" in result.stdout
+        mock_runtime_registry.resolve_runtime.assert_called_once_with(runtime_name="auto", preferred_runtime="codex")
+        mock_runner.execute_runtime.assert_not_awaited()
+        mock_manager.save_manifest.assert_not_awaited()
 
     def test_execute_json_output_serializes_runtime_result(self, tmp_path: Path, monkeypatch) -> None:
         monkeypatch.chdir(tmp_path)
@@ -153,7 +193,7 @@ class TestExecuteLocalMode:
         }
 
         with _patch_services(mock_services), patch("ces.cli.execute_cmd.WorkflowEngine", return_value=mock_engine):
-            result = runner.invoke(_get_app(), ["execute", "M-local"])
+            result = runner.invoke(_get_app(), ["execute", "M-local", "--accept-runtime-side-effects"])
 
         assert result.exit_code == 0, result.stdout
         mock_engine.start.assert_awaited_once()
@@ -294,7 +334,7 @@ class TestCompletionGateWiring:
         }
 
         with _patch_services(mock_services), patch("ces.cli.execute_cmd.WorkflowEngine", return_value=mock_engine):
-            result = runner.invoke(_get_app(), ["execute", "M-gate"])
+            result = runner.invoke(_get_app(), ["execute", "M-gate", "--accept-runtime-side-effects"])
 
         assert result.exit_code == 0, result.stdout
         # Panel wrapping may break the message mid-phrase; check for stable substrings
@@ -367,7 +407,7 @@ class TestCompletionGateWiring:
         }
 
         with _patch_services(mock_services), patch("ces.cli.execute_cmd.WorkflowEngine", return_value=mock_engine):
-            result = runner.invoke(_get_app(), ["execute", "M-gate"])
+            result = runner.invoke(_get_app(), ["execute", "M-gate", "--accept-runtime-side-effects"])
 
         assert result.exit_code != 0, result.stdout
         assert "Completion Gate Failed" in result.stdout
@@ -409,7 +449,7 @@ class TestCompletionGateWiring:
         }
 
         with _patch_services(mock_services), patch("ces.cli.execute_cmd.WorkflowEngine", return_value=mock_engine):
-            result = runner.invoke(_get_app(), ["execute", "M-gate"])
+            result = runner.invoke(_get_app(), ["execute", "M-gate", "--accept-runtime-side-effects"])
 
         assert result.exit_code != 0, result.stdout
         assert "did not emit" in result.stdout.lower()
@@ -450,7 +490,7 @@ class TestCompletionGateWiring:
         }
 
         with _patch_services(mock_services), patch("ces.cli.execute_cmd.WorkflowEngine", return_value=AsyncMock()):
-            result = runner.invoke(_get_app(), ["execute", "M-no-gate"])
+            result = runner.invoke(_get_app(), ["execute", "M-no-gate", "--accept-runtime-side-effects"])
 
         assert result.exit_code == 0, result.stdout
         # Gate did not run, so the verifier was never invoked
@@ -593,7 +633,9 @@ class TestAutoRepairLoop:
         }
 
         with _patch_services(mock_services), patch("ces.cli.execute_cmd.WorkflowEngine", return_value=mock_engine):
-            result = runner.invoke(_get_app(), ["execute", "M-gate", "--auto-repair", "1"])
+            result = runner.invoke(
+                _get_app(), ["execute", "M-gate", "--accept-runtime-side-effects", "--auto-repair", "1"]
+            )
 
         assert result.exit_code == 0, result.stdout
         assert mock_runner.execute_runtime.await_count == 2
@@ -662,7 +704,9 @@ class TestAutoRepairLoop:
         }
 
         with _patch_services(mock_services), patch("ces.cli.execute_cmd.WorkflowEngine", return_value=mock_engine):
-            result = runner.invoke(_get_app(), ["execute", "M-gate", "--auto-repair", "1"])
+            result = runner.invoke(
+                _get_app(), ["execute", "M-gate", "--accept-runtime-side-effects", "--auto-repair", "1"]
+            )
 
         assert result.exit_code != 0, result.stdout
         # Loop ran twice (initial + 1 repair)
@@ -727,7 +771,9 @@ class TestAutoRepairLoop:
         }
 
         with _patch_services(mock_services), patch("ces.cli.execute_cmd.WorkflowEngine", return_value=mock_engine):
-            result = runner.invoke(_get_app(), ["execute", "M-gate", "--auto-repair", "5"])
+            result = runner.invoke(
+                _get_app(), ["execute", "M-gate", "--accept-runtime-side-effects", "--auto-repair", "5"]
+            )
 
         assert result.exit_code != 0, result.stdout
         assert "No Progress Detected" in result.stdout
@@ -789,7 +835,7 @@ class TestAutoRepairLoop:
         }
 
         with _patch_services(mock_services), patch("ces.cli.execute_cmd.WorkflowEngine", return_value=mock_engine):
-            result = runner.invoke(_get_app(), ["execute", "M-gate"])
+            result = runner.invoke(_get_app(), ["execute", "M-gate", "--accept-runtime-side-effects"])
 
         assert result.exit_code != 0, result.stdout
         assert mock_runner.execute_runtime.await_count == 1

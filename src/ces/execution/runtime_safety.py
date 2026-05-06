@@ -92,6 +92,19 @@ def runtime_side_effects_block_auto_approval(profile: RuntimeSafetyProfile, *, a
     return not profile.tool_allowlist_enforced
 
 
+def runtime_side_effects_require_pre_execution_consent(profile: RuntimeSafetyProfile, *, accepted: bool) -> bool:
+    """Return True when a runtime must be explicitly accepted before launch.
+
+    Approval-time gates are too late for runtimes that can already mutate the
+    workspace or host before CES reviews the result. Fail closed before
+    subprocess launch when the selected adapter cannot enforce the manifest's
+    tool boundary or cannot keep execution workspace-scoped.
+    """
+    if accepted:
+        return False
+    return not profile.tool_allowlist_enforced or not profile.workspace_scoped
+
+
 def _mcp_notes(mcp_servers: tuple[str, ...], *, supported: bool) -> str:
     if not mcp_servers:
         return "No manifest MCP servers requested."

@@ -150,6 +150,13 @@ ces doctor --runtime-safety
 only affects optional helper/provider behavior; it does not replace Codex CLI
 or Claude Code for local execution.
 
+Codex is disclosed as a full-access local runtime: CES can review its output and
+workspace delta after execution, but the Codex adapter does not enforce manifest
+tool allowlists before the subprocess runs. `ces build`, `ces continue`, and
+`ces execute` therefore fail closed before launching Codex unless you pass
+`--accept-runtime-side-effects`. Prefer Claude Code when you need runtime-level
+tool allowlist enforcement.
+
 ## How The Loop Works
 
 ```text

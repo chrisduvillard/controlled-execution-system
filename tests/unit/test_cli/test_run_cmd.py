@@ -449,7 +449,14 @@ class TestRunCommand:
             app = _get_app()
             result = runner.invoke(
                 app,
-                ["build", "Build a habit tracker", "--yes", "--acceptance", "User can create and complete habits"],
+                [
+                    "build",
+                    "Build a habit tracker",
+                    "--yes",
+                    "--accept-runtime-side-effects",
+                    "--acceptance",
+                    "User can create and complete habits",
+                ],
             )
 
         assert result.exit_code == 0, f"stdout={result.stdout}"
@@ -536,7 +543,7 @@ class TestRunCommand:
 
         with _patch_services(mock_services):
             app = _get_app()
-            result = runner.invoke(app, ["build", "--yes"])
+            result = runner.invoke(app, ["build", "--yes", "--accept-runtime-side-effects"])
 
         assert result.exit_code == 0, f"stdout={result.stdout}"
         mock_store.save_builder_brief.assert_called_once()
@@ -630,6 +637,71 @@ class TestRunCommand:
         mock_runtime_registry.resolve_runtime.assert_called_once()
         mock_runner.execute_runtime.assert_awaited_once()
         mock_store.save_runtime_execution.assert_called_once()
+
+    def test_build_blocks_unsafe_runtime_before_execution_without_explicit_consent(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.chdir(tmp_path)
+        ces_dir = tmp_path / ".ces"
+        ces_dir.mkdir()
+        (ces_dir / "config.yaml").write_text("project_id: local-proj\npreferred_runtime: codex\n")
+
+        manifest = MagicMock()
+        manifest.manifest_id = "M-unsafe-runtime"
+        manifest.description = "Build portfolio site"
+        manifest.risk_tier = RiskTier.C
+        manifest.behavior_confidence = BehaviorConfidence.BC1
+        manifest.change_class = ChangeClass.CLASS_1
+        manifest.affected_files = []
+        manifest.allowed_tools = []
+        manifest.mcp_servers = []
+
+        mock_manager = AsyncMock()
+        mock_manager.create_manifest.return_value = manifest
+        mock_runtime = MagicMock()
+        mock_runtime.runtime_name = "codex"
+        mock_runtime.generate_manifest_assist.return_value = {
+            "description": "Build portfolio site",
+            "risk_tier": RiskTier.C.value,
+            "behavior_confidence": BehaviorConfidence.BC1.value,
+            "change_class": ChangeClass.CLASS_1.value,
+            "affected_files": [],
+            "token_budget": 50000,
+            "reasoning": "Guided local draft",
+        }
+        mock_runtime_registry = MagicMock()
+        mock_runtime_registry.resolve_runtime.return_value = mock_runtime
+        mock_runner = AsyncMock()
+        mock_store = MagicMock()
+        mock_store.save_builder_brief.return_value = "BB-unsafe-runtime"
+        mock_store.save_builder_session.return_value = "BS-unsafe-runtime"
+        mock_services = {
+            "settings": MagicMock(default_runtime="codex"),
+            "manifest_manager": mock_manager,
+            "runtime_registry": mock_runtime_registry,
+            "agent_runner": mock_runner,
+            "local_store": mock_store,
+            "evidence_synthesizer": MagicMock(),
+            "audit_ledger": AsyncMock(),
+            "sensor_orchestrator": MagicMock(run_all=AsyncMock(return_value=[])),
+            "legacy_behavior_service": AsyncMock(),
+        }
+
+        with _patch_services(mock_services):
+            app = _get_app()
+            result = runner.invoke(
+                app,
+                ["build", "Build portfolio site", "--yes", "--acceptance", "Portfolio site renders"],
+            )
+
+        assert result.exit_code != 0
+        assert "requires explicit runtime side-effect consent" in result.stdout
+        assert "--accept-runtime-side-effects" in result.stdout
+        mock_runtime_registry.resolve_runtime.assert_called_once()
+        mock_runner.execute_runtime.assert_not_awaited()
+        mock_store.update_builder_session.assert_called()
+        assert mock_store.update_builder_session.call_args.kwargs["stage"] == "blocked"
+        assert mock_store.update_builder_session.call_args.kwargs["next_action"] == "accept_runtime_side_effects"
 
     def test_build_runtime_failure_surfaces_scrubbed_stderr_and_writes_diagnostics(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -791,7 +863,7 @@ class TestRunCommand:
 
         with _patch_services(mock_services):
             app = _get_app()
-            result = runner.invoke(app, ["build", "--yes"])
+            result = runner.invoke(app, ["build", "--yes", "--accept-runtime-side-effects"])
 
         assert result.exit_code == 0, f"stdout={result.stdout}"
         assert mock_runner.execute_runtime.await_args.kwargs["working_dir"] == project_root
@@ -866,7 +938,14 @@ class TestRunCommand:
             app = _get_app()
             result = runner.invoke(
                 app,
-                ["run", "Build portfolio site", "--yes", "--acceptance", "Portfolio site renders"],
+                [
+                    "run",
+                    "Build portfolio site",
+                    "--yes",
+                    "--accept-runtime-side-effects",
+                    "--acceptance",
+                    "Portfolio site renders",
+                ],
             )
 
         assert result.exit_code == 0, f"stdout={result.stdout}"
@@ -1278,7 +1357,14 @@ class TestRunCommand:
             app = _get_app()
             result = runner.invoke(
                 app,
-                ["run", "Build portfolio site", "--yes", "--acceptance", "Portfolio site renders"],
+                [
+                    "run",
+                    "Build portfolio site",
+                    "--yes",
+                    "--accept-runtime-side-effects",
+                    "--acceptance",
+                    "Portfolio site renders",
+                ],
             )
 
         assert result.exit_code == 0, f"stdout={result.stdout}"
@@ -1392,6 +1478,7 @@ class TestRunCommand:
                     "build",
                     "Add invoice notes",
                     "--yes",
+                    "--accept-runtime-side-effects",
                     "--acceptance",
                     "Invoice notes are saved",
                     "--source-of-truth",
@@ -1581,6 +1668,7 @@ class TestRunCommand:
                     "build",
                     "Build a habit tracker",
                     "--yes",
+                    "--accept-runtime-side-effects",
                     "--acceptance",
                     "User can create and complete habits",
                     "--export-prl-draft",
@@ -1677,7 +1765,7 @@ class TestRunCommand:
 
         with _patch_services(mock_services):
             app = _get_app()
-            result = runner.invoke(app, ["continue", "--yes"])
+            result = runner.invoke(app, ["continue", "--yes", "--accept-runtime-side-effects"])
 
         assert result.exit_code == 0, f"stdout={result.stdout}"
         create_kwargs = mock_manager.create_manifest.call_args.kwargs
@@ -1937,7 +2025,7 @@ class TestRunCommand:
 
         with _patch_services(mock_services):
             app = _get_app()
-            result = runner.invoke(app, ["continue", "--yes"])
+            result = runner.invoke(app, ["continue", "--yes", "--accept-runtime-side-effects"])
 
         assert result.exit_code == 0, f"stdout={result.stdout}"
         mock_manager.create_manifest.assert_not_awaited()
