@@ -4,12 +4,14 @@ Tests the end-to-end flow: create -> classify -> validate -> sign -> verify
 -> workflow transitions -> invalidation -> audit chain integrity.
 
 Uses real services (no mocks) but no database -- in-memory audit ledger.
-Does not require external services (no @pytest.mark.integration).
+Marked as integration because it exercises cross-service workflow contracts.
 """
 
 from __future__ import annotations
 
 import pytest
+
+pytestmark = pytest.mark.integration
 
 from ces.control.models.audit_entry import AuditScope
 from ces.control.services.audit_ledger import AuditLedgerService

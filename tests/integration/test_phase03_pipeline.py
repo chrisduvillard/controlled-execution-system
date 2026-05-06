@@ -21,6 +21,8 @@ from datetime import datetime, timezone
 
 import pytest
 
+pytestmark = pytest.mark.integration
+
 from ces.harness.models.guide_pack import GuidePackBudget
 from ces.harness.models.self_correction_state import (
     CircuitBreakerState,

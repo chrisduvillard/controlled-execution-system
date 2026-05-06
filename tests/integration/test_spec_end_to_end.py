@@ -7,6 +7,8 @@ from pathlib import Path
 
 import pytest
 
+pytestmark = pytest.mark.integration
+
 from ces.control.spec.decomposer import SpecDecomposer
 from ces.control.spec.parser import SpecParser
 from ces.control.spec.reconciler import SpecReconciler

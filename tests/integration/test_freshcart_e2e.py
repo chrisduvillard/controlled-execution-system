@@ -16,6 +16,8 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+
+pytestmark = pytest.mark.integration
 from typer.testing import CliRunner
 
 from ces.shared.enums import (

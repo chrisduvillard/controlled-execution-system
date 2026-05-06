@@ -13,6 +13,8 @@ Uses real WorkflowEngine with in-memory AuditLedgerService (no DB).
 from __future__ import annotations
 
 import pytest
+
+pytestmark = pytest.mark.integration
 from statemachine.exceptions import TransitionNotAllowed
 
 from ces.control.services.audit_ledger import AuditLedgerService

@@ -23,6 +23,17 @@ def test_sdist_excludes_internal_workflow_and_test_material() -> None:
     assert "/docs/plans" in excludes
 
 
+def test_every_integration_test_file_is_marked_integration() -> None:
+    integration_files = sorted((_REPO_ROOT / "tests" / "integration").glob("test_*.py"))
+
+    assert integration_files
+    for path in integration_files:
+        text = path.read_text(encoding="utf-8")
+        assert "pytestmark = pytest.mark.integration" in text, (
+            f"{path.relative_to(_REPO_ROOT)} must set pytestmark = pytest.mark.integration"
+        )
+
+
 def test_gitleaks_allowlist_regexes_compile() -> None:
     config = tomllib.loads((_REPO_ROOT / ".gitleaks.toml").read_text(encoding="utf-8"))
 

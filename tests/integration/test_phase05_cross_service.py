@@ -19,6 +19,8 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+pytestmark = pytest.mark.integration
+
 from ces.control.models.intake import IntakeQuestion
 from ces.control.models.knowledge_vault import VaultNote
 from ces.control.models.manifest import TaskManifest

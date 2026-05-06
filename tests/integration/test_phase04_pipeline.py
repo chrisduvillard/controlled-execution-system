@@ -19,6 +19,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+pytestmark = pytest.mark.integration
+
 from ces.control.models.evidence_packet import ChainOfCustodyEntry
 from ces.control.models.manifest import TaskManifest
 from ces.control.services.kill_switch import KillSwitchProtocol, KillSwitchService
