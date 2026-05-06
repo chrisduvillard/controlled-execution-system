@@ -182,6 +182,36 @@ class TestRuntimeAdapterEnvScrubbing:
         },
         clear=True,
     )
+    def test_codex_runtime_scrubs_stderr_before_returning_result(self, tmp_path: Path) -> None:
+        adapter = CodexRuntimeAdapter()
+        adapter.version = MagicMock(return_value="1.0.0")
+        secret_key = "OPENAI" + "_API_KEY"
+        secret_value = "sk-" + "codex-stderr-secret"
+
+        def _popen(*args, **kwargs):
+            kwargs["stdout"].write(b"done")
+            kwargs["stderr"].write(f"runtime failed with {secret_key}={secret_value}".encode())
+            return _completed_process(returncode=1)
+
+        with patch("ces.execution.runtimes.adapters.subprocess.Popen", side_effect=_popen):
+            result = adapter.run_task(
+                manifest_description="Implement feature",
+                prompt_pack="Prompt pack",
+                working_dir=tmp_path,
+            )
+
+        assert result.exit_code == 1
+        assert secret_value not in result.stderr
+        assert f"{secret_key}=<REDACTED>" in result.stderr
+
+    @patch.dict(
+        "os.environ",
+        {
+            "PATH": "/usr/bin",
+            "HOME": "/home/tester",
+        },
+        clear=True,
+    )
     def test_codex_runtime_caps_message_file_and_stderr(self, tmp_path: Path) -> None:
         adapter = CodexRuntimeAdapter()
         adapter.version = MagicMock(return_value="1.0.0")
