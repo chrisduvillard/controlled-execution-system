@@ -11,8 +11,10 @@
 <img src="docs/assets/ces-avatar.png" alt="Controlled Execution System project avatar" width="300">
 
 <a href="docs/assets/ces-demo.mp4">
-  <img src="docs/assets/ces-demo-poster.png" alt="Watch the 20-second CES explainer demo" width="760">
+  <img src="docs/assets/ces-demo.gif" alt="20-second CES explainer demo" width="760">
 </a>
+
+<sub>Click the animation to open the MP4.</sub>
 
 **Local-first governance for AI coding agents.**
 
