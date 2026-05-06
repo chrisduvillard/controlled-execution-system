@@ -1067,7 +1067,7 @@ class TestRunCommand:
         ]
         assert "Merge Validation Passed" in result.stdout
 
-    def test_build_merge_block_keeps_builder_session_blocked(
+    def test_build_review_complete_merge_denial_records_approved_unmerged_session(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.chdir(tmp_path)
@@ -1135,6 +1135,9 @@ class TestRunCommand:
         mock_workflow = AsyncMock()
         mock_workflow.submit_for_review = AsyncMock(return_value=WorkflowState.UNDER_REVIEW)
         mock_workflow.get_review_sub_state = MagicMock(return_value=ReviewSubState.PENDING_REVIEW)
+        mock_workflow.begin_challenge = AsyncMock(return_value=ReviewSubState.CHALLENGER_BRIEF)
+        mock_workflow.begin_triage = AsyncMock(return_value=ReviewSubState.TRIAGE)
+        mock_workflow.reach_decision = AsyncMock(return_value=ReviewSubState.DECISION)
         mock_workflow.complete_review = AsyncMock(return_value=WorkflowState.APPROVED)
         mock_workflow.approve_merge = AsyncMock()
 
@@ -1166,21 +1169,26 @@ class TestRunCommand:
                 ],
             )
 
-        assert result.exit_code == 1, f"stdout={result.stdout}"
-        assert "review" in result.stdout.lower() or "block" in result.stdout.lower()
+        assert result.exit_code == 0, f"stdout={result.stdout}"
+        assert "approved, but merge was not applied" in result.stdout
+        assert "Merge Not Applied" in result.stdout
         mock_workflow.submit_for_review.assert_awaited_once()
-        mock_workflow.complete_review.assert_not_awaited()
+        mock_workflow.begin_challenge.assert_awaited_once()
+        mock_workflow.begin_triage.assert_awaited_once()
+        mock_workflow.reach_decision.assert_awaited_once()
+        mock_workflow.complete_review.assert_awaited_once()
         mock_workflow.approve_merge.assert_not_awaited()
         assert saved_states == [
             WorkflowState.IN_FLIGHT,
             WorkflowState.UNDER_REVIEW,
+            WorkflowState.APPROVED,
         ]
         merge_kwargs = mock_merge_ctrl.validate_merge.call_args.kwargs
-        assert merge_kwargs["review_sub_state"] == ReviewSubState.PENDING_REVIEW.value
-        assert merge_kwargs["workflow_state"] == WorkflowState.UNDER_REVIEW.value
+        assert merge_kwargs["review_sub_state"] == ReviewSubState.DECISION.value
+        assert merge_kwargs["workflow_state"] == WorkflowState.APPROVED.value
         final_session_update = mock_store.update_builder_session.call_args_list[-1].kwargs
-        assert final_session_update["stage"] == "blocked"
-        assert final_session_update["last_action"] == "merge_blocked"
+        assert final_session_update["stage"] == "completed"
+        assert final_session_update["last_action"] == "approval_recorded_merge_not_applied"
 
     def test_build_signs_unsigned_manifest_before_merge_validation(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch

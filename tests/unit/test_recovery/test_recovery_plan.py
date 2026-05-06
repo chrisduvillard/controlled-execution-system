@@ -133,3 +133,50 @@ def test_plan_treats_stale_running_session_as_interrupted_and_retryable(tmp_path
     assert "stale" in plan.explanation.lower() or "interrupted" in plan.explanation.lower()
     assert "ces continue" in plan.next_commands
     assert "ces recover --auto-evidence" not in plan.next_commands
+
+
+def test_plan_does_not_offer_recovery_for_approved_merge_validation_block(tmp_path: Path) -> None:
+    store, project_root = _seed_blocked_session(tmp_path)
+    store.save_approval("M-123", decision="approve", rationale="Evidence accepted by reviewer")
+    latest = store.get_latest_builder_session()
+    assert latest is not None
+    store.update_builder_session(
+        latest.session_id,
+        stage="blocked",
+        next_action="review_evidence",
+        last_action="merge_blocked",
+        recovery_reason="needs_review",
+        last_error="workflow state has not reached merge-ready",
+        approval_manifest_id="M-123",
+    )
+
+    plan = build_recovery_plan(project_root=project_root, local_store=store)
+
+    assert plan.blocked is False
+    assert plan.can_run_auto_evidence is False
+    assert plan.can_auto_complete is False
+    assert "ces recover --auto-evidence" not in plan.next_commands
+    assert "approved" in plan.explanation.lower()
+
+
+def test_plan_still_offers_recovery_for_approved_integrity_merge_block(tmp_path: Path) -> None:
+    store, project_root = _seed_blocked_session(tmp_path)
+    store.save_approval("M-123", decision="approve", rationale="Evidence accepted by reviewer")
+    latest = store.get_latest_builder_session()
+    assert latest is not None
+    store.update_builder_session(
+        latest.session_id,
+        stage="blocked",
+        next_action="review_evidence",
+        last_action="merge_blocked",
+        recovery_reason="needs_review",
+        last_error="evidence_exists",
+        approval_manifest_id="M-123",
+    )
+
+    plan = build_recovery_plan(project_root=project_root, local_store=store)
+
+    assert plan.blocked is True
+    assert plan.can_run_auto_evidence is False
+    assert "ces recover --auto-evidence" not in plan.next_commands
+    assert "ces recover --dry-run" in plan.next_commands
