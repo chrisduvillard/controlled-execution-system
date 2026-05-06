@@ -14,6 +14,7 @@ def test_sdist_excludes_internal_workflow_and_test_material() -> None:
     excludes = set(pyproject["tool"]["hatch"]["build"]["exclude"])
 
     assert "/.hermes" in excludes
+    assert "/.hypothesis" in excludes
     assert "/.github" in excludes
     assert "/.gitleaks.toml" in excludes
     assert "/.mcp.json" in excludes
