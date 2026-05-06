@@ -136,6 +136,33 @@ class TestCLILLMProvider:
             )
 
     @pytest.mark.asyncio
+    async def test_generate_redacts_secret_like_stderr_on_nonzero_exit(self) -> None:
+        provider = CLILLMProvider(cli_tool="claude")
+        token = "ghp" + "_" + "syntheticexamplevalue123"
+        api_key = "sk" + "-" + "syntheticexamplevalue123"
+
+        mock_proc = _mock_async_proc(
+            returncode=1,
+            stdout=b"",
+            stderr=f"failed with GITHUB_TOKEN={token} OPENAI_API_KEY={api_key}".encode(),
+        )
+
+        with (
+            patch("asyncio.create_subprocess_exec", return_value=mock_proc),
+            pytest.raises(LLMError) as exc_info,
+        ):
+            await provider.generate(
+                model_id="claude-cli",
+                messages=[{"role": "user", "content": "Hello"}],
+            )
+
+        message = str(exc_info.value)
+        assert token not in message
+        assert api_key not in message
+        assert "GITHUB_TOKEN=<REDACTED>" in message
+        assert "OPENAI_API_KEY=<REDACTED>" in message
+
+    @pytest.mark.asyncio
     async def test_generate_raises_on_timeout(self) -> None:
         provider = CLILLMProvider(cli_tool="claude", timeout=1)
 

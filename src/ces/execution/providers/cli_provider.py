@@ -18,6 +18,7 @@ from contextlib import suppress
 
 from ces.execution._subprocess_env import build_subprocess_env
 from ces.execution.providers.protocol import LLMError, LLMResponse
+from ces.execution.secrets import scrub_secrets_from_text
 
 # Per-tool env-var needs. Matches the runtime adapters' ``runtime_env_keys``
 # so the inline provider path gets the same allowlist behaviour.
@@ -182,12 +183,13 @@ class CLILLMProvider:
                 original_error=exc,
             ) from exc
 
-        stdout_text = stdout_bytes.decode()
-        stderr_text = stderr_bytes.decode()
+        stdout_text = stdout_bytes.decode(errors="replace")
+        stderr_text = stderr_bytes.decode(errors="replace")
 
         if proc.returncode != 0:
+            stderr_summary = scrub_secrets_from_text(stderr_text)[:500]
             raise LLMError(
-                f"CLI command failed (exit {proc.returncode}): {stderr_text[:500]}",
+                f"CLI command failed (exit {proc.returncode}): {stderr_summary}",
                 provider_name=self.provider_name,
                 model_id=model_id,
             )
