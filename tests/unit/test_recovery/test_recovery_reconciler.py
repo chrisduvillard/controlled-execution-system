@@ -7,7 +7,11 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from ces.local_store import LocalProjectStore
-from ces.recovery.reconciler import reconcile_stale_builder_session, write_builder_runtime_lock
+from ces.recovery.reconciler import (
+    clear_builder_runtime_lock,
+    reconcile_stale_builder_session,
+    write_builder_runtime_lock,
+)
 
 
 def _seed_session(
@@ -114,6 +118,45 @@ def test_reconcile_blocks_dead_runtime_lock_immediately(tmp_path: Path) -> None:
     session = store.get_builder_session(session_id)
     assert session is not None
     assert session.stage == "blocked"
+
+
+def test_reconcile_blocks_live_pid_when_lock_identity_mismatches(tmp_path: Path) -> None:
+    """A reused parent PID must not make an interrupted runtime look live."""
+    store, project_root, session_id = _seed_session(tmp_path, stage="running", updated_at=datetime.now(timezone.utc))
+    (project_root / ".ces" / "builder-runtime.lock").write_text(
+        (
+            "{"
+            f'"pid": {os.getpid()}, '
+            f'"session_id": "{session_id}", '
+            '"manifest_id": "M-123", '
+            '"pid_started_at_ticks": "0"'
+            "}"
+        ),
+        encoding="utf-8",
+    )
+
+    result = reconcile_stale_builder_session(project_root=project_root, local_store=store, stale_after_seconds=3600)
+
+    assert result.changed is True
+    assert result.stale is True
+    session = store.get_builder_session(session_id)
+    assert session is not None
+    assert session.stage == "blocked"
+
+
+def test_clear_runtime_lock_keeps_same_pid_with_mismatched_identity(tmp_path: Path) -> None:
+    """A cleanup path must not delete a reused-PID lock owned by a different process lifetime."""
+    project_root = tmp_path
+    lock_path = project_root / ".ces" / "builder-runtime.lock"
+    lock_path.parent.mkdir(exist_ok=True)
+    lock_path.write_text(
+        (f'{{"pid": {os.getpid()}, "session_id": "BS-123", "manifest_id": "M-123", "pid_started_at_ticks": "0"}}'),
+        encoding="utf-8",
+    )
+
+    clear_builder_runtime_lock(project_root=project_root, session_id="BS-123", manifest_id="M-123")
+
+    assert lock_path.exists()
 
 
 def test_reconcile_can_report_stale_without_mutating(tmp_path: Path) -> None:

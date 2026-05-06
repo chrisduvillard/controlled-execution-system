@@ -27,10 +27,12 @@ def write_builder_runtime_lock(*, project_root: Path, session_id: str | None, ma
     """Persist a parent-process runtime lock so recovery can distinguish live work from interruption."""
     lock_path = _runtime_lock_path(project_root)
     lock_path.parent.mkdir(parents=True, exist_ok=True)
+    pid = os.getpid()
     lock_path.write_text(
         json.dumps(
             {
-                "pid": os.getpid(),
+                "pid": pid,
+                "pid_started_at_ticks": _pid_started_at_ticks(pid),
                 "session_id": _safe_lock_value(session_id),
                 "manifest_id": _safe_lock_value(manifest_id),
                 "started_at": datetime.now(timezone.utc).isoformat(),
@@ -56,6 +58,8 @@ def clear_builder_runtime_lock(
         if session_id is not None and lock.get("session_id") not in {None, session_id}:
             return
         if manifest_id is not None and lock.get("manifest_id") not in {None, manifest_id}:
+            return
+        if _lock_belongs_to_reused_current_pid(lock):
             return
     try:
         lock_path.unlink()
@@ -163,7 +167,11 @@ def _runtime_lock_status(project_root: Path, session: Any) -> str | None:
     pid = lock.get("pid")
     if not isinstance(pid, int) or pid <= 0:
         return "dead"
-    return "live" if _pid_is_alive(pid) else "dead"
+    if not _pid_is_alive(pid):
+        return "dead"
+    if _lock_process_identity_mismatches(lock, pid):
+        return "dead"
+    return "live"
 
 
 def _read_runtime_lock(lock_path: Path) -> dict[str, Any] | None:
@@ -188,6 +196,37 @@ def _pid_is_alive(pid: int) -> bool:
     except OSError:
         return False
     return True
+
+
+def _lock_belongs_to_reused_current_pid(lock: dict[str, Any]) -> bool:
+    pid = lock.get("pid")
+    return isinstance(pid, int) and pid == os.getpid() and _lock_process_identity_mismatches(lock, pid)
+
+
+def _lock_process_identity_mismatches(lock: dict[str, Any], pid: int) -> bool:
+    expected_started_at = lock.get("pid_started_at_ticks")
+    if expected_started_at is None:
+        return False
+    actual_started_at = _pid_started_at_ticks(pid)
+    if actual_started_at is None:
+        return False
+    return str(expected_started_at) != actual_started_at
+
+
+def _pid_started_at_ticks(pid: int) -> str | None:
+    """Return Linux /proc process start-time ticks for PID reuse detection."""
+    try:
+        stat = Path(f"/proc/{pid}/stat").read_text(encoding="utf-8")
+    except OSError:
+        return None
+    try:
+        after_comm = stat.rsplit(")", maxsplit=1)[1].strip()
+    except IndexError:
+        return None
+    fields_after_comm = after_comm.split()
+    if len(fields_after_comm) < 20:
+        return None
+    return fields_after_comm[19]
 
 
 def _parse_datetime(value: str | None) -> datetime | None:
