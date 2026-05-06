@@ -177,7 +177,7 @@ Start with the builder-first loop for normal work:
 | `ces explain` | Read the current request, blockers, evidence, and next step |
 | `ces explain --view decisioning` | Inspect the governance decision path for the active request |
 | `ces explain --view brownfield` | Inspect existing-behavior context for the active request |
-| `ces status` | Show concise builder-first project status |
+| `ces status` | Show concise builder-first project status without mutating local state |
 | `ces why` | Explain why the latest builder run is blocked and show the next command |
 | `ces recover --dry-run` | Preview recovery for stale, interrupted, or incomplete evidence states |
 | `ces verify` | Run independent local verification for the current project |
@@ -185,8 +185,10 @@ Start with the builder-first loop for normal work:
 | `ces report builder` | Export a markdown and JSON handoff report under `.ces/exports/` |
 
 When a run blocks, prefer `ces why` and `ces recover --dry-run` before rerunning
-or manually completing work. Use `ces complete` only to reconcile work that was
-actually finished outside CES.
+or manually completing work. `ces status` is read-only by default; pass
+`ces status --reconcile` only when you explicitly want it to refresh stale local
+builder session state before display. Use `ces complete` only to reconcile work
+that was actually finished outside CES.
 
 Unattended `--yes` runs are still evidence-gated: CES blocks auto-approval if
 the runtime omits the `ces:completion` claim, changes files outside the manifest

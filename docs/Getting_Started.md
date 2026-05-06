@@ -77,7 +77,9 @@ The default status view answers:
 - whether there is grouped brownfield progress or pending brownfield work
 - what the next action is
 
-Use `ces status --expert` for the full expert view.
+Use `ces status --expert` for the full expert view. `ces status` does not mutate
+local state by default; use `ces status --reconcile` when you explicitly want to
+refresh stale builder session state before display.
 
 ## 6. Choose Builder-First vs Expert Workflow
 

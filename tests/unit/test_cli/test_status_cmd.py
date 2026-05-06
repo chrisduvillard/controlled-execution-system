@@ -89,12 +89,20 @@ class TestStatusView:
         mock_services = _make_mock_services()
         mock_services["local_store"] = MagicMock()
 
-        with _patch_services(mock_services):
+        with _patch_services(mock_services), patch("ces.cli.status_cmd.reconcile_stale_builder_session") as reconcile:
             app = _get_app()
             result = runner.invoke(app, ["status"])
 
         assert result.exit_code == 0, f"stdout={result.stdout}\nexc={result.exception}"
         assert "Builder Status" in result.stdout
+        reconcile.assert_not_called()
+
+        with _patch_services(mock_services), patch("ces.cli.status_cmd.reconcile_stale_builder_session") as reconcile:
+            app = _get_app()
+            result = runner.invoke(app, ["status", "--reconcile"])
+
+        assert result.exit_code == 0, f"stdout={result.stdout}\nexc={result.exception}"
+        reconcile.assert_called_once_with(project_root=ces_project, local_store=mock_services["local_store"])
 
     def test_status_surfaces_latest_builder_brief_and_pending_brownfield_work(
         self, ces_project: Path, monkeypatch: pytest.MonkeyPatch

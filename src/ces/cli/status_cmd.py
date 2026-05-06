@@ -384,6 +384,7 @@ async def _gather_status_data(
     project_id: str | None = None,
     project_config: dict[str, Any] | None = None,
     project_root: Path | None = None,
+    reconcile: bool = False,
 ) -> dict:
     """Gather all local status data from CES services.
 
@@ -404,7 +405,7 @@ async def _gather_status_data(
     manifest_manager = services["manifest_manager"]
     audit_ledger = services.get("audit_ledger")
     local_store = services.get("local_store")
-    if local_store is not None and project_root is not None:
+    if local_store is not None and project_root is not None and reconcile:
         reconcile_stale_builder_session(project_root=project_root, local_store=local_store)
 
     # Trust profiles — TrustManager does not have a bulk query method yet,
@@ -545,6 +546,11 @@ async def show_status(
         "--project-root",
         help="CES project root to inspect; defaults to the current directory discovery.",
     ),
+    reconcile: bool = typer.Option(
+        False,
+        "--reconcile",
+        help="Reconcile stale builder session state before displaying status. May update local CES state.",
+    ),
 ) -> None:
     """Show project status with trust, manifests, reviews, and audit context.
 
@@ -566,6 +572,7 @@ async def show_status(
                 project_id=project_id,
                 project_config=project_config,
                 project_root=resolved_project_root,
+                reconcile=reconcile,
             )
 
             if _output_mod._json_mode:
@@ -586,6 +593,7 @@ async def show_status(
                                 project_id=project_id,
                                 project_config=project_config,
                                 project_root=resolved_project_root,
+                                reconcile=reconcile,
                             )
                             tables = [_build_overview_panel(project_id, data, project_config.get("project_name"))]
                             if expert:
