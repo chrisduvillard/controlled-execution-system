@@ -39,7 +39,7 @@ from ces.control.models.manifest import TaskManifest
 from ces.control.services.evidence_integrity import compute_reviewed_evidence_hash
 from ces.control.services.workflow_engine import WorkflowEngine
 from ces.execution.providers.bootstrap import resolve_primary_provider
-from ces.shared.enums import ActorType, GateType, WorkflowState
+from ces.shared.enums import ActorType, GateType, ReviewSubState, WorkflowState
 
 # Color mapping for triage display
 _TRIAGE_COLOR_STYLES = {
@@ -431,14 +431,18 @@ async def approve_evidence(
             # Merge validation and workflow transitions
             merge_decision = None
             if approved:
-                if manifest_state == WorkflowState.UNDER_REVIEW.value:
-                    # Set review sub-state to DECISION so complete_review succeeds
-                    from ces.shared.enums import ReviewSubState
-
-                    engine._review_sub_state = ReviewSubState.DECISION
+                review_sub_state_value = (
+                    ReviewSubState.DECISION.value if review_data is not None else ReviewSubState.PENDING_REVIEW.value
+                )
+                workflow_state_for_merge = manifest_state
+                if (
+                    manifest_state == WorkflowState.UNDER_REVIEW.value
+                    and review_sub_state_value == ReviewSubState.DECISION.value
+                ):
                     approved_state = await engine.complete_review(actor=actor, actor_type=ActorType.HUMAN)
                     manifest = _with_workflow_state(manifest, approved_state)
                     await manager.save_manifest(manifest)
+                    workflow_state_for_merge = _coerce_workflow_state_value(approved_state)
 
                 # MergeController: validate merge preconditions (MERGE-01, MERGE-02, MERGE-03)
                 merge_controller = services.get("merge_controller")
@@ -477,8 +481,8 @@ async def approve_evidence(
                     evidence_manifest_hash=evidence_packet_dict.get("manifest_hash"),
                     required_gate_type=required_gate,
                     actual_gate_type=actual_gate,
-                    review_sub_state="decision",
-                    workflow_state=WorkflowState.APPROVED.value,
+                    review_sub_state=review_sub_state_value,
+                    workflow_state=workflow_state_for_merge,
                 )
 
                 if merge_decision.allowed:

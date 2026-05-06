@@ -20,6 +20,7 @@ from ces.shared.enums import (
     BehaviorConfidence,
     ChangeClass,
     GateType,
+    ReviewSubState,
     RiskTier,
     TrustStatus,
     WorkflowState,
@@ -94,6 +95,7 @@ def _make_mock_services(
     mock_audit.record_approval = AsyncMock(return_value=MagicMock())
 
     mock_workflow = AsyncMock()
+    mock_workflow.get_review_sub_state = MagicMock(return_value=ReviewSubState.DECISION)
     mock_workflow.complete_review = AsyncMock(return_value=WorkflowState.APPROVED)
     mock_workflow.approve_merge = AsyncMock(return_value=WorkflowState.MERGED)
 
@@ -135,6 +137,9 @@ class TestApproveWithYesFlag:
         monkeypatch.chdir(ces_project)
 
         mock_services = _make_mock_services()
+        mock_store = MagicMock()
+        mock_store.get_review_findings.return_value = _make_review_data()
+        mock_services["local_store"] = mock_store
 
         with _patch_services(mock_services), patch("ces.cli.approve_cmd.WorkflowEngine", return_value=AsyncMock()):
             app = _get_app()
@@ -156,6 +161,33 @@ class TestApproveWithYesFlag:
         assert result.exit_code == 0, f"stdout={result.stdout}"
         # Should show some indication of yellow triage
         assert "yellow" in result.stdout.lower() or "YELLOW" in result.stdout
+
+    def test_approve_without_persisted_private_review_does_not_force_decision_substate(
+        self, ces_project: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Approval must not manufacture DECISION when no persisted private review exists."""
+        monkeypatch.chdir(ces_project)
+
+        mock_services = _make_mock_services()
+        mock_store = MagicMock()
+        mock_store.get_review_findings.return_value = None
+        mock_services["local_store"] = mock_store
+        mock_merge = mock_services["merge_controller"]
+        mock_merge.validate_merge = AsyncMock(
+            return_value=MergeDecision(allowed=False, checks=[], reason="review_complete")
+        )
+
+        with _patch_services(mock_services):
+            app = _get_app()
+            result = runner.invoke(app, ["approve", "EP-no-private-review", "--yes"])
+
+        assert result.exit_code == 0, f"stdout={result.stdout}"
+        merge_kwargs = mock_merge.validate_merge.call_args.kwargs
+        assert merge_kwargs["review_sub_state"] == ReviewSubState.PENDING_REVIEW.value
+        assert merge_kwargs["workflow_state"] == WorkflowState.UNDER_REVIEW.value
+        # The CLI can record an approval decision, but it must leave the merge blocked
+        # until a real review reaches DECISION.
+        assert "Merge Blocked" in result.stdout
 
     def test_yes_flag_blocks_unanimous_zero_escalation(
         self, ces_project: Path, monkeypatch: pytest.MonkeyPatch
@@ -439,6 +471,9 @@ class TestApproveMergeControllerIntegration:
         from ces.control.models.merge_decision import MergeDecision
 
         mock_services = _make_mock_services()
+        mock_store = MagicMock()
+        mock_store.get_review_findings.return_value = _make_review_data()
+        mock_services["local_store"] = mock_store
         mock_merge_ctrl = AsyncMock()
         mock_merge_ctrl.validate_merge = AsyncMock(return_value=MergeDecision(allowed=True, checks=[], reason=""))
         mock_services["merge_controller"] = mock_merge_ctrl

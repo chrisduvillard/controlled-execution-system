@@ -57,6 +57,7 @@ from ces.shared.enums import (
     BehaviorConfidence,
     ChangeClass,
     GateType,
+    ReviewSubState,
     RiskTier,
     TrustStatus,
     WorkflowState,
@@ -102,6 +103,13 @@ def _required_gate_type_for_risk(risk_tier_value: str) -> GateType:
     if risk_tier_value == "B":
         return GateType.HYBRID
     return GateType.AGENT
+
+
+def _coerce_workflow_state_value(value: object) -> str:
+    candidate = getattr(value, "value", value)
+    if isinstance(candidate, str) and candidate in {state.value for state in WorkflowState}:
+        return candidate
+    return WorkflowState.QUEUED.value
 
 
 def _with_workflow_state(manifest: object, workflow_state: object) -> object:
@@ -1204,12 +1212,15 @@ async def _run_brief_flow(
     )
     merge_decision = None
     if approved:
-        from ces.shared.enums import ReviewSubState
-
-        workflow_engine._review_sub_state = ReviewSubState.DECISION
-        approved_state = await workflow_engine.complete_review(actor=actor, actor_type=ActorType.HUMAN)
-        manifest = _with_workflow_state(manifest, approved_state)
-        await manager.save_manifest(manifest)
+        get_review_sub_state = getattr(workflow_engine, "get_review_sub_state", None)
+        review_sub_state = get_review_sub_state() if callable(get_review_sub_state) else ReviewSubState.PENDING_REVIEW
+        review_sub_state_value = getattr(review_sub_state, "value", str(review_sub_state))
+        workflow_state_for_merge = _coerce_workflow_state_value(getattr(manifest, "workflow_state", None))
+        if review_sub_state_value == ReviewSubState.DECISION.value:
+            approved_state = await workflow_engine.complete_review(actor=actor, actor_type=ActorType.HUMAN)
+            manifest = _with_workflow_state(manifest, approved_state)
+            await manager.save_manifest(manifest)
+            workflow_state_for_merge = _coerce_workflow_state_value(approved_state)
 
         merge_controller = services.get("merge_controller")
         if merge_controller is not None:
@@ -1224,8 +1235,8 @@ async def _run_brief_flow(
                 evidence_manifest_hash=(reviewed_evidence_packet or {}).get("manifest_hash"),
                 required_gate_type=_required_gate_type_for_risk(risk_value),
                 actual_gate_type=GateType.HUMAN,
-                review_sub_state="decision",
-                workflow_state=WorkflowState.APPROVED.value,
+                review_sub_state=review_sub_state_value,
+                workflow_state=workflow_state_for_merge,
             )
             if merge_decision.allowed:
                 merged_state = await workflow_engine.approve_merge(actor=actor, actor_type=ActorType.HUMAN)

@@ -16,7 +16,7 @@ from typer.testing import CliRunner
 from ces.control.models.manifest import TaskManifest
 from ces.control.models.merge_decision import MergeDecision
 from ces.local_store import LocalProjectStore
-from ces.shared.enums import ArtifactStatus, BehaviorConfidence, ChangeClass, RiskTier, WorkflowState
+from ces.shared.enums import ArtifactStatus, BehaviorConfidence, ChangeClass, ReviewSubState, RiskTier, WorkflowState
 
 runner = CliRunner()
 
@@ -1020,6 +1020,7 @@ class TestRunCommand:
         mock_merge_ctrl.validate_merge = AsyncMock(return_value=MergeDecision(allowed=True, checks=[], reason=""))
         mock_workflow = AsyncMock()
         mock_workflow.submit_for_review = AsyncMock(return_value=WorkflowState.UNDER_REVIEW)
+        mock_workflow.get_review_sub_state = MagicMock(return_value=ReviewSubState.DECISION)
         mock_workflow.complete_review = AsyncMock(return_value=WorkflowState.APPROVED)
         mock_workflow.approve_merge = AsyncMock(return_value=WorkflowState.MERGED)
 
@@ -1080,7 +1081,7 @@ class TestRunCommand:
         manifest.risk_tier = RiskTier.C
         manifest.behavior_confidence = BehaviorConfidence.BC1
         manifest.change_class = ChangeClass.CLASS_1
-        manifest.affected_files = []
+        manifest.affected_files = ["portfolio.py"]
 
         mock_manager = AsyncMock()
         mock_manager.create_manifest.return_value = manifest
@@ -1098,7 +1099,7 @@ class TestRunCommand:
             "risk_tier": RiskTier.C.value,
             "behavior_confidence": BehaviorConfidence.BC1.value,
             "change_class": ChangeClass.CLASS_1.value,
-            "affected_files": [],
+            "affected_files": ["portfolio.py"],
             "token_budget": 50000,
             "reasoning": "Guided local draft",
         }
@@ -1133,6 +1134,7 @@ class TestRunCommand:
         )
         mock_workflow = AsyncMock()
         mock_workflow.submit_for_review = AsyncMock(return_value=WorkflowState.UNDER_REVIEW)
+        mock_workflow.get_review_sub_state = MagicMock(return_value=ReviewSubState.PENDING_REVIEW)
         mock_workflow.complete_review = AsyncMock(return_value=WorkflowState.APPROVED)
         mock_workflow.approve_merge = AsyncMock()
 
@@ -1165,18 +1167,20 @@ class TestRunCommand:
             )
 
         assert result.exit_code == 1, f"stdout={result.stdout}"
+        assert "review" in result.stdout.lower() or "block" in result.stdout.lower()
         mock_workflow.submit_for_review.assert_awaited_once()
-        mock_workflow.complete_review.assert_awaited_once()
+        mock_workflow.complete_review.assert_not_awaited()
         mock_workflow.approve_merge.assert_not_awaited()
         assert saved_states == [
             WorkflowState.IN_FLIGHT,
             WorkflowState.UNDER_REVIEW,
-            WorkflowState.APPROVED,
         ]
+        merge_kwargs = mock_merge_ctrl.validate_merge.call_args.kwargs
+        assert merge_kwargs["review_sub_state"] == ReviewSubState.PENDING_REVIEW.value
+        assert merge_kwargs["workflow_state"] == WorkflowState.UNDER_REVIEW.value
         final_session_update = mock_store.update_builder_session.call_args_list[-1].kwargs
         assert final_session_update["stage"] == "blocked"
         assert final_session_update["last_action"] == "merge_blocked"
-        assert "Merge Blocked" in result.stdout
 
     def test_build_signs_unsigned_manifest_before_merge_validation(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -1252,6 +1256,7 @@ class TestRunCommand:
         mock_merge_ctrl.validate_merge = AsyncMock(return_value=MergeDecision(allowed=True, checks=[], reason=""))
         mock_workflow = AsyncMock()
         mock_workflow.submit_for_review = AsyncMock(return_value=WorkflowState.UNDER_REVIEW)
+        mock_workflow.get_review_sub_state = MagicMock(return_value=ReviewSubState.DECISION)
         mock_workflow.complete_review = AsyncMock(return_value=WorkflowState.APPROVED)
         mock_workflow.approve_merge = AsyncMock(return_value=WorkflowState.MERGED)
 
