@@ -44,6 +44,7 @@ import ces.cli._output as _output_mod
 from ces.cli._context import find_project_root
 from ces.cli._output import console, set_json_mode
 from ces.execution.runtime_safety import safety_profile_for_runtime
+from ces.execution.secrets import scrub_secrets_from_text
 from ces.shared.crypto import AUDIT_HMAC_FILENAME, DEV_DEFAULT_HMAC_MARKER
 
 _MIN_PYTHON = (3, 12)
@@ -136,8 +137,8 @@ def _probe_runtime_auth(runtime: str, executable: str, cwd: Path) -> tuple[bool,
         )
     except (OSError, subprocess.TimeoutExpired) as exc:
         return False, f"auth probe failed before runtime completed: {exc}"
-    stdout = completed.stdout.strip()
-    stderr = completed.stderr.strip()
+    stdout = scrub_secrets_from_text(completed.stdout.strip())
+    stderr = scrub_secrets_from_text(completed.stderr.strip())
     command_label = " ".join(Path(part).name if index == 0 else part for index, part in enumerate(command[:2]))
     if completed.returncode == 0:
         return (

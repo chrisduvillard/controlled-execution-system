@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import subprocess
 import sys
 from pathlib import Path
 
@@ -195,6 +196,35 @@ class TestCesDoctor:
         assert payload["runtime_auth"]["codex"]["auth_checked"] is True
         assert payload["runtime_auth"]["codex"]["auth_ok"] is True
         assert "auth probe succeeded" in payload["runtime_auth"]["codex"]["detail"]
+
+    def test_doctor_verify_runtime_scrubs_probe_output_detail(self, tmp_path: Path, monkeypatch: object) -> None:
+        """Runtime auth probes must not echo secret-like stdout/stderr into doctor JSON."""
+        import json
+        import shutil
+
+        monkeypatch.chdir(tmp_path)  # type: ignore[attr-defined]
+        monkeypatch.setattr(shutil, "which", lambda name: "/usr/bin/codex" if name == "codex" else None)  # type: ignore[attr-defined]
+        secret_key = "OPENAI" + "_API_KEY"
+        secret_value = "sk-" + "doctor-probe-secret"
+
+        def fake_run(*args, **kwargs):
+            del args, kwargs
+            return subprocess.CompletedProcess(
+                args=["codex"],
+                returncode=1,
+                stdout=f"stdout {secret_key}={secret_value}",
+                stderr=f"stderr {secret_key}={secret_value}",
+            )
+
+        monkeypatch.setattr("ces.cli.doctor_cmd.subprocess.run", fake_run)
+        app = _get_app()
+        result = runner.invoke(app, ["doctor", "--verify-runtime", "--runtime", "codex", "--json"])
+
+        assert result.exit_code == 1, result.stdout
+        payload = json.loads(result.stdout)
+        detail = payload["runtime_auth"]["codex"]["detail"]
+        assert secret_value not in detail
+        assert f"{secret_key}=<REDACTED>" in detail
 
     def test_exits_nonzero_when_no_provider(self, tmp_path: Path, monkeypatch: object) -> None:
         """ces doctor exits non-zero when no provider is available and no demo mode."""
