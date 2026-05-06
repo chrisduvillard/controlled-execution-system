@@ -1,4 +1,4 @@
-# Controlled Execution System (CES)
+# Controlled Execution System
 
 [![CI](https://github.com/chrisduvillard/controlled-execution-system/actions/workflows/ci.yml/badge.svg)](https://github.com/chrisduvillard/controlled-execution-system/actions/workflows/ci.yml)
 [![Publish](https://github.com/chrisduvillard/controlled-execution-system/actions/workflows/publish.yml/badge.svg)](https://github.com/chrisduvillard/controlled-execution-system/actions/workflows/publish.yml)
@@ -7,87 +7,55 @@
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 <p align="center">
-  <img src="docs/assets/ces-avatar.png" alt="Controlled Execution System project avatar" width="320">
+  <img src="docs/assets/ces-avatar.png" alt="Controlled Execution System project avatar" width="300">
 </p>
 
-Local-first governance for AI agent-driven software delivery.
+<p align="center">
+  <strong>Local-first governance for AI coding agents.</strong><br>
+  Turn an intent into a bounded manifest, execute it through Codex CLI or Claude Code, collect evidence, review the result, and make approval explicit.
+</p>
 
-CES is a command-line tool that keeps AI-assisted changes inside an auditable
-workflow. Describe the change you want, and CES turns it into a bounded
-manifest, runs it through a supported local runtime, reviews the result,
-records evidence, and stores project state under `.ces/`.
+<p align="center">
+  <a href="docs/Quickstart.md">5-Minute Quickstart</a> ·
+  <a href="docs/Getting_Started.md">Getting Started</a> ·
+  <a href="docs/Operator_Playbook.md">Operator Playbook</a> ·
+  <a href="docs/Quick_Reference_Card.md">Quick Reference</a> ·
+  <a href="CHANGELOG.md">Changelog</a>
+</p>
 
-## In Plain English
+---
 
-CES is a safety wrapper for AI coding agents.
+## What CES is
 
-When you ask Codex CLI or Claude Code to change a codebase, the agent can start
-editing files right away. That is useful, but it can also be risky: the agent
-might misunderstand the task, change too many files, skip tests, or say it is
-finished without proving that the result works.
+CES is a safety and evidence layer around local AI coding tools.
 
-CES adds a controlled workflow around that process. You give CES a coding
-request, CES turns it into a clear work order, and then a local AI coding tool
-does the implementation. Afterward, CES checks what changed, asks for evidence,
-records what happened, and helps you decide whether to accept the work.
+You describe the change. CES turns that request into a governed work order, runs the work through a supported local runtime, checks what changed, asks for evidence, records the audit trail, and helps you decide whether to approve the result.
 
-Think of Codex or Claude Code as a student writing an assignment. CES is the
-rubric and supervision system around that assignment. It asks:
-
-- What exactly is the task?
-- Which files is the agent allowed to touch?
-- What counts as done?
-- Did the agent prove the result works?
-- Were tests or checks run?
-- What changed, and should a human approve it?
-
-CES is not trying to replace coding agents. It is trying to make their work
-safer, clearer, and easier to trust.
-
-The default product shape is deliberately small:
+It is deliberately local and operator-first: project state lives under `.ces/`; runtime credentials stay with your installed `codex` or `claude` CLI; final judgment stays with you.
 
 | CES is | CES is not |
 |---|---|
-| Local-first CLI governance | A hosted control plane |
-| Builder-first operator workflow | A managed service platform |
-| Repo-local SQLite state under `.ces/` | A required Postgres or Redis service |
-| Local runtime execution through Codex CLI or Claude Code | A replacement for your runtime credentials |
+| A local CLI for governed AI-assisted software delivery | A hosted control plane |
+| A manifest, evidence, review, recovery, and approval workflow | A replacement for source control, CI, or human review |
+| SQLite-backed project state under `.ces/` | A required Postgres/Redis service for normal local use |
+| A wrapper around Codex CLI and Claude Code | A runtime credential manager or universal sandbox |
 
-CES is trying to make AI coding accountable, not just smarter. Tools such as
-GSD, BMAD Method, and Superpowers can improve how an agent plans, reasons, or
-follows engineering habits; CES wraps the resulting work in a local execution
-contract with saved state, evidence, review, approval, and audit history.
+> [!IMPORTANT]
+> CES is not a sandbox. It governs the workflow around local runtime execution, records evidence, and enforces approval gates. Runtime sandboxing, credentials, repo protections, deployments, and final operator responsibility remain outside CES.
 
-## Why trust this release?
+---
 
-The `0.1.12` release line was hardened through a real operator dogfood gauntlet
-before public sharing: greenfield project creation, brownfield discovery and
-review, interrupted-runtime recovery, continuation, status/report export,
-installed-package smokes, and sequential regression-fix PRs. The resulting fixes
-covered runtime process cleanup, `--project-root` consistency, explicit recovery
-no-op messaging, runtime transcript visibility, brownfield report wording, and
-Python 3.11 install guidance.
+## Quick start
 
-CES is intentionally honest about its boundary: it is a local governance and
-evidence system around Codex CLI or Claude Code, not a hosted control plane, not a sandbox, and
-not a substitute for the runtime's own credentials, sandboxing, or human review.
+### Prerequisites
 
-[Quickstart](docs/Quickstart.md) |
-[Getting Started](docs/Getting_Started.md) |
-[Operator Playbook](docs/Operator_Playbook.md) |
-[Brownfield Guide](docs/Brownfield_Guide.md) |
-[Operations Runbook](docs/Operations_Runbook.md) |
-[Release Runbook](docs/RELEASE.md)
+| Need | Notes |
+|---|---|
+| Python | 3.12 or 3.13 |
+| Package tool | [`uv`](https://docs.astral.sh/uv/) |
+| Local runtime | Codex CLI or Claude Code installed, authenticated, and on `PATH` |
 
-## Install
-
-Prerequisites:
-
-- Python 3.12 or 3.13
-- [uv](https://docs.astral.sh/uv/)
-- A local agent runtime on `PATH`: Codex CLI or Claude Code
-
-Install the published CLI:
+### Install from PyPI
 
 ```bash
 uv tool install controlled-execution-system
@@ -95,50 +63,47 @@ uv tool update-shell
 ces --help
 ```
 
-On machines where the ambient `python3` is Python 3.11, `pip install controlled-execution-system` can fail before CES starts with a resolver message such as `No matching distribution` because the published package requires Python 3.12 or 3.13. Ask uv to create the tool environment with a supported interpreter explicitly, such as Python 3.13:
+If your ambient `python3` is Python 3.11, direct `pip install controlled-execution-system` may fail before CES starts because the package requires Python 3.12 or 3.13. Ask `uv` for a supported interpreter explicitly:
 
 ```bash
 uv tool install --python 3.13 controlled-execution-system
 ```
 
-Install a pinned release:
+Install or pin a specific release:
 
 ```bash
 uv tool install controlled-execution-system==0.1.12
 ```
 
-Upgrade an existing install:
+Upgrade later:
 
 ```bash
 uv tool upgrade controlled-execution-system
 ```
 
-Work from source when developing CES itself:
+### Verify the runtime boundary
 
 ```bash
-git clone https://github.com/chrisduvillard/controlled-execution-system.git
-cd controlled-execution-system
-uv sync
-uv run ces --help
+ces doctor
+ces doctor --runtime-safety
+# Optional: may contact the runtime provider and consume a small request.
+ces doctor --verify-runtime --runtime all
 ```
 
-If `ces` is not active in your shell while you are inside a source checkout,
-use `uv run ces ...`.
+`ces build` and `ces execute` require Codex CLI or Claude Code. `CES_DEMO_MODE=1` only affects optional helper/provider behavior; it does not replace the local execution runtime.
 
-## First Governed Build
+### First governed run
 
-Run CES from the project you want to govern:
+Run CES from the repository you want to govern:
 
 ```bash
+cd path/to/your-project
 ces build "Add a healthcheck endpoint that returns JSON status"
 ```
 
-On first use, CES creates `.ces/` in that project. It then gathers missing
-context, drafts the governance contract, executes through the local runtime,
-requires completion evidence for the acceptance criteria, reviews the result,
-checks the actual workspace delta, and records the evidence trail.
+On first use, CES creates `.ces/` in that project, gathers missing context, drafts the manifest, executes through the selected local runtime, checks the workspace delta, records evidence, and shows the next operator action.
 
-If you want to initialize local state explicitly:
+If you prefer to initialize state manually first:
 
 ```bash
 ces init my-project
@@ -146,117 +111,31 @@ ces doctor
 ces doctor --runtime-safety
 ```
 
-`ces build` and `ces execute` need a real local runtime. `CES_DEMO_MODE=1`
-only affects optional helper/provider behavior; it does not replace Codex CLI
-or Claude Code for local execution.
+---
 
-Codex is disclosed as a full-access local runtime: CES can review its output and
-workspace delta after execution, but the Codex adapter does not enforce manifest
-tool allowlists before the subprocess runs. `ces build`, `ces continue`, and
-`ces execute` therefore fail closed before launching Codex unless you pass
-`--accept-runtime-side-effects`. Prefer Claude Code when you need runtime-level
-tool allowlist enforcement.
-
-## How The Loop Works
+## How CES works
 
 ```text
-request
-  -> builder brief
-  -> manifest and governance context
-  -> local runtime execution
-  -> review and evidence
-  -> operator decision or next step
+Intent ──▶ Manifest ──▶ Runtime ──▶ Evidence ──▶ Review ──▶ Approval
+  │           │            │            │           │           │
+  │           │            │            │           │           └─ explicit operator decision
+  │           │            │            │           └─ adversarial and policy-aware review
+  │           │            │            └─ verification artifacts + workspace delta
+  │           │            └─ Codex CLI or Claude Code subprocess
+  │           └─ bounded scope, tools, acceptance criteria, risk context
+  └─ natural-language request from the operator
 ```
 
-Start with the builder-first loop for normal work:
+| Stage | What happens | Operator value |
+|---|---|---|
+| Intent | You describe the change in plain language. | Fast entry; no manifest authoring required for normal work. |
+| Manifest | CES captures scope, allowed work, acceptance criteria, and governance context. | The runtime gets a bounded assignment instead of an open-ended prompt. |
+| Runtime | CES launches a supported local AI coding runtime. | Work happens in your repo, using your local tool configuration. |
+| Evidence | CES records artifacts, completion claims, verification results, transcripts, and workspace delta. | Approval is tied to proof, not confidence. |
+| Review | CES summarizes the result, flags blockers, and routes evidence through review/triage surfaces. | You see what matters before approving. |
+| Approval | The decision is recorded in the local audit trail. | The delivery history is inspectable later. |
 
-| Command | Use it for |
-|---|---|
-| `ces build "<request>"` | Start a governed local task from a natural-language request |
-| `ces continue` | Resume the latest saved builder session |
-| `ces explain` | Read the current request, blockers, evidence, and next step |
-| `ces explain --view decisioning` | Inspect the governance decision path for the active request |
-| `ces explain --view brownfield` | Inspect existing-behavior context for the active request |
-| `ces status` | Show concise builder-first project status without mutating local state |
-| `ces why` | Explain why the latest builder run is blocked and show the next command |
-| `ces recover --dry-run` | Preview recovery for stale, interrupted, or incomplete evidence states |
-| `ces verify` | Run independent local verification for the current project without writing inferred contracts by default |
-| `ces complete` | Reconcile externally completed builder work with the CES audit trail |
-| `ces report builder` | Export a markdown and JSON handoff report under `.ces/exports/` |
-
-When a run blocks, prefer `ces why` and `ces recover --dry-run` before rerunning
-or manually completing work. `ces status` is read-only by default; pass
-`ces status --reconcile` only when you explicitly want it to refresh stale local
-builder session state before display. `ces verify` reads an existing completion
-contract when present, otherwise verifies against an inferred in-memory contract;
-pass `ces verify --write-contract` only when you want to persist that inferred
-contract. Use `ces complete` only to reconcile work that was actually finished
-outside CES.
-
-Unattended `--yes` runs are still evidence-gated: CES blocks auto-approval if
-the runtime omits the `ces:completion` claim, changes files outside the manifest
-scope, omits required verification artifacts, trips a blocking sensor policy
-finding, or uses a runtime boundary that cannot enforce manifest tool allowlists
-without an explicit `--accept-runtime-side-effects` waiver.
-
-Use the [Operator Playbook](docs/Operator_Playbook.md) when you need the full
-builder-first versus expert workflow boundary for a single request.
-
-## Greenfield And Brownfield
-
-CES supports both empty projects and existing codebases.
-
-| Mode | What CES optimizes for |
-|---|---|
-| Greenfield | Build new behavior without preserving an existing application surface |
-| Brownfield | Detect existing source files, ask what must keep working, and carry those constraints into the manifest |
-
-For day-to-day brownfield work, stay in the builder-first loop:
-
-```bash
-ces build "Add input validation to the billing API"
-ces explain --view brownfield
-ces continue
-```
-
-Use explicit brownfield governance surfaces only when you need to decide the
-fate of a named legacy behavior:
-
-```bash
-ces brownfield review OLB-<entry-id> --disposition preserve
-```
-
-The [Brownfield Guide](docs/Brownfield_Guide.md) covers observed legacy
-behavior registration, review, and promotion.
-
-## Expert Workflow
-
-Most operators should stay with `ces build`, `ces continue`, `ces explain`,
-`ces status`, and `ces report builder`. Drop into expert workflow commands when
-you need direct artifact control, audit inspection, or incident response.
-
-| Command | Use it for |
-|---|---|
-| `manifest` / `classify` | Create and classify manifests directly |
-| `execute` | Run a manifest-bound local agent task |
-| `review` / `triage` / `approve` | Inspect evidence and make approval decisions |
-| `audit` | Expert operations audit inspection; for example, `ces audit --limit 20` |
-| `status --expert` | Show the full expert status view; add `--watch` for `ces status --expert --watch` |
-| `emergency declare` | Expert operations emergency declaration; for example, `ces emergency declare "Security incident detected"` |
-| `scan` / `baseline` | Capture repo inventory and day-0 sensor snapshots; use `ces scan --dry-run` to preview without bootstrapping or writing `.ces/brownfield/scan.json` |
-| `brownfield ...` | Expert legacy behavior capture, review, and promotion |
-| `spec ...` | Author, validate, decompose, reconcile, or inspect specs |
-| `setup-ci` | Generate GitHub or GitLab CI gating workflow templates |
-| `dogfood` | Use CES to review changes to this repository; for example, `ces dogfood --base origin/master` |
-
-Commands with machine-readable output support the global JSON form
-(`ces --json status`) and the command-local form where exposed
-(`ces status --json`). The [Operations Runbook](docs/Operations_Runbook.md)
-covers system-wide visibility and incident response.
-
-## Local State
-
-CES writes operational state into the project being governed:
+Local state is stored in the governed project:
 
 | Path | Purpose |
 |---|---|
@@ -267,49 +146,128 @@ CES writes operational state into the project being governed:
 | `.ces/exports/` | Builder reports and exported handoff files |
 | `.ces/baseline/` | Day-0 sensor snapshots |
 
-Keep `.ces/` untracked unless a specific exported artifact is intentionally
-being shared.
+Keep `.ces/` untracked unless you intentionally share an exported report.
 
-## Configuration
+---
 
-Most local runs need no environment configuration. Optional settings can be
-exported directly or copied from `.env.example`.
+## Operator workflow
 
-| Variable | Purpose | Default |
-|---|---|---|
-| `CES_DEFAULT_RUNTIME` | Preferred runtime when multiple local CLIs are available | `codex` |
-| `CES_DEMO_MODE` | Use demo helper responses where supported | `0` |
-| `CES_LOG_LEVEL` | Logging level | `INFO` |
-| `CES_LOG_FORMAT` | Logging format: `json` or `text` | `json` |
-| `CES_AUDIT_HMAC_SECRET` | Override the project-local audit HMAC secret in managed environments | unset |
+Start with the builder-first loop for almost all delivery work:
 
-Runtime credentials are handled by the installed runtime CLI, not by CES
-package extras.
+```bash
+ces build "Describe the change"
+ces explain
+ces status
+ces continue
+ces report builder
+```
 
-## Architecture
-
-CES is organized around local CLI contexts:
-
-| Area | Responsibility |
+| Command | Use it for |
 |---|---|
-| `src/ces/cli/` | Typer command surface and builder-first operator flow |
-| `src/ces/local_store/` | Project-scoped SQLite persistence and repositories |
-| `src/ces/control/` | Deterministic governance models, manifests, workflow, policy, merge, and audit services |
-| `src/ces/harness/` | Evidence, review routing, sensors, trust, guide packs, and completion verification |
-| `src/ces/execution/` | Runtime adapters, providers, completion parsing, output capture, and secret-scrubbing helpers |
-| `src/ces/brownfield/` | Observed legacy behavior capture and PRL promotion |
+| `ces build "<request>"` | Start a governed local task from a natural-language request. |
+| `ces continue` | Resume the latest saved builder session from the right stage. |
+| `ces explain` | Read the current request, blockers, evidence, and next step. |
+| `ces explain --view decisioning` | Inspect the governance decision path for the active request. |
+| `ces explain --view brownfield` | Inspect existing-behavior context for the active request. |
+| `ces status` | Show concise builder-first project status without mutating local state. |
+| `ces why` | Explain why the latest builder run is blocked and show the next command. |
+| `ces recover --dry-run` | Preview recovery for stale, interrupted, or incomplete evidence states. |
+| `ces verify` | Run independent local verification without writing inferred contracts by default. |
+| `ces complete` | Reconcile work that was actually completed outside CES. |
+| `ces report builder` | Export markdown and JSON handoff reports under `.ces/exports/`. |
 
-Historical server-oriented docs live under `docs/historical/` as design
-archives, not as the current product contract.
+When a run blocks, use this sequence before rerunning work or approving anything manually:
+
+```bash
+ces why
+ces recover --dry-run
+ces verify
+ces report builder
+```
+
+Use expert workflow commands when you need direct artifact control:
+
+| Command group | Use it for |
+|---|---|
+| `ces manifest` / `ces classify` | Create and classify manifests directly. |
+| `ces execute` | Run a manifest-bound local agent task. |
+| `ces review` / `ces triage` / `ces approve` | Inspect evidence and make approval decisions directly. |
+| `ces audit` | Inspect the local audit ledger, for example `ces audit --limit 20`. |
+| `ces status --expert` | Show the full expert status view; add `--watch` for live monitoring. |
+| `ces emergency declare` | Record an expert operations emergency declaration. |
+| `ces scan` / `ces baseline` | Inventory the repo and capture day-0 sensor snapshots. |
+| `ces brownfield ...` | Capture, review, and promote named legacy behavior decisions. |
+| `ces spec ...` | Author, validate, decompose, reconcile, or inspect specs. |
+| `ces setup-ci` | Generate GitHub or GitLab CI gating workflow templates. |
+| `ces dogfood` | Use CES to review changes to this repository. |
+
+Commands with machine-readable output support the global JSON form where applicable:
+
+```bash
+ces --json status
+ces status --json
+```
+
+---
+
+## Runtime safety
+
+CES is intentionally explicit about the runtime boundary.
+
+| Safety behavior | What to remember |
+|---|---|
+| Unsafe runtimes require explicit consent | `ces build`, `ces continue`, and `ces execute` fail closed before launching a runtime that cannot enforce manifest tool allowlists unless you pass `--accept-runtime-side-effects`. |
+| `--yes` is not side-effect consent | Unattended approval does not imply permission to launch an unsafe runtime boundary. You still need `--accept-runtime-side-effects`. |
+| `ces status` is read-only by default | It displays builder-first state without refreshing stale sessions. Use `ces status --reconcile` only when you explicitly want state reconciliation before display. |
+| `ces verify` does not write inferred contracts by default | It reads an existing completion contract when present; otherwise it verifies against an inferred in-memory contract. Use `ces verify --write-contract` only when you want to persist it. |
+| `ces scan --dry-run` is non-mutating | It previews repository inventory without bootstrapping local state or writing `.ces/brownfield/scan.json`. |
+
+Codex is disclosed as a full-access local runtime for CES purposes. CES can review its output and workspace delta after execution, but the Codex adapter does not enforce manifest tool allowlists before the subprocess starts. Prefer Claude Code when you need runtime-level tool allowlist enforcement.
+
+Unattended `--yes` runs remain evidence-gated. CES should block auto-approval when completion evidence is incomplete, required verification artifacts are missing, workspace deltas exceed scope, blocking sensors fail, or the runtime boundary needs an explicit side-effect waiver.
+
+---
+
+## Core commands
+
+| Command | Purpose |
+|---|---|
+| `ces --help` | Show CLI help and command groups. |
+| `ces doctor` | Run preflight checks for Python, providers, extras, and project setup. |
+| `ces doctor --runtime-safety` | Show runtime-boundary disclosures. |
+| `ces build "<request>"` | Default builder-first governed delivery path. |
+| `ces continue` | Resume the latest builder session. |
+| `ces explain` | Summarize request, blockers, evidence, and next step. |
+| `ces status` | Show read-only builder-first status by default. |
+| `ces why` | Diagnose a blocked builder run. |
+| `ces recover --dry-run` | Preview recovery before mutation. |
+| `ces verify` | Independently verify the current project. |
+| `ces complete` | Reconcile externally completed work. |
+| `ces report builder` | Export the latest builder handoff report. |
+| `ces manifest "<request>"` | Create a task manifest directly. |
+| `ces classify M-<manifest-id>` | Classify manifest risk and routing. |
+| `ces execute M-<manifest-id>` | Execute a manifest-bound task locally. |
+| `ces review` / `ces triage` / `ces approve` | Review, screen, and decide on evidence. |
+| `ces scan --dry-run` | Preview repository inventory without mutation. |
+| `ces brownfield ...` | Manage explicit legacy-behavior governance. |
+| `ces spec ...` | Work with governed specs and manifest drafts. |
+
+For the complete command boundary, use the [Quick Reference Card](docs/Quick_Reference_Card.md) and [Operator Playbook](docs/Operator_Playbook.md).
+
+---
 
 ## Development
 
-Install the development environment:
+Work from source when developing CES itself:
 
 ```bash
+git clone https://github.com/chrisduvillard/controlled-execution-system.git
+cd controlled-execution-system
 uv sync
 uv run ces --help
 ```
+
+If `ces` is not active in your shell while you are inside a source checkout, use `uv run ces ...`.
 
 Run the local-first verification gate:
 
@@ -322,13 +280,6 @@ uv build
 uvx twine check dist/*
 ```
 
-Builder-created manifests expect command-backed completion evidence. When a
-manifest enables the completion-gate sensors, produce the matching artifacts
-before claiming completion: `pytest-results.json`, `ruff-report.json`,
-`mypy-report.txt`, and `coverage.json`. Dependency and security-sensitive
-changes can also be backed by `pip-audit-report.json` and SAST JSON artifacts
-such as `bandit-report.json`; CES parses those when present.
-
 Run local integration tests:
 
 ```bash
@@ -336,43 +287,34 @@ uv sync --group ci
 uv run pytest tests/ -m integration -q
 ```
 
-Merging or pushing code to `master` runs CI, but it does not publish to PyPI.
-PyPI publishing is tag-driven: update the version, update the changelog, push
-the version-bump commit, then push a `v*` tag such as `v0.1.12`. The tag
-triggers `.github/workflows/publish.yml`, which runs tests, builds the wheel
-and source distribution, smoke-tests the installed CLI with help and real project initialization, validates the tag/version agreement, and publishes to PyPI
-through trusted publishing. Follow [docs/RELEASE.md](docs/RELEASE.md) for the
-maintainer checklist.
+Builder-created manifests expect command-backed completion evidence. When completion-gate sensors are enabled, produce matching artifacts before claiming completion: `pytest-results.json`, `ruff-report.json`, `mypy-report.txt`, and `coverage.json`. Dependency and security-sensitive changes can also be backed by `pip-audit-report.json` and SAST JSON artifacts such as `bandit-report.json`; CES parses those when present.
 
-## Documentation Map
+PyPI publishing is tag-driven. Pushing to `master` runs CI only; pushing a `v*` tag such as `v0.1.12` triggers `.github/workflows/publish.yml`, which runs tests, builds distributions, smoke-tests the installed CLI, validates tag/version agreement, and publishes through trusted publishing. Follow [docs/RELEASE.md](docs/RELEASE.md) for the maintainer checklist.
+
+---
+
+## Documentation map
 
 | Document | Start here when you need |
 |---|---|
-| [5-Minute Quickstart](docs/Quickstart.md) | The shortest local builder-first path |
-| [Getting Started](docs/Getting_Started.md) | Full setup and workflow walkthrough |
-| [Operator Playbook](docs/Operator_Playbook.md) | Builder-first versus expert workflow boundaries |
-| [Brownfield Guide](docs/Brownfield_Guide.md) | Existing-codebase and legacy-behavior governance |
-| [Operations Runbook](docs/Operations_Runbook.md) | Expert status, audit, and emergency operations |
-| [Codex Scratch Project E2E](docs/Codex_Scratch_Project_E2E.md) | External greenfield and brownfield smoke harnesses |
-| [Quick Reference Card](docs/Quick_Reference_Card.md) | Classification and gate lookup tables |
-| [Troubleshooting](docs/Troubleshooting.md) | Common local setup and runtime issues |
-| [Release Runbook](docs/RELEASE.md) | Maintainer release checklist |
+| [5-Minute Quickstart](docs/Quickstart.md) | The shortest local builder-first path. |
+| [Getting Started](docs/Getting_Started.md) | Full setup and workflow walkthrough. |
+| [Operator Playbook](docs/Operator_Playbook.md) | Builder-first versus expert workflow boundaries. |
+| [Brownfield Guide](docs/Brownfield_Guide.md) | Existing-codebase and legacy-behavior governance. |
+| [Operations Runbook](docs/Operations_Runbook.md) | Expert status, audit, and emergency operations. |
+| [Quick Reference Card](docs/Quick_Reference_Card.md) | Command and gate lookup tables. |
+| [Troubleshooting](docs/Troubleshooting.md) | Common local setup and runtime issues. |
+| [Release Runbook](docs/RELEASE.md) | Maintainer release checklist. |
 
-Current design and plan records live under `docs/designs/` and `docs/plans/`.
+Historical server-oriented docs live under `docs/historical/` as design archives, not as the current product contract. Current design and plan records live under `docs/designs/` and `docs/plans/`.
+
+---
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for development workflow, tests, and
-contribution expectations. Security-sensitive issues should follow
-[SECURITY.md](SECURITY.md).
+See [CONTRIBUTING.md](CONTRIBUTING.md) for development workflow, tests, and contribution expectations. Security-sensitive issues should follow [SECURITY.md](SECURITY.md).
 
-If you use external agent loops such as `gnhf`, keep them outside CES itself as
-contributor tooling rather than part of the product. Run them from a clean
-sibling worktree or clean clone, keep the scope away from manifest/policy,
-approval/triage/review, audit, kill-switch, and runtime-boundary
-changes, and review every generated branch manually before using it. Follow the
-[GNHF Trial Guide](docs/GNHF_Trial_Guide.md) and
-[`scripts/gnhf_trial.sh`](scripts/gnhf_trial.sh); CES's own builder-first or expert workflows remain the delivery path.
+If you use external agent loops such as `gnhf`, keep them outside CES itself as contributor tooling rather than part of the product. Run them from a clean sibling worktree or clean clone, keep the scope away from manifest/policy, approval/triage/review, audit, kill-switch, and runtime-boundary changes, and review every generated branch manually before using it. Follow the [GNHF Trial Guide](docs/GNHF_Trial_Guide.md) and [`scripts/gnhf_trial.sh`](scripts/gnhf_trial.sh); CES's own builder-first or expert workflows remain the delivery path.
 
 ## License
 
