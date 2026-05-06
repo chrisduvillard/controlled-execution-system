@@ -43,6 +43,12 @@ It is deliberately local and operator-first: project state lives under `.ces/`; 
 > [!IMPORTANT]
 > CES is not a sandbox. It governs the workflow around local runtime execution, records evidence, and enforces approval gates. Runtime sandboxing, credentials, repo protections, deployments, and final operator responsibility remain outside CES.
 
+### Why trust this release?
+
+CES is built and shipped through its own public control surfaces: CI runs the local-first test suite, package build, metadata checks, dependency audit, lint, formatting, and typecheck gates; release publishing adds installed-CLI smoke coverage before PyPI publication. The repository also carries a CES dogfood gauntlet so the project can review its own changes instead of treating governance as a brochure claim.
+
+The boundary is intentionally narrow. CES is not a hosted control plane, not a substitute for source control or CI, and not a substitute for the runtime's own credentials, authentication, or sandboxing. It gives operators a local evidence trail: `ces:completion` claims, verification artifacts, audit entries, and workspace delta inspection before approval.
+
 ---
 
 ## Quick start
@@ -63,7 +69,7 @@ uv tool update-shell
 ces --help
 ```
 
-If your ambient `python3` is Python 3.11, direct `pip install controlled-execution-system` may fail before CES starts because the package requires Python 3.12 or 3.13. Ask `uv` for a supported interpreter explicitly:
+If your ambient `python3` is Python 3.11, direct `pip install controlled-execution-system` may fail with `No matching distribution` before CES starts because the package requires Python 3.12 or 3.13. Ask `uv` for a supported interpreter explicitly:
 
 ```bash
 uv tool install --python 3.13 controlled-execution-system
@@ -193,13 +199,20 @@ Use expert workflow commands when you need direct artifact control:
 | `ces execute` | Run a manifest-bound local agent task. |
 | `ces review` / `ces triage` / `ces approve` | Inspect evidence and make approval decisions directly. |
 | `ces audit` | Inspect the local audit ledger, for example `ces audit --limit 20`. |
-| `ces status --expert` | Show the full expert status view; add `--watch` for live monitoring. |
-| `ces emergency declare` | Record an expert operations emergency declaration. |
+| `ces status --expert` | Show the full expert status view; use `ces status --expert --watch` for live monitoring. |
+| `ces emergency declare` | Record an expert operations emergency declaration, for example `ces emergency declare "Security incident detected"`. |
 | `ces scan` / `ces baseline` | Inventory the repo and capture day-0 sensor snapshots. |
 | `ces brownfield ...` | Capture, review, and promote named legacy behavior decisions. |
 | `ces spec ...` | Author, validate, decompose, reconcile, or inspect specs. |
 | `ces setup-ci` | Generate GitHub or GitLab CI gating workflow templates. |
 | `ces dogfood` | Use CES to review changes to this repository. |
+
+Brownfield work starts with builder-first context, then uses explicit legacy-behavior decisions when needed:
+
+```bash
+ces explain --view brownfield
+ces brownfield review OLB-<entry-id> --disposition preserve
+```
 
 Commands with machine-readable output support the global JSON form where applicable:
 
@@ -249,7 +262,9 @@ Unattended `--yes` runs remain evidence-gated. CES should block auto-approval wh
 | `ces execute M-<manifest-id>` | Execute a manifest-bound task locally. |
 | `ces review` / `ces triage` / `ces approve` | Review, screen, and decide on evidence. |
 | `ces scan --dry-run` | Preview repository inventory without mutation. |
-| `ces brownfield ...` | Manage explicit legacy-behavior governance. |
+| `audit` | Expert operations audit inspection; use `ces audit --limit 20` to inspect recent ledger events. |
+| `emergency declare` | Expert operations emergency declaration; for example `ces emergency declare "Security incident detected"`. |
+| `brownfield ...` | Expert legacy behavior capture, review, and promotion. Use `ces brownfield review OLB-<entry-id> --disposition preserve` for a named legacy-behavior decision. |
 | `ces spec ...` | Work with governed specs and manifest drafts. |
 
 For the complete command boundary, use the [Quick Reference Card](docs/Quick_Reference_Card.md) and [Operator Playbook](docs/Operator_Playbook.md).
