@@ -1,0 +1,308 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body {
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: #071018;
+        color: #c8d3e0;
+        font-family: Inter, "Segoe UI", Arial, sans-serif;
+      }
+      :root {
+        --canvas: #071018;
+        --navy: #0d1b2a;
+        --panel: #12263a;
+        --champagne: #e7c77e;
+        --blue: #64d2ff;
+        --green: #3cefa3;
+        --text: #c8d3e0;
+        --muted: #9badbf;
+        --line: rgba(200, 211, 224, 0.16);
+      }
+      #root {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        isolation: isolate;
+        background:
+          radial-gradient(circle at 78% 16%, rgba(100, 210, 255, 0.18), transparent 32%),
+          radial-gradient(circle at 18% 76%, rgba(231, 199, 126, 0.13), transparent 34%),
+          linear-gradient(135deg, #071018 0%, #0b1623 48%, #071018 100%);
+      }
+      .ambient-grid {
+        position: absolute;
+        inset: 0;
+        opacity: 0.34;
+        background-image:
+          linear-gradient(rgba(200, 211, 224, 0.06) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(200, 211, 224, 0.06) 1px, transparent 1px);
+        background-size: 64px 64px;
+        mask-image: radial-gradient(circle at center, black, transparent 78%);
+      }
+      .grain {
+        position: absolute;
+        inset: 0;
+        opacity: 0.18;
+        background-image: repeating-radial-gradient(circle at 30% 40%, rgba(255,255,255,0.08) 0 1px, transparent 1px 4px);
+        mix-blend-mode: overlay;
+      }
+      .brand-mark {
+        position: absolute;
+        top: 54px;
+        left: 70px;
+        z-index: 30;
+        display: flex;
+        align-items: center;
+        gap: 18px;
+        letter-spacing: 0.22em;
+        text-transform: uppercase;
+        color: #edf5ff;
+        font-size: 20px;
+        background: rgba(7, 16, 24, 0.78);
+        border: 1px solid rgba(200, 211, 224, 0.14);
+        border-radius: 999px;
+        padding: 10px 22px 10px 10px;
+      }
+      .brand-sigil {
+        width: 42px;
+        height: 42px;
+        border: 1px solid rgba(231, 199, 126, 0.56);
+        border-radius: 50%;
+        display: grid;
+        place-items: center;
+        color: #fff0bd;
+        background: rgba(7, 16, 24, 0.82);
+        box-shadow: 0 0 24px rgba(231, 199, 126, 0.18);
+        letter-spacing: 0;
+        font-size: 18px;
+        font-weight: 700;
+      }
+      .timecode {
+        position: absolute;
+        top: 62px;
+        right: 70px;
+        z-index: 30;
+        font-family: "JetBrains Mono", Consolas, monospace;
+        font-size: 18px;
+        color: #a9b9c9;
+        letter-spacing: 0.08em;
+      }
+      .scene {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        padding: 132px 92px 88px;
+        display: grid;
+        z-index: 5;
+      }
+      .scene-inner { width: 100%; height: 100%; display: grid; gap: 38px; }
+      .eyebrow {
+        display: inline-flex;
+        align-items: center;
+        gap: 12px;
+        color: #ffe3a0;
+        font-size: 24px;
+        text-transform: uppercase;
+        letter-spacing: 0.18em;
+        margin-bottom: 28px;
+      }
+      .dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        background: var(--champagne);
+        box-shadow: 0 0 24px rgba(231, 199, 126, 0.9);
+      }
+      h1 {
+        font-size: 118px;
+        line-height: 0.94;
+        letter-spacing: -0.07em;
+        font-weight: 760;
+        color: #eff5fb;
+        max-width: 1240px;
+      }
+      h1 .accent, h2 .accent { color: #ffdf8a; text-shadow: 0 0 36px rgba(231, 199, 126, 0.22); }
+      .subtitle {
+        margin-top: 32px;
+        max-width: 1060px;
+        font-size: 38px;
+        line-height: 1.24;
+        color: var(--text);
+      }
+      .hero { align-content: center; justify-items: start; }
+      .split { grid-template-columns: 0.92fr 1.08fr; align-items: center; }
+      .terminal-panel, .benefit-card, .final-card {
+        background: linear-gradient(180deg, rgba(18, 38, 58, 0.92), rgba(9, 20, 31, 0.92));
+        border: 1px solid var(--line);
+        border-radius: 28px;
+        box-shadow: 0 30px 120px rgba(0,0,0,0.38), inset 0 1px 0 rgba(255,255,255,0.05);
+        backdrop-filter: blur(20px);
+      }
+      .terminal-panel { padding: 34px; min-height: 590px; overflow: hidden; }
+      .terminal-bar {
+        min-height: 58px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        border-bottom: 1px solid var(--line);
+        padding-bottom: 20px;
+        margin-bottom: 28px;
+      }
+      .traffic { width: 12px; height: 12px; border-radius: 50%; opacity: 0.65; }
+      .traffic:nth-child(1) { background: #e77777; }
+      .traffic:nth-child(2) { background: #e7c77e; }
+      .traffic:nth-child(3) { background: #3cefa3; }
+      .terminal-title {
+        margin-left: 14px;
+        font-family: "JetBrains Mono", Consolas, monospace;
+        color: var(--muted);
+        font-size: 16px;
+      }
+      pre {
+        font-family: "JetBrains Mono", Consolas, monospace;
+        font-size: 26px;
+        line-height: 1.52;
+        color: #d9e5ef;
+        white-space: pre-wrap;
+      }
+      .prompt { color: var(--champagne); }
+      .cmd { color: #eef7ff; }
+      .ok { color: var(--green); }
+      .info { color: var(--blue); }
+      .muted { color: var(--muted); }
+      .benefit-stack { display: grid; gap: 22px; }
+      .benefit-card { padding: 30px; display: grid; grid-template-columns: 62px 1fr; gap: 22px; align-items: start; }
+      .benefit-icon {
+        width: 62px;
+        height: 62px;
+        border-radius: 18px;
+        display: grid;
+        place-items: center;
+        font-family: "JetBrains Mono", Consolas, monospace;
+        color: var(--champagne);
+        background: rgba(231, 199, 126, 0.10);
+        border: 1px solid rgba(231, 199, 126, 0.34);
+        font-size: 24px;
+        font-weight: 800;
+      }
+      .benefit-card h2 { color: #eff5fb; font-size: 36px; line-height: 1; letter-spacing: -0.04em; }
+      .benefit-card p { margin-top: 12px; color: var(--muted); font-size: 23px; line-height: 1.30; }
+      .why { align-content: center; justify-items: center; text-align: center; }
+      .final-card { width: 1360px; min-height: 630px; padding: 70px 80px; position: relative; overflow: hidden; }
+      .final-card h2 { font-size: 86px; letter-spacing: -0.07em; line-height: 0.98; color: #eff5fb; }
+      .final-card .subtitle { margin-left: auto; margin-right: auto; max-width: 1120px; font-size: 34px; }
+      .final-grid { margin-top: 42px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; text-align: left; }
+      .final-chip { border-radius: 20px; padding: 24px; border: 1px solid rgba(200,211,224,0.14); background: rgba(7,16,24,0.42); }
+      .final-chip strong { display: block; color: #eff5fb; font-size: 28px; letter-spacing: -0.03em; }
+      .final-chip small { display: block; margin-top: 10px; color: var(--muted); font-size: 18px; line-height: 1.28; }
+      .footer-line { margin-top: 42px; font-size: 30px; color: var(--green); }
+      .transition-wipe {
+        position: absolute;
+        inset: 0;
+        z-index: 18;
+        pointer-events: none;
+        background: linear-gradient(90deg, transparent, rgba(231,199,126,0.92), rgba(100,210,255,0.72), transparent);
+        transform: translateX(-120%) skewX(-12deg);
+        opacity: 0;
+        filter: blur(2px);
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root" data-composition-id="main" data-start="0" data-duration="20" data-width="1920" data-height="1080">
+      <div class="ambient-grid"></div>
+      <div class="grain"></div>
+      <div class="brand-mark"><span class="brand-sigil">C</span><span>Controlled Execution System</span></div>
+      <div class="timecode">LOCAL-FIRST · EVIDENCE-GATED</div>
+      <div class="transition-wipe" id="wipe"></div>
+
+      <section id="scene-hero" class="clip scene hero" data-start="0" data-duration="6.8" data-track-index="1">
+        <div class="scene-inner hero">
+          <div>
+            <div class="eyebrow"><span class="dot"></span><span>Simple idea</span></div>
+            <h1>A <span class="accent">seat belt</span> for AI coding agents.</h1>
+            <p class="subtitle">Controlled Execution System keeps agent work bounded, inspectable, and approval-ready.</p>
+          </div>
+        </div>
+      </section>
+
+      <section id="scene-provides" class="clip scene split" data-start="6" data-duration="7.8" data-track-index="2">
+        <div class="scene-inner split">
+          <div class="terminal-panel">
+            <div class="terminal-bar">
+              <span class="traffic"></span><span class="traffic"></span><span class="traffic"></span>
+              <span class="terminal-title">operator@repo · governed run</span>
+            </div>
+            <pre><span class="prompt">$</span> <span class="cmd">ces build "Ship this safely"</span>
+<span class="info">1.</span> define scope + acceptance criteria
+<span class="info">2.</span> run Codex or Claude locally
+<span class="info">3.</span> collect tests, diffs, evidence
+<span class="ok">4.</span> require your explicit approval</pre>
+          </div>
+          <div class="benefit-stack">
+            <article class="benefit-card"><div class="benefit-icon">1</div><div><h2>Less blind trust</h2><p>Agent claims are paired with evidence you can inspect.</p></div></article>
+            <article class="benefit-card"><div class="benefit-icon">2</div><div><h2>Less prompt chaos</h2><p>The runtime gets a bounded job, not an open-ended mission.</p></div></article>
+            <article class="benefit-card"><div class="benefit-icon">3</div><div><h2>Less lost context</h2><p>CES keeps a local audit trail under the project.</p></div></article>
+          </div>
+        </div>
+      </section>
+
+      <section id="scene-why" class="clip scene why" data-start="13" data-duration="7" data-track-index="3">
+        <div class="final-card">
+          <div class="eyebrow"><span class="dot"></span><span>Why use it?</span></div>
+          <h2>Move faster without turning review into <span class="accent">guesswork</span>.</h2>
+          <p class="subtitle">Controlled Execution System gives developers and operators a clear path from request to proof to decision.</p>
+          <div class="final-grid">
+            <div class="final-chip"><strong>Bound the work</strong><small>Manifest-first execution keeps scope visible.</small></div>
+            <div class="final-chip"><strong>See the proof</strong><small>Tests, diffs, artifacts, and claims are gathered.</small></div>
+            <div class="final-chip"><strong>Decide explicitly</strong><small>You approve, hold, or recover with context.</small></div>
+          </div>
+          <p class="footer-line">Intent → Evidence → Approval. Every time.</p>
+        </div>
+      </section>
+    </div>
+
+    <script>
+      window.__timelines = window.__timelines || {};
+      const tl = gsap.timeline({ paused: true });
+      tl.to(".ambient-grid", { backgroundPosition: "80px 60px", duration: 20, ease: "none" }, 0);
+      tl.from(".brand-mark", { autoAlpha: 0, y: -20, duration: 0.65, ease: "power3.out" }, 0.15);
+      tl.from(".timecode", { autoAlpha: 0, y: -20, duration: 0.65, ease: "power3.out" }, 0.25);
+      tl.from("#scene-hero .eyebrow", { autoAlpha: 0, x: -24, duration: 0.55, ease: "power3.out" }, 0.45);
+      tl.from("#scene-hero h1", { autoAlpha: 0, y: 46, duration: 0.8, ease: "power3.out" }, 0.8);
+      tl.from("#scene-hero .subtitle", { autoAlpha: 0, y: 30, duration: 0.7, ease: "power3.out" }, 1.25);
+      tl.to("#scene-hero", { autoAlpha: 0, scale: 0.985, duration: 0.45, ease: "power2.inOut" }, 5.85);
+
+      function wipeAt(t) {
+        tl.set("#wipe", { autoAlpha: 0, x: "-120%" }, t - 0.01);
+        tl.to("#wipe", { autoAlpha: 0.70, duration: 0.08, ease: "none", overwrite: "auto" }, t);
+        tl.to("#wipe", { x: "120%", duration: 0.58, ease: "power2.inOut", overwrite: "auto" }, t);
+        tl.to("#wipe", { autoAlpha: 0, duration: 0.16, ease: "none", overwrite: "auto" }, t + 0.46);
+      }
+
+      wipeAt(5.75);
+      tl.from("#scene-provides .terminal-panel", { autoAlpha: 0, x: -44, duration: 0.55, ease: "power3.out" }, 6.15);
+      tl.from("#scene-provides pre", { autoAlpha: 0, y: 20, duration: 0.55, ease: "power3.out" }, 6.55);
+      tl.from("#scene-provides .benefit-card", { autoAlpha: 0, x: 42, duration: 0.52, stagger: 0.16, ease: "power3.out" }, 6.85);
+      tl.to("#scene-provides", { autoAlpha: 0, scale: 0.985, duration: 0.45, ease: "power2.inOut" }, 12.9);
+
+      wipeAt(12.75);
+      tl.from("#scene-why .final-card", { autoAlpha: 0, y: 46, scale: 0.97, duration: 0.65, ease: "power3.out" }, 13.15);
+      tl.from("#scene-why .eyebrow", { autoAlpha: 0, y: 18, duration: 0.45, ease: "power2.out" }, 13.45);
+      tl.from("#scene-why h2", { autoAlpha: 0, y: 30, duration: 0.65, ease: "power3.out" }, 13.72);
+      tl.from("#scene-why .subtitle", { autoAlpha: 0, y: 22, duration: 0.55, ease: "power2.out" }, 14.18);
+      tl.from("#scene-why .final-chip", { autoAlpha: 0, y: 24, duration: 0.46, stagger: 0.11, ease: "power3.out" }, 14.6);
+      tl.from("#scene-why .footer-line", { autoAlpha: 0, y: 18, duration: 0.50, ease: "power2.out" }, 15.35);
+      tl.to("#scene-why", { autoAlpha: 0, duration: 0.55, ease: "power2.inOut" }, 19.35);
+      window.__timelines["main"] = tl;
+    </script>
+  </body>
+</html>
