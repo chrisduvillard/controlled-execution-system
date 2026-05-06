@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import tomllib
 from pathlib import Path
 
@@ -19,6 +20,13 @@ def test_sdist_excludes_internal_workflow_and_test_material() -> None:
     assert "/tests" in excludes
     assert "/scripts" in excludes
     assert "/docs/plans" in excludes
+
+
+def test_gitleaks_allowlist_regexes_compile() -> None:
+    config = tomllib.loads((_REPO_ROOT / ".gitleaks.toml").read_text(encoding="utf-8"))
+
+    for pattern in config["allowlist"]["regexes"]:
+        re.compile(pattern)
 
 
 def test_public_version_surfaces_are_consistent() -> None:
