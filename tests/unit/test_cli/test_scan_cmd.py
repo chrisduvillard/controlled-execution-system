@@ -45,6 +45,18 @@ class TestCesScan:
         assert "codeowners" in data
         assert "scanned_at" in data
 
+    def test_scan_dry_run_does_not_bootstrap_or_write_report(self, tmp_path: Path, monkeypatch: object) -> None:
+        """`ces scan --dry-run` previews inventory without creating local CES state."""
+        monkeypatch.chdir(tmp_path)  # type: ignore[attr-defined]
+        _write(tmp_path / "pyproject.toml", '[project]\nname = "example"\n')
+        app = _get_app()
+
+        result = runner.invoke(app, ["scan", "--dry-run"])
+
+        assert result.exit_code == 0, result.stdout
+        assert "dry run" in result.stdout.lower()
+        assert not (tmp_path / ".ces").exists()
+
     def test_scan_bootstraps_valid_local_project_when_uninitialized(self, tmp_path: Path, monkeypatch: object) -> None:
         """A pre-init scan must not leave a partial .ces/ directory."""
         monkeypatch.chdir(tmp_path)  # type: ignore[attr-defined]

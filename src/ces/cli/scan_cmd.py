@@ -179,6 +179,11 @@ def scan(
         "--root",
         help="Root directory to scan (defaults to current working directory).",
     ),
+    dry_run: bool = typer.Option(
+        False,
+        "--dry-run",
+        help="Preview scan results without bootstrapping .ces or writing .ces/brownfield/scan.json.",
+    ),
 ) -> None:
     """Inventory the repository and write ``.ces/brownfield/scan.json``.
 
@@ -194,13 +199,14 @@ def scan(
         raise typer.BadParameter(f"Root is not a directory: {effective_root}")
     root = effective_root
     ces_dir = root / ".ces"
-    if not ces_dir.exists():
-        initialize_local_project(root, name=derive_project_name(root.name))
-    elif not (ces_dir / "config.yaml").is_file():
-        raise typer.BadParameter(
-            f"{ces_dir} exists but is not a complete CES project. "
-            "Move it aside or restore .ces/config.yaml before scanning."
-        )
+    if not dry_run:
+        if not ces_dir.exists():
+            initialize_local_project(root, name=derive_project_name(root.name))
+        elif not (ces_dir / "config.yaml").is_file():
+            raise typer.BadParameter(
+                f"{ces_dir} exists but is not a complete CES project. "
+                "Move it aside or restore .ces/config.yaml before scanning."
+            )
 
     modules, generated = _walk_repo(root)
     codeowners = _find_codeowners(root)
@@ -213,19 +219,21 @@ def scan(
         "codeowners": codeowners,
     }
 
-    out_dir = ces_dir / "brownfield"
-    out_dir.mkdir(parents=True, exist_ok=True)
-    out_path = out_dir / "scan.json"
-    out_path.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
+    out_path = ces_dir / "brownfield" / "scan.json"
+    if not dry_run:
+        out_dir = out_path.parent
+        out_dir.mkdir(parents=True, exist_ok=True)
+        out_path.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
 
+    report_line = f"  report:          {out_path}" if not dry_run else "  report:          dry run only (not written)"
     console.print(
         Panel(
             f"Scanned [bold]{root}[/bold]\n"
             f"  modules:         {len(modules)}\n"
             f"  generated files: {len(generated)}\n"
             f"  codeowners:      {len(codeowners)}\n"
-            f"  report:          {out_path}",
-            title="[green]Brownfield scan complete[/green]",
-            border_style="green",
+            f"{report_line}",
+            title="[yellow]Brownfield scan dry run[/yellow]" if dry_run else "[green]Brownfield scan complete[/green]",
+            border_style="yellow" if dry_run else "green",
         )
     )

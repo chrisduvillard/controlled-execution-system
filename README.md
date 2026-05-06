@@ -243,7 +243,7 @@ you need direct artifact control, audit inspection, or incident response.
 | `audit` | Expert operations audit inspection; for example, `ces audit --limit 20` |
 | `status --expert` | Show the full expert status view; add `--watch` for `ces status --expert --watch` |
 | `emergency declare` | Expert operations emergency declaration; for example, `ces emergency declare "Security incident detected"` |
-| `scan` / `baseline` | Capture repo inventory and day-0 sensor snapshots |
+| `scan` / `baseline` | Capture repo inventory and day-0 sensor snapshots; use `ces scan --dry-run` to preview without bootstrapping or writing `.ces/brownfield/scan.json` |
 | `brownfield ...` | Expert legacy behavior capture, review, and promotion |
 | `spec ...` | Author, validate, decompose, reconcile, or inspect specs |
 | `setup-ci` | Generate GitHub or GitLab CI gating workflow templates |
