@@ -19,6 +19,8 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+pytestmark = pytest.mark.integration
+
 from ces.control.models.kill_switch_state import ActivityClass
 from ces.control.services.cascade_invalidation import CascadeInvalidationEngine
 from ces.control.services.classification_oracle import ClassificationOracle
