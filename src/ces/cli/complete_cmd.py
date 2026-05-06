@@ -49,11 +49,16 @@ async def complete_builder_session(
         "-y",
         help="Skip confirmation prompt.",
     ),
+    project_root: Path | None = typer.Option(
+        None,
+        "--project-root",
+        help="Repo/CES project root to operate on; defaults to cwd/.ces discovery.",
+    ),
 ) -> None:
     """Mark externally completed builder work complete with an audit trail."""
     try:
-        project_root = find_project_root()
-        async with get_services(project_root=project_root) as services:
+        resolved_project_root = find_project_root(project_root)
+        async with get_services(project_root=resolved_project_root) as services:
             local_store = services["local_store"]
             session = local_store.get_latest_builder_session()
             if session is None:

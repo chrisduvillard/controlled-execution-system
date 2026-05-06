@@ -44,12 +44,12 @@ import ces.cli._output as _output_mod
 from ces.cli._context import find_project_root
 from ces.cli._output import console, set_json_mode
 from ces.execution.runtime_safety import safety_profile_for_runtime
-from ces.execution.secrets import scrub_secrets_from_text
 from ces.shared.crypto import AUDIT_HMAC_FILENAME, DEV_DEFAULT_HMAC_MARKER
 
 _MIN_PYTHON = (3, 12)
 _MAX_PYTHON_EXCLUSIVE = (3, 14)
 _PYTHON_REQUIREMENT_LABEL = "Python >= 3.12,<3.14"
+_AUTH_PROBE_REDACTION = "[REDACTED]"
 
 # Module -> extras-group mapping used to detect whether an optional dependency
 # group is installed. Empty by default because CES currently has no
@@ -136,23 +136,32 @@ def _probe_runtime_auth(runtime: str, executable: str, cwd: Path) -> tuple[bool,
             check=False,
         )
     except (OSError, subprocess.TimeoutExpired) as exc:
-        return False, f"auth probe failed before runtime completed: {exc}"
-    stdout = scrub_secrets_from_text(completed.stdout.strip())
-    stderr = scrub_secrets_from_text(completed.stderr.strip())
+        return (
+            False,
+            "auth probe failed before runtime completed: "
+            f"runtime={runtime}; error_type={type(exc).__name__}; detail={_AUTH_PROBE_REDACTION}",
+        )
+    stdout = _redact_auth_probe_stream(completed.stdout)
+    stderr = _redact_auth_probe_stream(completed.stderr)
     command_label = " ".join(Path(part).name if index == 0 else part for index, part in enumerate(command[:2]))
     if completed.returncode == 0:
         return (
             True,
             f"auth probe succeeded: runtime={runtime}; command={command_label}; "
-            f"exit_code=0; stdout_tail={stdout[-240:] or '(empty)'}; "
-            f"stderr_tail={stderr[-240:] or '(empty)'}",
+            f"exit_code=0; stdout_tail={stdout}; "
+            f"stderr_tail={stderr}",
         )
     return (
         False,
         f"auth probe failed: runtime={runtime}; command={command_label}; "
-        f"exit_code={completed.returncode}; stdout_tail={stdout[-240:] or '(empty)'}; "
-        f"stderr_tail={stderr[-240:] or '(empty)'}",
+        f"exit_code={completed.returncode}; stdout_tail={stdout}; "
+        f"stderr_tail={stderr}",
     )
+
+
+def _redact_auth_probe_stream(text: str) -> str:
+    """Suppress runtime auth probe streams while preserving whether output existed."""
+    return _AUTH_PROBE_REDACTION if text.strip() else "(empty)"
 
 
 def _check_extras() -> dict[str, bool]:

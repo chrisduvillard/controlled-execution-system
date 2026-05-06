@@ -69,16 +69,23 @@ def build_builder_run_report(snapshot: Any) -> BuilderRunReport | None:
     brownfield = getattr(snapshot, "brownfield", None)
 
     approval_decision = _normalize_approval_decision(getattr(approval, "decision", None))
+    stage = _text(getattr(snapshot, "stage", None)) or _text(getattr(session, "stage", None))
+    next_action = _text(getattr(snapshot, "next_action", None)) or _text(getattr(session, "next_action", None))
+    last_action = _text(getattr(session, "last_action", None))
+    last_error = _text(getattr(session, "last_error", None))
+    hard_merge_blocked = _is_hard_merge_block(stage=stage, last_action=last_action, last_error=last_error)
+    soft_merge_not_applied = _is_soft_merge_not_applied(last_action=last_action, last_error=last_error)
     workflow_state = _effective_workflow_state(
         stored_workflow_state=_text(getattr(manifest, "workflow_state", None)),
         approval_decision=approval_decision,
-        stage=_text(getattr(snapshot, "stage", None)) or _text(getattr(session, "stage", None)),
+        stage=stage,
     )
     review_state = _derive_review_state(
         approval_decision=approval_decision,
         workflow_state=workflow_state,
-        stage=_text(getattr(snapshot, "stage", None)) or _text(getattr(session, "stage", None)),
-        next_action=_text(getattr(snapshot, "next_action", None)) or _text(getattr(session, "next_action", None)),
+        stage=stage,
+        next_action=next_action,
+        hard_merge_blocked=hard_merge_blocked,
     )
     latest_outcome = _derive_latest_outcome(
         approval_decision=approval_decision,
@@ -87,6 +94,8 @@ def build_builder_run_report(snapshot: Any) -> BuilderRunReport | None:
         has_manifest=manifest is not None,
         latest_artifact=_text(getattr(snapshot, "latest_artifact", None)),
         brief_only_fallback=bool(getattr(snapshot, "brief_only_fallback", False)),
+        hard_merge_blocked=hard_merge_blocked,
+        soft_merge_not_applied=soft_merge_not_applied,
     )
     runtime_safety = _runtime_safety_content(evidence if isinstance(evidence, dict) else None)
     raw_verification_findings = _verification_findings(evidence if isinstance(evidence, dict) else None)
@@ -119,13 +128,16 @@ def build_builder_run_report(snapshot: Any) -> BuilderRunReport | None:
         session_id=_text(getattr(session, "session_id", None)),
         request=request,
         project_mode=_text(getattr(snapshot, "project_mode", None)) or "unknown",
-        stage=_text(getattr(snapshot, "stage", None)) or _text(getattr(session, "stage", None)) or "unknown",
+        stage=stage or "unknown",
         review_state=review_state,
         latest_outcome=latest_outcome,
         latest_activity=_text(getattr(snapshot, "latest_activity", None))
         or "CES has saved builder progress for this request.",
-        next_step=_text(getattr(snapshot, "next_step", None))
-        or "Run `ces continue` to move this builder session forward.",
+        next_step=_derive_next_step(
+            snapshot_next_step=_text(getattr(snapshot, "next_step", None)),
+            hard_merge_blocked=hard_merge_blocked,
+            soft_merge_not_applied=soft_merge_not_applied,
+        ),
         latest_artifact=_text(getattr(snapshot, "latest_artifact", None)),
         manifest_id=_text(getattr(manifest, "manifest_id", None)),
         evidence_packet_id=evidence.get("packet_id") if isinstance(evidence, dict) else None,
@@ -426,7 +438,10 @@ def _derive_review_state(
     workflow_state: str | None,
     stage: str | None,
     next_action: str | None,
+    hard_merge_blocked: bool = False,
 ) -> str:
+    if hard_merge_blocked:
+        return "blocked"
     if approval_decision == "approved":
         return "approved"
     if approval_decision == "rejected":
@@ -448,7 +463,13 @@ def _derive_latest_outcome(
     has_manifest: bool,
     latest_artifact: str | None,
     brief_only_fallback: bool,
+    hard_merge_blocked: bool = False,
+    soft_merge_not_applied: bool = False,
 ) -> str:
+    if hard_merge_blocked:
+        return "blocked"
+    if approval_decision == "approved" and soft_merge_not_applied:
+        return "approved_unmerged"
     if approval_decision == "approved":
         return "approved"
     if approval_decision == "rejected":
@@ -464,6 +485,32 @@ def _derive_latest_outcome(
     if latest_artifact:
         return latest_artifact
     return "unknown"
+
+
+def _derive_next_step(
+    *,
+    snapshot_next_step: str | None,
+    hard_merge_blocked: bool,
+    soft_merge_not_applied: bool,
+) -> str:
+    if hard_merge_blocked:
+        return "Run `ces why` for the merge blocker, then `ces recover --dry-run` for safe recovery options."
+    if soft_merge_not_applied:
+        return "Run `ces report builder` to inspect the approved builder run."
+    return snapshot_next_step or "Run `ces continue` to move this builder session forward."
+
+
+def _is_soft_merge_not_applied(*, last_action: str | None, last_error: str | None) -> bool:
+    if last_action not in {"approval_recorded_merge_not_applied", "merge_blocked"}:
+        return False
+    reason = (last_error or "").casefold()
+    return reason in {"workflow state has not reached merge-ready", "review_complete"}
+
+
+def _is_hard_merge_block(*, stage: str | None, last_action: str | None, last_error: str | None) -> bool:
+    if stage != "blocked" or last_action != "merge_blocked":
+        return False
+    return not _is_soft_merge_not_applied(last_action=last_action, last_error=last_error)
 
 
 def _normalize_approval_decision(value: Any) -> str | None:

@@ -40,7 +40,8 @@ def _patch_services(mock_services: dict[str, Any]):
     """Return a patch that replaces get_services with a fake async context manager."""
 
     @asynccontextmanager
-    async def _fake_get_services():
+    async def _fake_get_services(*args: Any, **kwargs: Any):
+        mock_services.setdefault("_get_services_calls", []).append({"args": args, "kwargs": kwargs})
         yield mock_services
 
     return patch("ces.cli.approve_cmd.get_services", new=_fake_get_services)
@@ -698,3 +699,25 @@ class TestApproveMergeControllerIntegration:
         assert result.exit_code != 0, f"stdout={result.stdout}"
         assert "must be under_review to reject" in result.stdout
         mock_services["audit_ledger"].record_approval.assert_not_called()
+
+
+def test_approve_accepts_project_root_from_orchestrator_cwd(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """TaskLedger dogfood: approve should support --project-root like adjacent commands."""
+    orchestrator = tmp_path / "orchestrator"
+    target = tmp_path / "target"
+    orchestrator.mkdir()
+    (target / ".ces").mkdir(parents=True)
+    (target / ".ces" / "config.yaml").write_text("project_id: local-proj\n", encoding="utf-8")
+    monkeypatch.chdir(orchestrator)
+
+    mock_services = _make_mock_services()
+    mock_store = MagicMock()
+    mock_store.get_review_findings.return_value = _make_review_data()
+    mock_services["local_store"] = mock_store
+
+    with _patch_services(mock_services), patch("ces.cli.approve_cmd.WorkflowEngine", return_value=AsyncMock()):
+        app = _get_app()
+        result = runner.invoke(app, ["approve", "EP-project-root", "--project-root", str(target), "--yes"])
+
+    assert result.exit_code == 0, result.stdout
+    assert mock_services["_get_services_calls"][0]["kwargs"] == {"project_root": target.resolve()}

@@ -776,3 +776,30 @@ class TestLocalAuditRows:
         with pytest.raises(sqlite3.IntegrityError):
             store.append_audit_entry(row)
         store.close()
+
+
+def test_save_evidence_hash_matches_json_round_trip_payload(tmp_path: Path) -> None:
+    """TaskLedger dogfood: persisted evidence hash must validate after JSON storage/load."""
+    from ces.control.services.evidence_integrity import compute_reviewed_evidence_hash
+    from ces.shared.enums import RiskTier
+
+    store = LocalProjectStore(tmp_path / ".ces" / "state.db", project_id="proj-local")
+    try:
+        store.save_evidence(
+            "M-taskledger",
+            packet_id="EP-taskledger",
+            summary="Verified TaskLedger",
+            challenge="No blockers",
+            triage_color="green",
+            content={
+                "manifest_hash": "sha256:taskledger",
+                "runtime_safety": {"risk_tier": RiskTier.C},
+                "completion_contract_path": tmp_path / ".ces" / "completion-contract.json",
+            },
+        )
+        packet = store.get_evidence_by_packet_id("EP-taskledger")
+
+        assert packet is not None
+        assert packet["reviewed_evidence_hash"] == compute_reviewed_evidence_hash(packet)
+    finally:
+        store.close()

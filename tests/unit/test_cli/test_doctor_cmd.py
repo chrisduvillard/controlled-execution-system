@@ -197,8 +197,8 @@ class TestCesDoctor:
         assert payload["runtime_auth"]["codex"]["auth_ok"] is True
         assert "auth probe succeeded" in payload["runtime_auth"]["codex"]["detail"]
 
-    def test_doctor_verify_runtime_scrubs_probe_output_detail(self, tmp_path: Path, monkeypatch: object) -> None:
-        """Runtime auth probes must not echo secret-like stdout/stderr into doctor JSON."""
+    def test_doctor_verify_runtime_redacts_probe_output_detail(self, tmp_path: Path, monkeypatch: object) -> None:
+        """Runtime auth probes must not echo secret or private stdout/stderr into doctor JSON."""
         import json
         import shutil
 
@@ -206,14 +206,16 @@ class TestCesDoctor:
         monkeypatch.setattr(shutil, "which", lambda name: "/usr/bin/codex" if name == "codex" else None)  # type: ignore[attr-defined]
         secret_key = "OPENAI" + "_API_KEY"
         secret_value = "sk-" + "doctor-probe-secret"
+        private_email = "user@example.internal"
+        private_org = "private-org-name"
 
         def fake_run(*args, **kwargs):
             del args, kwargs
             return subprocess.CompletedProcess(
                 args=["codex"],
                 returncode=1,
-                stdout=f"stdout {secret_key}={secret_value}",
-                stderr=f"stderr {secret_key}={secret_value}",
+                stdout=f"stdout {secret_key}={secret_value} account={private_email} org={private_org}",
+                stderr=f"stderr {secret_key}={secret_value} account={private_email}",
             )
 
         monkeypatch.setattr("ces.cli.doctor_cmd.subprocess.run", fake_run)
@@ -224,7 +226,11 @@ class TestCesDoctor:
         payload = json.loads(result.stdout)
         detail = payload["runtime_auth"]["codex"]["detail"]
         assert secret_value not in detail
-        assert f"{secret_key}=<REDACTED>" in detail
+        assert secret_key not in detail
+        assert private_email not in detail
+        assert private_org not in detail
+        assert "stdout_tail=[REDACTED]" in detail
+        assert "stderr_tail=[REDACTED]" in detail
 
     def test_exits_nonzero_when_no_provider(self, tmp_path: Path, monkeypatch: object) -> None:
         """ces doctor exits non-zero when no provider is available and no demo mode."""
@@ -501,8 +507,10 @@ class TestCesDoctorSecurity:
         assert payload["runtime_auth"]["codex"]["auth_checked"] is True
         assert payload["runtime_auth"]["claude"]["auth_checked"] is False
 
-    def test_runtime_auth_failure_detail_includes_actionable_stderr(self, monkeypatch: object, tmp_path: Path) -> None:
-        """SpecTrail SF-002: auth probe failures include runtime, exit code, and stderr tail."""
+    def test_runtime_auth_failure_detail_redacts_stderr_but_keeps_probe_metadata(
+        self, monkeypatch: object, tmp_path: Path
+    ) -> None:
+        """Auth probe failures include runtime/exit metadata without echoing stderr."""
         import subprocess
 
         class Completed:
@@ -516,12 +524,17 @@ class TestCesDoctorSecurity:
         )
         assert ok is False
         assert "runtime=codex" in detail
+        assert "command=codex exec" in detail
         assert "exit_code=42" in detail
-        assert "codex login" in detail
+        assert "codex login" not in detail
+        assert "stdout_tail=(empty)" in detail
+        assert "stderr_tail=[REDACTED]" in detail
 
 
-def test_runtime_auth_success_detail_includes_actionable_probe_metadata(tmp_path: Path, monkeypatch: object) -> None:
-    """PromptVault dogfood: successful auth probe should still identify runtime/command/exit/output."""
+def test_runtime_auth_success_detail_redacts_probe_output_but_keeps_metadata(
+    tmp_path: Path, monkeypatch: object
+) -> None:
+    """Successful auth probe identifies runtime/command/exit without echoing output."""
     from ces.cli.doctor_cmd import _probe_runtime_auth
 
     class Completed:
@@ -542,4 +555,6 @@ def test_runtime_auth_success_detail_includes_actionable_probe_metadata(tmp_path
     assert "runtime=codex" in detail
     assert "command=codex exec" in detail
     assert "exit_code=0" in detail
-    assert "stdout_tail=READY" in detail
+    assert "READY" not in detail
+    assert "stdout_tail=[REDACTED]" in detail
+    assert "stderr_tail=(empty)" in detail

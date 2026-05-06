@@ -184,3 +184,30 @@ def test_complete_updates_manifest_workflow_state_to_approved(tmp_path: Path, mo
     kwargs = manifest.model_copy.call_args.kwargs["update"]
     assert str(kwargs["workflow_state"].value) == "approved"
     manifest_manager.save_manifest.assert_awaited_once_with(approved_manifest)
+
+
+def test_complete_accepts_project_root_from_outside_target(tmp_path: Path) -> None:
+    """TaskLedger dogfood: source-checkout users can complete a separate target via --project-root."""
+    project = tmp_path / "target"
+    project.mkdir()
+    ces_dir = project / ".ces"
+    ces_dir.mkdir()
+    (ces_dir / "config.yaml").write_text("project_id: local-proj\n", encoding="utf-8")
+
+    session = SimpleNamespace(
+        session_id="BS-target",
+        runtime_manifest_id="M-target",
+        manifest_id="M-target",
+        evidence_packet_id="EP-existing",
+        stage="blocked",
+    )
+    mock_store = MagicMock()
+    mock_store.get_latest_builder_session.return_value = session
+    mock_services = {"local_store": mock_store, "audit_ledger": AsyncMock()}
+
+    with _patch_services(mock_services):
+        result = runner.invoke(_get_app(), ["complete", "--project-root", str(project), "--yes"])
+
+    assert result.exit_code == 0, result.stdout
+    assert mock_services["_get_services_calls"][0]["kwargs"] == {"project_root": project.resolve()}
+    mock_store.update_builder_session.assert_called_once()
