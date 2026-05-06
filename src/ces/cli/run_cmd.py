@@ -57,7 +57,6 @@ from ces.shared.enums import (
     BehaviorConfidence,
     ChangeClass,
     GateType,
-    ReviewSubState,
     RiskTier,
     TrustStatus,
     WorkflowState,
@@ -110,6 +109,18 @@ def _coerce_workflow_state_value(value: object) -> str:
     if isinstance(candidate, str) and candidate in {state.value for state in WorkflowState}:
         return candidate
     return WorkflowState.QUEUED.value
+
+
+def _is_soft_merge_not_applied(merge_decision: Any | None) -> bool:
+    """Return True only for legacy review-state merge denials that are not recovery work."""
+    if merge_decision is None or getattr(merge_decision, "allowed", False):
+        return False
+    checks = list(getattr(merge_decision, "checks", None) or [])
+    failed_checks = [check for check in checks if not bool(getattr(check, "passed", False))]
+    if len(failed_checks) == 1 and getattr(failed_checks[0], "name", "") == "review_complete":
+        return True
+    reason = str(getattr(merge_decision, "reason", "")).casefold()
+    return not failed_checks and reason in {"workflow state has not reached merge-ready", "review_complete"}
 
 
 def _with_workflow_state(manifest: object, workflow_state: object) -> object:
@@ -481,11 +492,12 @@ def _build_completion_summary(
     manifest_id: str,
     auto_blockers: list[str] | None = None,
     prl_draft_path: str | None = None,
+    merge_not_applied: bool = False,
 ) -> str:
     if decision != "approve":
         outcome = "held for another pass"
     elif merge_allowed is False:
-        outcome = "approved, but merge is still blocked"
+        outcome = "approved, but merge was not applied" if merge_not_applied else "approved, but merge is blocked"
     else:
         outcome = "ready to ship"
     lines = [
@@ -512,7 +524,7 @@ def _build_completion_summary(
     elif decision != "approve":
         lines.append("Next: ces why")
     elif merge_allowed is False:
-        lines.append("Next: ces review --full")
+        lines.append("Next: ces report builder" if merge_not_applied else "Next: ces why")
     else:
         lines.append("Next: ces report builder")
     if prl_draft_path:
@@ -1212,15 +1224,14 @@ async def _run_brief_flow(
     )
     merge_decision = None
     if approved:
-        get_review_sub_state = getattr(workflow_engine, "get_review_sub_state", None)
-        review_sub_state = get_review_sub_state() if callable(get_review_sub_state) else ReviewSubState.PENDING_REVIEW
+        review_sub_state = await workflow_engine.begin_challenge(actor=actor, actor_type=ActorType.HUMAN)
+        review_sub_state = await workflow_engine.begin_triage(actor=actor, actor_type=ActorType.HUMAN)
+        review_sub_state = await workflow_engine.reach_decision(actor=actor, actor_type=ActorType.HUMAN)
         review_sub_state_value = getattr(review_sub_state, "value", str(review_sub_state))
-        workflow_state_for_merge = _coerce_workflow_state_value(getattr(manifest, "workflow_state", None))
-        if review_sub_state_value == ReviewSubState.DECISION.value:
-            approved_state = await workflow_engine.complete_review(actor=actor, actor_type=ActorType.HUMAN)
-            manifest = _with_workflow_state(manifest, approved_state)
-            await manager.save_manifest(manifest)
-            workflow_state_for_merge = _coerce_workflow_state_value(approved_state)
+        approved_state = await workflow_engine.complete_review(actor=actor, actor_type=ActorType.HUMAN)
+        manifest = _with_workflow_state(manifest, approved_state)
+        await manager.save_manifest(manifest)
+        workflow_state_for_merge = _coerce_workflow_state_value(approved_state)
 
         merge_controller = services.get("merge_controller")
         if merge_controller is not None:
@@ -1251,16 +1262,19 @@ async def _run_brief_flow(
         manifest = _with_workflow_state(manifest, rejected_state)
         await manager.save_manifest(manifest)
 
-    merge_blocked = merge_decision is not None and not merge_decision.allowed
+    merge_not_applied = _is_soft_merge_not_applied(merge_decision)
+    merge_blocked = merge_decision is not None and not merge_decision.allowed and not merge_not_applied
     if session_id is not None and hasattr(local_store, "update_builder_session"):
         if approved and not merge_blocked:
             local_store.update_builder_session(
                 session_id,
                 stage="completed",
                 next_action="start_new_session",
-                last_action="approval_recorded",
+                last_action="approval_recorded" if not merge_not_applied else "approval_recorded_merge_not_applied",
                 recovery_reason=None,
-                last_error=None,
+                last_error=(
+                    None if not merge_not_applied else getattr(merge_decision, "reason", "merge was not applied")
+                ),
                 approval_manifest_id=manifest.manifest_id,
             )
         else:
@@ -1280,6 +1294,7 @@ async def _run_brief_flow(
                 runtime_name=execution["runtime_name"],
                 decision=decision,
                 merge_allowed=(None if merge_decision is None else merge_decision.allowed),
+                merge_not_applied=merge_not_applied,
                 triage_color=_coerce_text(triage.color),
                 governance=governance,
                 manifest_id=manifest.manifest_id,
@@ -1300,11 +1315,14 @@ async def _run_brief_flow(
                 )
             )
         else:
+            merge_title = "[yellow]Merge Not Applied[/yellow]" if merge_not_applied else "[red]Merge Blocked[/red]"
+            merge_border = "yellow" if merge_not_applied else "red"
+            merge_prefix = "Merge was not applied" if merge_not_applied else "Merge blocked"
             console.print(
                 Panel(
-                    f"Merge blocked: {merge_decision.reason}",
-                    title="[red]Merge Blocked[/red]",
-                    border_style="red",
+                    f"{merge_prefix}: {merge_decision.reason}",
+                    title=merge_title,
+                    border_style=merge_border,
                 )
             )
     if yes and (auto_blockers or merge_blocked):

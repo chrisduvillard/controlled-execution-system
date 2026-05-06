@@ -12,6 +12,7 @@ import os
 import re
 from contextlib import asynccontextmanager
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -293,6 +294,60 @@ class TestBuilderFirstE2EPipeline:
         assert "already completed" in result.continue_.stdout.lower()
         assert result.latest_snapshot is not None
         assert result.latest_snapshot.is_chain_complete is True
+
+    def test_approved_merge_validation_block_does_not_fail_builder_session(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Approved work may be unmerged without turning the builder session into a recovery blocker."""
+        scenario = BuilderScenario(
+            name="freshcart-merge-validation-blocked",
+            request=FRESHCART_BUILDER_SCENARIO.request,
+            fixture_name=FRESHCART_BUILDER_SCENARIO.fixture_name,
+            build_args=FRESHCART_BUILDER_SCENARIO.build_args,
+            prompt_responses=FRESHCART_BUILDER_SCENARIO.prompt_responses,
+            proposal=FRESHCART_BUILDER_SCENARIO.proposal,
+            execution_results=FRESHCART_BUILDER_SCENARIO.execution_results,
+            merge_allowed=False,
+            merge_reason="review_complete",
+            merge_checks=(SimpleNamespace(name="review_complete", passed=False),),
+        )
+        harness = BuilderScenarioHarness(tmp_path=tmp_path, monkeypatch=monkeypatch)
+
+        result = harness.run(scenario)
+
+        assert result.build.exit_code == 0, f"stdout={result.build.stdout}"
+        assert "approved, but merge was not applied" in result.build.stdout
+        assert "Merge Not Applied" in result.build.stdout
+        assert result.latest_snapshot is not None
+        assert result.latest_snapshot.stage == "completed"
+        assert result.latest_snapshot.is_chain_complete is True
+
+    def test_approved_integrity_merge_block_still_fails_builder_session(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Integrity merge failures remain blocked even when work was approved."""
+        scenario = BuilderScenario(
+            name="freshcart-integrity-merge-blocked",
+            request=FRESHCART_BUILDER_SCENARIO.request,
+            fixture_name=FRESHCART_BUILDER_SCENARIO.fixture_name,
+            build_args=FRESHCART_BUILDER_SCENARIO.build_args,
+            prompt_responses=FRESHCART_BUILDER_SCENARIO.prompt_responses,
+            proposal=FRESHCART_BUILDER_SCENARIO.proposal,
+            execution_results=FRESHCART_BUILDER_SCENARIO.execution_results,
+            merge_allowed=False,
+            merge_reason="evidence_exists",
+            merge_checks=(SimpleNamespace(name="evidence_exists", passed=False),),
+        )
+        harness = BuilderScenarioHarness(tmp_path=tmp_path, monkeypatch=monkeypatch)
+
+        result = harness.run(scenario)
+
+        assert result.build.exit_code == 1, f"stdout={result.build.stdout}"
+        assert "approved, but merge is blocked" in result.build.stdout
+        assert "Merge Blocked" in result.build.stdout
+        assert result.latest_snapshot is not None
+        assert result.latest_snapshot.stage != "completed"
+        assert result.latest_snapshot.is_chain_complete is False
 
     def test_builder_first_brownfield_retry_pipeline(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """Brownfield builder sessions can fail, resume, and complete cleanly."""

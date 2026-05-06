@@ -86,6 +86,19 @@ def build_recovery_plan(project_root: Path, local_store: Any, *, mutate_stale: b
             next_commands=tuple(next_commands),
         )
 
+    if _is_approved_merge_validation_block(session, local_store, manifest_id):
+        return RecoveryPlan(
+            session_id=str(getattr(session, "session_id", "")),
+            manifest_id=manifest_id,
+            evidence_packet_id=evidence_packet_id,
+            blocked=False,
+            can_run_auto_evidence=False,
+            can_auto_complete=False,
+            contract_path=str(contract_path) if contract_exists else None,
+            explanation="Latest builder session is approved; merge validation did not apply a merge, but recovery is not required.",
+            next_commands=("ces report builder",),
+        )
+
     if contract_exists:
         explanation_parts.append(
             f"Latest builder session is blocked, but a completion contract exists at {contract_path}."
@@ -132,3 +145,19 @@ def _manifest_id_from_session(session: Any) -> str | None:
         if value:
             return str(value)
     return None
+
+
+def _is_approved_merge_validation_block(session: Any, local_store: Any, manifest_id: str | None) -> bool:
+    """Return True only for legacy approved review-state merge blocks."""
+    if getattr(session, "last_action", None) != "merge_blocked":
+        return False
+    if not manifest_id:
+        return False
+    last_error = str(getattr(session, "last_error", "")).casefold()
+    if last_error not in {"workflow state has not reached merge-ready", "review_complete"}:
+        return False
+    get_approval = getattr(local_store, "get_approval", None)
+    if not callable(get_approval):
+        return False
+    approval = get_approval(manifest_id)
+    return str(getattr(approval, "decision", "")).casefold() == "approve"

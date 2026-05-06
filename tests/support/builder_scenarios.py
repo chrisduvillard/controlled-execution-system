@@ -89,6 +89,9 @@ class BuilderScenario:
     proposal: dict[str, Any]
     execution_results: tuple[dict[str, Any], ...]
     brownfield_review: bool = False
+    merge_allowed: bool | None = None
+    merge_reason: str = "workflow state has not reached merge-ready"
+    merge_checks: tuple[Any, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -252,6 +255,9 @@ class BuilderScenarioHarness:
             proposal=scenario.proposal,
             execution_results=list(scenario.execution_results),
             legacy_behavior_service=legacy_behavior_service,
+            merge_allowed=scenario.merge_allowed,
+            merge_reason=scenario.merge_reason,
+            merge_checks=scenario.merge_checks,
         )
 
         with _patch_builder_cli_services(services):
@@ -329,6 +335,9 @@ def _make_services(
     proposal: dict[str, Any],
     execution_results: list[dict[str, Any]],
     legacy_behavior_service: Any | None = None,
+    merge_allowed: bool | None = None,
+    merge_reason: str = "workflow state has not reached merge-ready",
+    merge_checks: tuple[Any, ...] = (),
 ) -> dict[str, Any]:
     manifest_counter = {"value": 0}
 
@@ -381,7 +390,7 @@ def _make_services(
     audit_ledger.record_approval = AsyncMock()
     audit_ledger.query_by_time_range = AsyncMock(return_value=[])
 
-    return {
+    services = {
         "settings": MagicMock(default_runtime="codex"),
         "manifest_manager": manifest_manager,
         "runtime_registry": MagicMock(
@@ -396,6 +405,17 @@ def _make_services(
         or AsyncMock(get_pending_behaviors=AsyncMock(return_value=[])),
         "trust_manager": AsyncMock(),
     }
+    if merge_allowed is not None:
+        services["merge_controller"] = AsyncMock(
+            validate_merge=AsyncMock(
+                return_value=SimpleNamespace(
+                    allowed=merge_allowed,
+                    checks=list(merge_checks),
+                    reason=merge_reason,
+                )
+            )
+        )
+    return services
 
 
 def _make_brownfield_legacy_service() -> Any:
