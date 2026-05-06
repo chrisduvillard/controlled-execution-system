@@ -66,7 +66,7 @@ Unattended `--yes` is still evidence-gated. CES should block auto-approval when 
 | “Why is this blocked?” | `ces why` | Inspect category, source, reason, next command, and evidence snippets |
 | Stale or incomplete evidence | `ces recover --dry-run` | If safe, use `ces recover --auto-evidence`; add `--auto-complete` only when the recovery plan explicitly supports completion |
 | Work completed outside CES | `ces complete` | Reconcile externally completed builder work with the audit trail |
-| Need independent verification | `ces verify` | Run local verification for the current project before approval |
+| Need independent verification | `ces verify` | Run local verification for the current project before approval; add `--write-contract` only when you want to persist an inferred contract |
 | Need a handoff artifact | `ces report builder` | Share the exported markdown/JSON, not raw `.ces/state.db` |
 
 ---
