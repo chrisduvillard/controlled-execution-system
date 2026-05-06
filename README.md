@@ -1,3 +1,5 @@
+<div align="center">
+
 # Controlled Execution System
 
 [![CI](https://github.com/chrisduvillard/controlled-execution-system/actions/workflows/ci.yml/badge.svg)](https://github.com/chrisduvillard/controlled-execution-system/actions/workflows/ci.yml)
@@ -6,22 +8,20 @@
 [![Python](https://img.shields.io/pypi/pyversions/controlled-execution-system.svg)](https://pypi.org/project/controlled-execution-system/)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-<p align="center">
-  <img src="docs/assets/ces-avatar.png" alt="Controlled Execution System project avatar" width="300">
-</p>
+<img src="docs/assets/ces-avatar.png" alt="Controlled Execution System project avatar" width="300">
 
-<p align="center">
-  <strong>Local-first governance for AI coding agents.</strong><br>
-  Turn an intent into a bounded manifest, execute it through Codex CLI or Claude Code, collect evidence, review the result, and make approval explicit.
-</p>
+**Local-first governance for AI coding agents.**
 
-<p align="center">
-  <a href="docs/Quickstart.md">5-Minute Quickstart</a> ·
-  <a href="docs/Getting_Started.md">Getting Started</a> ·
-  <a href="docs/Operator_Playbook.md">Operator Playbook</a> ·
-  <a href="docs/Quick_Reference_Card.md">Quick Reference</a> ·
-  <a href="CHANGELOG.md">Changelog</a>
-</p>
+Turn an intent into a bounded manifest, execute it through Codex CLI or Claude Code,<br>
+collect evidence, review the result, and make approval explicit.
+
+[5-Minute Quickstart](docs/Quickstart.md) ·
+[Getting Started](docs/Getting_Started.md) ·
+[Operator Playbook](docs/Operator_Playbook.md) ·
+[Quick Reference](docs/Quick_Reference_Card.md) ·
+[Changelog](CHANGELOG.md)
+
+</div>
 
 ---
 
