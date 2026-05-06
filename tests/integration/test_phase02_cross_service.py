@@ -22,6 +22,7 @@ import pytest
 from ces.control.models.kill_switch_state import ActivityClass
 from ces.control.services.cascade_invalidation import CascadeInvalidationEngine
 from ces.control.services.classification_oracle import ClassificationOracle
+from ces.control.services.evidence_integrity import compute_reviewed_evidence_hash
 from ces.control.services.gate_evaluator import GateEvaluator
 from ces.control.services.kill_switch import KillSwitchService
 from ces.control.services.merge_controller import MergeController
@@ -46,13 +47,20 @@ def _valid_merge_kwargs(
 ) -> dict:
     """Return kwargs for a passing merge validation."""
     now = datetime.now(timezone.utc)
+    evidence_packet = {
+        "manifest_id": "M-integ-001",
+        "manifest_hash": "sha256:integ123",
+        "result": "pass",
+        "coverage": 95,
+    }
+    evidence_packet["reviewed_evidence_hash"] = compute_reviewed_evidence_hash(evidence_packet)
     return {
         "manifest_id": "M-integ-001",
         "manifest_expires_at": now + timedelta(hours=24),
         "manifest_content_hash": "sha256:integ123",
         "manifest_risk_tier": "C",
         "manifest_bc": "BC1",
-        "evidence_packet": {"result": "pass", "coverage": 95},
+        "evidence_packet": evidence_packet,
         "evidence_manifest_hash": "sha256:integ123",
         "required_gate_type": gate_type,
         "actual_gate_type": gate_type,

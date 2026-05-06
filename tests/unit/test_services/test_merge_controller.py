@@ -25,6 +25,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from ces.control.models.merge_decision import MergeCheck, MergeDecision
+from ces.control.services.evidence_integrity import compute_reviewed_evidence_hash
 from ces.control.services.merge_controller import MERGE_CHECKS, MergeController
 from ces.shared.enums import (
     EventType,
@@ -41,13 +42,19 @@ from ces.shared.enums import (
 def _valid_merge_kwargs() -> dict:
     """Return a dict of kwargs that produce a passing merge validation."""
     now = datetime.now(timezone.utc)
+    evidence_packet = {
+        "result": "pass",
+        "coverage": 95,
+        "manifest_hash": "sha256:abc123",
+    }
+    evidence_packet["reviewed_evidence_hash"] = compute_reviewed_evidence_hash(evidence_packet)
     return {
         "manifest_id": "M-test-001",
         "manifest_expires_at": now + timedelta(hours=24),
         "manifest_content_hash": "sha256:abc123",
         "manifest_risk_tier": "C",
         "manifest_bc": "BC1",
-        "evidence_packet": {"result": "pass", "coverage": 95},
+        "evidence_packet": evidence_packet,
         "evidence_manifest_hash": "sha256:abc123",
         "required_gate_type": GateType.AGENT,
         "actual_gate_type": GateType.AGENT,
@@ -179,6 +186,39 @@ class TestMergeControllerBlockNoEvidence:
         evidence_check = next(c for c in result.checks if c.name == "evidence_exists")
         assert evidence_check.passed is False
         assert "hash is missing" in evidence_check.detail
+
+    @pytest.mark.asyncio
+    async def test_block_evidence_packet_without_embedded_manifest_hash(self):
+        """Caller-supplied hashes must also be embedded in reviewed evidence."""
+        controller = MergeController()
+        kwargs = _valid_merge_kwargs()
+        evidence_packet = dict(kwargs["evidence_packet"])
+        evidence_packet.pop("manifest_hash")
+        evidence_packet["reviewed_evidence_hash"] = compute_reviewed_evidence_hash(evidence_packet)
+        kwargs["evidence_packet"] = evidence_packet
+
+        result = await controller.validate_merge(**kwargs)
+
+        assert result.allowed is False
+        evidence_check = next(c for c in result.checks if c.name == "evidence_exists")
+        assert evidence_check.passed is False
+        assert "embedded manifest hash" in evidence_check.detail
+
+    @pytest.mark.asyncio
+    async def test_block_tampered_reviewed_evidence_hash(self):
+        """Evidence changed after review must not pass merge validation."""
+        controller = MergeController()
+        kwargs = _valid_merge_kwargs()
+        evidence_packet = dict(kwargs["evidence_packet"])
+        evidence_packet["coverage"] = 12
+        kwargs["evidence_packet"] = evidence_packet
+
+        result = await controller.validate_merge(**kwargs)
+
+        assert result.allowed is False
+        evidence_check = next(c for c in result.checks if c.name == "evidence_exists")
+        assert evidence_check.passed is False
+        assert "reviewed evidence hash mismatch" in evidence_check.detail.lower()
 
 
 class TestMergeControllerFreshness:

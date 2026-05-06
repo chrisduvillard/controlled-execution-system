@@ -34,6 +34,7 @@ from ces.cli.execute_cmd import COMPLETION_CLAIM_INSTRUCTIONS
 from ces.cli.init_cmd import derive_project_name, initialize_local_project
 from ces.cli.ownership import resolve_actor
 from ces.control.models.manifest import TaskManifest
+from ces.control.services.evidence_integrity import compute_reviewed_evidence_hash
 from ces.control.services.workflow_engine import WorkflowEngine
 from ces.control.spec.parser import SpecParser
 from ces.control.spec.template_loader import TemplateLoader
@@ -1048,6 +1049,8 @@ async def _run_brief_flow(
         challenge=challenge_text,
         triage_color=triage.color.value,
         content={
+            "manifest_id": manifest.manifest_id,
+            "manifest_hash": getattr(manifest, "content_hash", ""),
             "execution": execution,
             "sensors": [getattr(sensor, "model_dump", lambda **_: sensor)() for sensor in sensor_results],
             "completion_claim": serialize_model(completion_claim),
@@ -1075,6 +1078,22 @@ async def _run_brief_flow(
             runtime_manifest_id=manifest.manifest_id,
             evidence_packet_id=packet_id,
         )
+    reviewed_evidence_packet = None
+    get_evidence_by_packet_id = getattr(local_store, "get_evidence_by_packet_id", None)
+    if callable(get_evidence_by_packet_id):
+        candidate_evidence_packet = get_evidence_by_packet_id(packet_id)
+        if isinstance(candidate_evidence_packet, dict):
+            reviewed_evidence_packet = candidate_evidence_packet
+    if reviewed_evidence_packet is None:
+        reviewed_evidence_packet = {
+            "manifest_id": manifest.manifest_id,
+            "manifest_hash": getattr(manifest, "content_hash", ""),
+            "packet_id": packet_id,
+            "summary": summary_text,
+            "challenge": challenge_text,
+            "triage_color": triage.color.value,
+        }
+        reviewed_evidence_packet["reviewed_evidence_hash"] = compute_reviewed_evidence_hash(reviewed_evidence_packet)
 
     runtime_output = execution.get("stdout", "")
     if full:
@@ -1201,12 +1220,8 @@ async def _run_brief_flow(
                 manifest_content_hash=getattr(manifest, "content_hash", ""),
                 manifest_risk_tier=risk_value,
                 manifest_bc=getattr(manifest, "behavior_confidence", "BC2"),
-                evidence_packet={
-                    "summary": summary_text,
-                    "challenge": challenge_text,
-                    "triage_color": triage.color.value,
-                },
-                evidence_manifest_hash=getattr(manifest, "content_hash", ""),
+                evidence_packet=reviewed_evidence_packet,
+                evidence_manifest_hash=(reviewed_evidence_packet or {}).get("manifest_hash"),
                 required_gate_type=_required_gate_type_for_risk(risk_value),
                 actual_gate_type=GateType.HUMAN,
                 review_sub_state="decision",
