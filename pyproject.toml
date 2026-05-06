@@ -101,6 +101,7 @@ exclude = [
     "/.mypy_cache",
     "/.planning",
     "/.hermes",
+    "/.hypothesis",
     "/.github",
     "/.gitleaks.toml",
     "/.mcp.json",
