@@ -112,3 +112,34 @@ def test_why_reports_completed_project(tmp_path: Path, monkeypatch) -> None:
     assert result.exit_code == 0, result.stdout
     assert "No active blocker" in result.stdout
     assert "Next: ces report builder" in result.stdout
+
+
+def test_why_reports_approved_but_hard_merge_block_as_active_blocker(tmp_path: Path, monkeypatch) -> None:
+    """TaskLedger dogfood: why must not say no blocker for approved-but-evidence-blocked runs."""
+    monkeypatch.chdir(tmp_path)
+    ces_dir = tmp_path / ".ces"
+    ces_dir.mkdir()
+    (ces_dir / "config.yaml").write_text("project_id: local-proj\npreferred_runtime: codex\n", encoding="utf-8")
+    mock_store = MagicMock()
+    mock_store.get_latest_builder_session_snapshot.return_value = _snapshot(
+        stage="blocked",
+        next_action="review_evidence",
+        manifest=SimpleNamespace(manifest_id="M-taskledger", workflow_state="approved"),
+        approval=SimpleNamespace(decision="approve"),
+        evidence={"packet_id": "EP-taskledger", "triage_color": "green"},
+        session=SimpleNamespace(
+            session_id="BS-taskledger",
+            stage="blocked",
+            last_action="merge_blocked",
+            last_error="evidence_exists",
+        ),
+    )
+
+    with _patch_services({"local_store": mock_store}):
+        result = runner.invoke(_get_app(), ["why", "--json"])
+
+    assert result.exit_code == 0, result.stdout
+    payload = json.loads(result.stdout)
+    assert payload["diagnostic"]["category"] == "blocked"
+    assert payload["diagnostic"]["next_command"] == "ces why"
+    assert "No active blocker" not in json.dumps(payload)

@@ -34,6 +34,15 @@ class BlockerDiagnostic:
 
 def diagnose_builder_report(report: BuilderRunReport) -> BlockerDiagnostic:
     """Convert a builder report into an operator-facing blocker diagnosis."""
+    if report.review_state == "blocked" or report.latest_outcome == "blocked":
+        return BlockerDiagnostic(
+            category="blocked",
+            reason=report.next_step or "CES is blocked and needs operator review.",
+            source="builder_report",
+            next_command="ces why",
+            product_may_be_complete=True,
+        )
+
     if _is_approved(report):
         return BlockerDiagnostic(
             category="none",

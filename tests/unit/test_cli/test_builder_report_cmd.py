@@ -495,3 +495,74 @@ def test_builder_report_surfaces_completion_contract_and_independent_verificatio
     markdown = render_builder_run_report_markdown(report)
     assert "Completion contract: .ces/completion-contract.json" in markdown
     assert "Independent verification passed: True" in markdown
+
+
+def test_builder_report_hard_merge_block_overrides_approval() -> None:
+    """TaskLedger dogfood: hard merge integrity blocks must not be reported as approved."""
+    from ces.cli._builder_report import build_builder_run_report
+
+    snapshot = SimpleNamespace(
+        request="Create TaskLedger",
+        project_mode="greenfield",
+        stage="blocked",
+        next_action="review_evidence",
+        next_step="Review evidence",
+        latest_activity="CES recorded approval but merge validation blocked.",
+        latest_artifact="approval",
+        brief=SimpleNamespace(prl_draft_path=None),
+        manifest=SimpleNamespace(manifest_id="M-taskledger", workflow_state="approved"),
+        runtime_execution=SimpleNamespace(exit_code=0, reported_model="gpt-5.5"),
+        evidence={"packet_id": "EP-taskledger", "triage_color": "green"},
+        approval=SimpleNamespace(decision="approve"),
+        session=SimpleNamespace(
+            session_id="BS-taskledger",
+            stage="blocked",
+            last_action="merge_blocked",
+            last_error="evidence_exists",
+            next_action="review_evidence",
+        ),
+        brownfield=None,
+    )
+
+    report = build_builder_run_report(snapshot)
+
+    assert report is not None
+    assert report.stage == "blocked"
+    assert report.review_state == "blocked"
+    assert report.latest_outcome == "blocked"
+    assert "ces why" in report.next_step
+
+
+def test_builder_report_soft_merge_not_applied_is_approved_unblocked() -> None:
+    """Soft merge-not-applied states remain approved historical outcomes, not recovery blockers."""
+    from ces.cli._builder_report import build_builder_run_report
+
+    snapshot = SimpleNamespace(
+        request="Create TaskLedger",
+        project_mode="greenfield",
+        stage="completed",
+        next_action="start_new_session",
+        next_step="Start a new task",
+        latest_activity="CES recorded approval; no repository merge was applied.",
+        latest_artifact="approval",
+        brief=SimpleNamespace(prl_draft_path=None),
+        manifest=SimpleNamespace(manifest_id="M-taskledger", workflow_state="approved"),
+        runtime_execution=SimpleNamespace(exit_code=0, reported_model="gpt-5.5"),
+        evidence={"packet_id": "EP-taskledger", "triage_color": "green"},
+        approval=SimpleNamespace(decision="approve"),
+        session=SimpleNamespace(
+            session_id="BS-taskledger",
+            stage="completed",
+            last_action="approval_recorded_merge_not_applied",
+            last_error="review_complete",
+            next_action="start_new_session",
+        ),
+        brownfield=None,
+    )
+
+    report = build_builder_run_report(snapshot)
+
+    assert report is not None
+    assert report.review_state == "approved"
+    assert report.latest_outcome == "approved_unmerged"
+    assert report.next_step == "Run `ces report builder` to inspect the approved builder run."

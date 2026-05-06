@@ -19,6 +19,46 @@ If you are working from a source checkout, use `uv run ces ...` unless you have
 installed the package as a tool. For normal day-to-day use, prefer the PyPI tool
 install shown in the Quickstart.
 
+### Using a source checkout against another target directory
+
+When developing CES from a source checkout, keep the CES checkout and the
+project being governed separate. `uv run ces ...` runs from your current working directory unless you pass `--project-root`, so do not create greenfield dogfood
+projects inside the CES repository.
+
+```bash
+# One shell variable points at the CES checkout.
+CES_SRC=/path/to/controlled-execution-system
+cd "$CES_SRC"
+uv sync
+CES="$CES_SRC/.venv/bin/ces"
+
+# A separate directory is the project CES will govern.
+TARGET=/tmp/ces-taskledger
+mkdir -p "$TARGET"
+
+"$CES" init --project-root "$TARGET" --yes
+"$CES" doctor --runtime-safety --project-root "$TARGET"
+"$CES" doctor --verify-runtime --runtime all --project-root "$TARGET"
+
+"$CES" build "Create a small Python CLI app named TaskLedger" \
+  --project-root "$TARGET" \
+  --greenfield \
+  --yes \
+  --accept-runtime-side-effects \
+  --acceptance "The CLI is runnable with python -m taskledger --help." \
+  --acceptance "Pytest tests cover add, list, complete, delete, and persistence behavior." \
+  --constraint "Do not build inside the CES repository."
+```
+
+If CES is installed as a tool instead, the normal pattern is shorter:
+
+```bash
+uv tool install controlled-execution-system
+mkdir -p /tmp/my-new-project
+cd /tmp/my-new-project
+ces build "Describe the project" --greenfield
+```
+
 ## 2. Verify a Local Runtime
 
 ```bash

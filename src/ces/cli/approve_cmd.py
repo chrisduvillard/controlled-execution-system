@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import json
 from datetime import datetime, timezone
+from pathlib import Path
 
 import typer
 from rich.panel import Panel
@@ -153,6 +154,11 @@ async def approve_evidence(
         "--json",
         help="Output approval result as JSON. Equivalent to `ces --json approve`.",
     ),
+    project_root: Path | None = typer.Option(
+        None,
+        "--project-root",
+        help="Repo/CES project root to operate on; defaults to cwd/.ces discovery.",
+    ),
 ) -> None:
     """Review and approve or reject evidence.
 
@@ -162,10 +168,13 @@ async def approve_evidence(
     if json_output:
         set_json_mode(True)
     try:
-        find_project_root()
-        project_id = get_project_id()
+        resolved_project_root = find_project_root(project_root)
+        project_id = get_project_id(resolved_project_root)
 
-        async with get_services() as services:
+        services_context = (
+            get_services(project_root=resolved_project_root) if project_root is not None else get_services()
+        )
+        async with services_context as services:
             actor = resolve_actor()
             manager = services["manifest_manager"]
             evidence_synthesizer = services["evidence_synthesizer"]
@@ -237,12 +246,12 @@ async def approve_evidence(
             else:
                 # Run sensors for triage input (EVID-06 fix)
                 sensor_orchestrator = services["sensor_orchestrator"]
-                project_root = find_project_root()
+                sensor_project_root = find_project_root(project_root)
                 sensor_context = {
                     "manifest_id": manifest.manifest_id,
                     "risk_tier": risk_tier.value if hasattr(risk_tier, "value") else str(risk_tier),
                     "affected_files": getattr(manifest, "affected_files", []) or [],
-                    "project_root": str(project_root),
+                    "project_root": str(sensor_project_root),
                     "description": getattr(manifest, "description", ""),
                     "change_class": str(getattr(manifest.change_class, "value", ""))
                     if hasattr(manifest, "change_class")

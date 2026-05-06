@@ -73,11 +73,13 @@ _UNSET = object()
 def _json_default(value: Any) -> Any:
     if isinstance(value, datetime):
         return value.isoformat()
+    if isinstance(value, Path):
+        return str(value)
     if hasattr(value, "value"):
         return value.value
     if hasattr(value, "model_dump"):
         return value.model_dump(mode="json")
-    return value
+    return str(value)
 
 
 class LocalProjectStore:
@@ -519,6 +521,10 @@ class LocalProjectStore:
         persisted_content.setdefault("summary", summary)
         persisted_content.setdefault("challenge", challenge)
         persisted_content.setdefault("triage_color", triage_color)
+        # Hash the exact JSON-compatible payload we persist. This keeps merge-time
+        # evidence integrity stable after SQLite JSON round-trips convert enums,
+        # paths, datetimes, and Pydantic models into primitive values.
+        persisted_content = json.loads(json.dumps(persisted_content, default=_json_default))
         persisted_content["reviewed_evidence_hash"] = compute_reviewed_evidence_hash(persisted_content)
         with self._connect() as conn:
             conn.execute(
