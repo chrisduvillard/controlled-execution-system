@@ -24,6 +24,7 @@ from ces.cli._legacy_config import reject_server_mode
 from ces.cli._output import console
 from ces.cli.ownership import resolve_actor
 from ces.control.services.workflow_engine import WorkflowEngine
+from ces.execution.runtime_safety import runtime_side_effects_require_pre_execution_consent, safety_profile_for_runtime
 from ces.harness.models.completion_claim import VerificationResult
 from ces.harness.models.tool_call_signature import ToolCallSignature
 from ces.harness.prompts.engineering_charter import attach_engineering_charter
@@ -199,6 +200,14 @@ async def execute_task(
         "--runtime",
         help="Runtime for local mode: auto, codex, or claude",
     ),
+    accept_runtime_side_effects: bool = typer.Option(
+        False,
+        "--accept-runtime-side-effects",
+        help=(
+            "Explicitly consent before launching a runtime that cannot enforce manifest tool allowlists "
+            "or workspace scoping. Required for Codex full-access execution."
+        ),
+    ),
     auto_repair: int = typer.Option(
         0,
         "--auto-repair",
@@ -224,20 +233,10 @@ async def execute_task(
             if manifest is None:
                 raise ValueError(f"Manifest not found: {manifest_id}")
 
-            audit_ledger = services.get("audit_ledger")
             initial_state = _coerce_workflow_state_value(
                 getattr(manifest, "workflow_state", WorkflowState.QUEUED.value)
             )
-            engine = WorkflowEngine(
-                manifest_id=manifest_id,
-                audit_ledger=audit_ledger,
-                initial_state=initial_state,
-            )
-            if initial_state == WorkflowState.QUEUED.value:
-                await engine.start(actor=actor, actor_type=ActorType.HUMAN)
-                manifest = _with_workflow_state(manifest, WorkflowState.IN_FLIGHT)
-                await manager.save_manifest(manifest)
-            elif initial_state != WorkflowState.IN_FLIGHT.value:
+            if initial_state not in {WorkflowState.QUEUED.value, WorkflowState.IN_FLIGHT.value}:
                 raise ValueError(
                     f"Manifest must be queued or in_flight before local execution can start; got {initial_state}"
                 )
@@ -247,6 +246,34 @@ async def execute_task(
                 runtime_name=runtime,
                 preferred_runtime=preferred_runtime,
             )
+            runtime_name = getattr(runtime_adapter, "runtime_name", runtime)
+            pre_execution_safety = safety_profile_for_runtime(runtime_name)
+            if runtime_side_effects_require_pre_execution_consent(
+                pre_execution_safety,
+                accepted=accept_runtime_side_effects,
+            ):
+                console.print(
+                    Panel(
+                        f"Runtime `{pre_execution_safety.runtime_name}` requires explicit runtime side-effect consent before "
+                        "CES can launch it. "
+                        f"{pre_execution_safety.notes} Re-run with `--accept-runtime-side-effects` only if you accept "
+                        "this runtime boundary.",
+                        title="[yellow]Runtime Side-Effect Consent Required[/yellow]",
+                        border_style="yellow",
+                    )
+                )
+                raise typer.Exit(code=1)
+
+            audit_ledger = services.get("audit_ledger")
+            engine = WorkflowEngine(
+                manifest_id=manifest_id,
+                audit_ledger=audit_ledger,
+                initial_state=initial_state,
+            )
+            if initial_state == WorkflowState.QUEUED.value:
+                await engine.start(actor=actor, actor_type=ActorType.HUMAN)
+                manifest = _with_workflow_state(manifest, WorkflowState.IN_FLIGHT)
+                await manager.save_manifest(manifest)
             # Completion Gate loop (P-CLI + Gap #2). Runs the agent, verifies,
             # and on failure either marks the manifest failed (auto_repair=0) or
             # rebuilds the prompt with the findings and retries within budget.

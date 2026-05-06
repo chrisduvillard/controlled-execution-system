@@ -61,7 +61,13 @@ authentication before a build.
 only affects optional LLM-backed helper steps; it does not replace Codex CLI or
 Claude Code for local execution.
 
-## 3. Run your first governed build
+Codex is a full-access local runtime for CES purposes. If Codex is selected,
+`ces build`, `ces continue`, and `ces execute` stop before subprocess launch
+until you pass `--accept-runtime-side-effects`. That flag is explicit consent
+for the runtime boundary; choose Claude Code when you need tool allowlist
+enforcement before the agent starts.
+
+## 3. Start a governed build
 
 ```bash
 mkdir my-project && cd my-project
