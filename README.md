@@ -10,12 +10,6 @@
 
 <img src="docs/assets/ces-avatar.png" alt="Controlled Execution System project avatar" width="300">
 
-<a href="docs/assets/ces-demo.mp4">
-  <img src="docs/assets/ces-demo.gif" alt="20-second CES explainer demo" width="760">
-</a>
-
-<sub>Click the animation to open the MP4.</sub>
-
 **Local-first governance for AI coding agents.**
 
 Turn an intent into a bounded manifest, execute it through Codex CLI or Claude Code,<br>
@@ -26,6 +20,14 @@ collect evidence, review the result, and make approval explicit.
 [Operator Playbook](docs/Operator_Playbook.md) ·
 [Quick Reference](docs/Quick_Reference_Card.md) ·
 [Changelog](CHANGELOG.md)
+
+<br>
+
+<a href="docs/assets/ces-demo.mp4">
+  <img src="docs/assets/ces-demo.gif" alt="20-second CES explainer demo" width="760">
+</a>
+
+<sub>Click the animation to open the MP4.</sub>
 
 </div>
 
