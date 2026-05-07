@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.13] - 2026-05-07
+
+### Security / launch hardening
+
+- Require explicit unsafe-runtime consent before launching side-effect-capable runtime work.
+- Bind merge validation to reviewed completion evidence and require a genuinely completed review state before merge.
+- Redact provider/runtime failure output, Codex stderr, runtime probe output, and runtime lock identifiers more aggressively.
+- Validate gitleaks allowlist regexes and exclude Hypothesis artifacts from package outputs.
+- Refresh the release lockfile to Mako 1.3.12 to clear the current publish-audit CVE.
+
+### Fixed
+
+- Make reconciliation status explicit and avoid implicit completion-contract writes during verification.
+- Add scan dry-run preview support.
+- Keep approved but unmerged builder sessions coherent and reconcile greenfield dogfood governance state correctly.
+- Harden runtime lock identity handling.
+
+### CI / packaging
+
+- Run release preflight gates in the PyPI publish workflow.
+- Mark integration tests explicitly so non-integration CI selectors cannot pull them in accidentally.
+
+### Documentation
+
+- Tighten the CES engineering charter and refresh the README front door, demo video placement, and CI/release contract notes.
+
 ## [0.1.12] - 2026-05-06
 
 ### Security / launch hardening
