@@ -433,6 +433,183 @@ class TestApproveMergeControllerIntegration:
         # Rich mode: "Merge Validation Passed"; JSON mode: "merge_allowed": true
         assert "merge validation passed" in result.stdout.lower() or '"merge_allowed": true' in result.stdout
 
+    def test_approve_does_not_show_merge_passed_when_persisted_governance_blocks(
+        self, ces_project: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Persisted blocking governance prevents green merge validation messaging."""
+        monkeypatch.chdir(ces_project)
+
+        mock_services = _make_mock_services()
+        mock_store = MagicMock()
+        mock_store.get_review_findings.return_value = _make_review_data()
+        mock_store.get_evidence_by_packet_id.return_value = {
+            "manifest_id": "M-approve123",
+            "packet_id": "EP-blocking-governance",
+            "summary": "Builder completed but governance blocked",
+            "challenge": "Missing configured artifacts",
+            "triage_color": "red",
+            "sensor_policy": {"blocking": True},
+        }
+        mock_services["local_store"] = mock_store
+        mock_services["merge_controller"].validate_merge = AsyncMock(
+            return_value=MergeDecision(allowed=True, checks=[], reason="")
+        )
+
+        mock_engine = AsyncMock()
+        mock_engine.complete_review = AsyncMock(return_value=WorkflowState.APPROVED)
+        mock_engine.approve_merge = AsyncMock(return_value=WorkflowState.MERGED)
+
+        with _patch_services(mock_services), patch("ces.cli.approve_cmd.WorkflowEngine", return_value=mock_engine):
+            app = _get_app()
+            result = runner.invoke(app, ["approve", "EP-blocking-governance", "--yes"])
+
+        assert result.exit_code == 0, f"stdout={result.stdout}"
+        assert "merge validation passed" not in result.stdout.lower()
+        assert "governance blocked" in result.stdout.lower()
+
+    def test_approve_does_not_show_merge_passed_when_persisted_governance_is_advisory(
+        self, ces_project: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Persisted advisory governance also prevents green merge validation messaging."""
+        monkeypatch.chdir(ces_project)
+
+        mock_services = _make_mock_services()
+        mock_store = MagicMock()
+        mock_store.get_review_findings.return_value = _make_review_data()
+        mock_store.get_evidence_by_packet_id.return_value = {
+            "manifest_id": "M-approve123",
+            "packet_id": "EP-advisory-governance",
+            "summary": "Builder completed but triage was red",
+            "challenge": "Review red triage before shipping",
+            "triage_color": "red",
+            "control_plane_status": {
+                "code_completed": True,
+                "acceptance_verified": True,
+                "governance_state": "advisory_yellow",
+                "approval_decision": None,
+                "merge_allowed": None,
+                "merge_not_applied": False,
+                "blocking_reasons": [],
+            },
+        }
+        mock_services["local_store"] = mock_store
+        mock_services["merge_controller"].validate_merge = AsyncMock(
+            return_value=MergeDecision(allowed=True, checks=[], reason="")
+        )
+
+        mock_engine = AsyncMock()
+        mock_engine.complete_review = AsyncMock(return_value=WorkflowState.APPROVED)
+        mock_engine.approve_merge = AsyncMock(return_value=WorkflowState.MERGED)
+
+        with _patch_services(mock_services), patch("ces.cli.approve_cmd.WorkflowEngine", return_value=mock_engine):
+            app = _get_app()
+            result = runner.invoke(app, ["approve", "EP-advisory-governance", "--yes"])
+
+        assert result.exit_code == 0, f"stdout={result.stdout}"
+        assert "merge validation passed" not in result.stdout.lower()
+        assert "governance" in result.stdout.lower()
+        mock_engine.approve_merge.assert_not_called()
+
+    def test_approve_does_not_show_merge_passed_when_persisted_status_has_blocking_reasons(
+        self, ces_project: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Persisted blocking reasons prevent merge even when governance state is clear."""
+        monkeypatch.chdir(ces_project)
+
+        mock_services = _make_mock_services()
+        mock_store = MagicMock()
+        mock_store.get_review_findings.return_value = _make_review_data()
+        mock_store.get_evidence_by_packet_id.return_value = {
+            "manifest_id": "M-approve123",
+            "packet_id": "EP-blocking-reason",
+            "summary": "Builder completed with a blocker",
+            "challenge": "Review scope blocker before shipping",
+            "triage_color": "green",
+            "control_plane_status": {
+                "code_completed": True,
+                "acceptance_verified": True,
+                "governance_state": "clear",
+                "approval_decision": None,
+                "merge_allowed": None,
+                "merge_not_applied": False,
+                "blocking_reasons": ["workspace changes exceeded manifest scope"],
+            },
+        }
+        mock_services["local_store"] = mock_store
+        mock_services["merge_controller"].validate_merge = AsyncMock(
+            return_value=MergeDecision(allowed=True, checks=[], reason="")
+        )
+
+        mock_engine = AsyncMock()
+        mock_engine.complete_review = AsyncMock(return_value=WorkflowState.APPROVED)
+        mock_engine.approve_merge = AsyncMock(return_value=WorkflowState.MERGED)
+
+        with _patch_services(mock_services), patch("ces.cli.approve_cmd.WorkflowEngine", return_value=mock_engine):
+            app = _get_app()
+            result = runner.invoke(app, ["approve", "EP-blocking-reason", "--yes"])
+
+        assert result.exit_code == 0, f"stdout={result.stdout}"
+        assert "merge validation passed" not in result.stdout.lower()
+        assert "governance" in result.stdout.lower()
+        mock_engine.approve_merge.assert_not_called()
+
+    @pytest.mark.parametrize(
+        ("status_override", "packet_id"),
+        [
+            ({"code_completed": False}, "EP-runtime-incomplete"),
+            ({"acceptance_verified": False}, "EP-acceptance-blocked"),
+            ({"merge_not_applied": True}, "EP-merge-not-applied"),
+        ],
+    )
+    def test_approve_reconstructs_persisted_control_status_readiness_before_merge(
+        self,
+        ces_project: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        status_override: dict[str, object],
+        packet_id: str,
+    ) -> None:
+        """Persisted raw status fields gate merge even when ready_to_ship is not serialized."""
+        monkeypatch.chdir(ces_project)
+
+        control_status = {
+            "code_completed": True,
+            "acceptance_verified": True,
+            "governance_state": "clear",
+            "approval_decision": None,
+            "merge_allowed": None,
+            "merge_not_applied": False,
+            "blocking_reasons": [],
+        }
+        control_status.update(status_override)
+        mock_services = _make_mock_services()
+        mock_store = MagicMock()
+        mock_store.get_review_findings.return_value = _make_review_data()
+        mock_store.get_evidence_by_packet_id.return_value = {
+            "manifest_id": "M-approve123",
+            "packet_id": packet_id,
+            "summary": "Builder completed but final control-plane status is not ready",
+            "challenge": "Review persisted control-plane status before shipping",
+            "triage_color": "green",
+            "control_plane_status": control_status,
+        }
+        mock_services["local_store"] = mock_store
+        mock_services["merge_controller"].validate_merge = AsyncMock(
+            return_value=MergeDecision(allowed=True, checks=[], reason="")
+        )
+
+        mock_engine = AsyncMock()
+        mock_engine.complete_review = AsyncMock(return_value=WorkflowState.APPROVED)
+        mock_engine.approve_merge = AsyncMock(return_value=WorkflowState.MERGED)
+
+        with _patch_services(mock_services), patch("ces.cli.approve_cmd.WorkflowEngine", return_value=mock_engine):
+            app = _get_app()
+            result = runner.invoke(app, ["approve", packet_id, "--yes"])
+
+        assert result.exit_code == 0, f"stdout={result.stdout}"
+        assert "merge validation passed" not in result.stdout.lower()
+        assert "governance" in result.stdout.lower()
+        mock_engine.approve_merge.assert_not_called()
+
     def test_approve_shows_merge_blocked_when_not_allowed(
         self, ces_project: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:

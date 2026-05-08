@@ -47,9 +47,11 @@ from ces.execution.runtime_safety import (
 )
 from ces.execution.secrets import scrub_secrets_from_text
 from ces.execution.workspace_delta import WorkspaceDelta, WorkspaceSnapshot
+from ces.harness.models.control_plane_status import ControlPlaneStatus
 from ces.harness.prompts.engineering_charter import attach_engineering_charter
 from ces.harness.sensors.security import SecuritySensor
 from ces.harness.services.change_impact import build_observability_acceptance_template
+from ces.harness.services.control_plane_status import build_control_plane_status
 from ces.harness.services.risk_sensor_policy import evaluate_sensor_policy
 from ces.recovery.reconciler import clear_builder_runtime_lock, write_builder_runtime_lock
 from ces.shared.enums import (
@@ -481,6 +483,13 @@ def _build_request_preview(
     return "\n".join(lines)
 
 
+def _acceptance_verified_from_auto_blockers(auto_blockers: list[str]) -> bool:
+    """Return whether automatic blockers include acceptance/evidence failures."""
+
+    acceptance_keywords = ("verification", "evidence", "completion")
+    return not any(keyword in item.lower() for item in auto_blockers for keyword in acceptance_keywords)
+
+
 def _build_completion_summary(
     brief: BuilderBriefDraft,
     *,
@@ -493,13 +502,22 @@ def _build_completion_summary(
     auto_blockers: list[str] | None = None,
     prl_draft_path: str | None = None,
     merge_not_applied: bool = False,
+    control_status: ControlPlaneStatus | None = None,
 ) -> str:
-    if decision != "approve":
-        outcome = "held for another pass"
-    elif merge_allowed is False:
-        outcome = "approved, but merge was not applied" if merge_not_applied else "approved, but merge is blocked"
-    else:
-        outcome = "ready to ship"
+    blockers = list(auto_blockers or [])
+    if control_status is None:
+        control_status = build_control_plane_status(
+            code_completed=True,
+            governance_enabled=governance,
+            triage_color=triage_color,
+            sensor_policy_blocking=any("sensor policy" in item.lower() for item in blockers),
+            approval_decision=decision,
+            merge_allowed=merge_allowed,
+            merge_not_applied=merge_not_applied,
+            auto_blockers=blockers,
+            acceptance_verified=_acceptance_verified_from_auto_blockers(blockers),
+        )
+    outcome = control_status.summary_outcome
     lines = [
         f"Request: {brief.request}",
         f"Mode: {brief.project_mode}",
@@ -511,6 +529,8 @@ def _build_completion_summary(
             [
                 f"Manifest: {manifest_id}",
                 f"Triage: {triage_color}",
+                f"Governance: {control_status.governance_state.value}",
+                f"Ready to ship: {'yes' if control_status.ready_to_ship else 'no'}",
             ]
         )
     else:
@@ -1061,6 +1081,41 @@ async def _run_brief_flow(
         sensor_results=sensor_results,
     )
 
+    auto_blockers: list[str] = []
+    auto_blockers.extend(
+        _completion_verification_blockers(
+            completion_verification,
+            independent_verification=independent_verification,
+        )
+    )
+    if independent_verification is not None and not independent_verification.passed:
+        auto_blockers.append("independent verification failed; run `ces verify --json` for command details")
+    if workspace_scope_violations:
+        auto_blockers.append("workspace changes exceeded manifest scope")
+    if sensor_policy.blocking:
+        auto_blockers.append("risk-aware sensor policy found blocking issues")
+    if (
+        yes
+        and brief_draft.project_mode == "brownfield"
+        and not getattr(manifest_for_verification, "affected_files", ())
+    ):
+        auto_blockers.append("brownfield scope unknown: manifest affected_files is empty")
+    if yes and runtime_side_effects_block_auto_approval(
+        runtime_safety,
+        accepted=accept_runtime_side_effects or bool(getattr(manifest, "accepted_runtime_side_effect_risk", False)),
+    ):
+        auto_blockers.append("runtime side-effect boundary requires explicit operator acceptance")
+    evidence_control_status = build_control_plane_status(
+        code_completed=execution["exit_code"] == 0,
+        governance_enabled=governance,
+        triage_color=triage.color.value,
+        sensor_policy_blocking=sensor_policy.blocking,
+        approval_decision=None,
+        merge_allowed=None,
+        auto_blockers=auto_blockers,
+        acceptance_verified=_acceptance_verified_from_auto_blockers(auto_blockers),
+    )
+
     packet_id = f"EP-{uuid.uuid4().hex[:12]}"
     local_store.save_evidence(
         manifest.manifest_id,
@@ -1081,6 +1136,7 @@ async def _run_brief_flow(
             "independent_verification": independent_verification.to_dict() if independent_verification else None,
             "completion_contract_path": str(contract_path),
             "sensor_policy": serialize_model(sensor_policy),
+            "control_plane_status": serialize_model(evidence_control_status),
             "triage_reason": triage.reason,
         },
     )
@@ -1167,31 +1223,6 @@ async def _run_brief_flow(
     manifest = _with_workflow_state(manifest, review_state)
     await manager.save_manifest(manifest)
 
-    auto_blockers: list[str] = []
-    auto_blockers.extend(
-        _completion_verification_blockers(
-            completion_verification,
-            independent_verification=independent_verification,
-        )
-    )
-    if independent_verification is not None and not independent_verification.passed:
-        auto_blockers.append("independent verification failed; run `ces verify --json` for command details")
-    if workspace_scope_violations:
-        auto_blockers.append("workspace changes exceeded manifest scope")
-    if sensor_policy.blocking:
-        auto_blockers.append("risk-aware sensor policy found blocking issues")
-    if (
-        yes
-        and brief_draft.project_mode == "brownfield"
-        and not getattr(manifest_for_verification, "affected_files", ())
-    ):
-        auto_blockers.append("brownfield scope unknown: manifest affected_files is empty")
-    if yes and runtime_side_effects_block_auto_approval(
-        runtime_safety,
-        accepted=accept_runtime_side_effects or bool(getattr(manifest, "accepted_runtime_side_effect_risk", False)),
-    ):
-        auto_blockers.append("runtime side-effect boundary requires explicit operator acceptance")
-
     approved = yes and not auto_blockers
     if not yes:
         if auto_blockers:
@@ -1250,9 +1281,20 @@ async def _run_brief_flow(
                 workflow_state=workflow_state_for_merge,
             )
             if merge_decision.allowed:
-                merged_state = await workflow_engine.approve_merge(actor=actor, actor_type=ActorType.HUMAN)
-                manifest = _with_workflow_state(manifest, merged_state)
-                await manager.save_manifest(manifest)
+                pre_merge_status = build_control_plane_status(
+                    code_completed=execution["exit_code"] == 0,
+                    governance_enabled=governance,
+                    triage_color=triage.color.value,
+                    sensor_policy_blocking=sensor_policy.blocking,
+                    approval_decision=decision,
+                    merge_allowed=merge_decision.allowed,
+                    auto_blockers=auto_blockers,
+                    acceptance_verified=_acceptance_verified_from_auto_blockers(auto_blockers),
+                )
+                if pre_merge_status.ready_to_ship:
+                    merged_state = await workflow_engine.approve_merge(actor=actor, actor_type=ActorType.HUMAN)
+                    manifest = _with_workflow_state(manifest, merged_state)
+                    await manager.save_manifest(manifest)
     else:
         rejected_state = await workflow_engine.reject(
             actor=actor,
@@ -1263,7 +1305,20 @@ async def _run_brief_flow(
         await manager.save_manifest(manifest)
 
     merge_not_applied = _is_soft_merge_not_applied(merge_decision)
-    merge_blocked = merge_decision is not None and not merge_decision.allowed and not merge_not_applied
+    control_status = build_control_plane_status(
+        code_completed=execution["exit_code"] == 0,
+        governance_enabled=governance,
+        triage_color=triage.color.value,
+        sensor_policy_blocking=sensor_policy.blocking,
+        approval_decision=decision,
+        merge_allowed=(None if merge_decision is None else merge_decision.allowed),
+        merge_not_applied=merge_not_applied,
+        auto_blockers=auto_blockers,
+        acceptance_verified=_acceptance_verified_from_auto_blockers(auto_blockers),
+    )
+    merge_blocked = (merge_decision is not None and not merge_decision.allowed and not merge_not_applied) or (
+        approved and not merge_not_applied and not control_status.ready_to_ship
+    )
     if session_id is not None and hasattr(local_store, "update_builder_session"):
         if approved and not merge_blocked:
             local_store.update_builder_session(
@@ -1299,6 +1354,7 @@ async def _run_brief_flow(
                 governance=governance,
                 manifest_id=manifest.manifest_id,
                 auto_blockers=list(auto_blockers),
+                control_status=control_status,
                 prl_draft_path=prl_draft_path,
             ),
             title="[green]Build Review Complete[/green]",
@@ -1306,12 +1362,20 @@ async def _run_brief_flow(
         )
     )
     if merge_decision is not None:
-        if merge_decision.allowed:
+        if merge_decision.allowed and control_status.ready_to_ship:
             console.print(
                 Panel(
                     "All merge precondition checks passed.",
                     title="[green]Merge Validation Passed[/green]",
                     border_style="green",
+                )
+            )
+        elif merge_decision.allowed:
+            console.print(
+                Panel(
+                    f"Merge preconditions passed, but final CES status is not ready to ship: {control_status.summary_outcome}.",
+                    title="[yellow]Merge Preconditions Passed — Governance Not Cleared[/yellow]",
+                    border_style="yellow",
                 )
             )
         else:
