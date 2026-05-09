@@ -10,6 +10,7 @@ This playbook explains when to stay in the builder-first CES flow, when to switc
 | You paused a request and want to resume it | `builder-first` | `ces continue` resumes the saved builder session instead of replaying the whole setup |
 | You want a plain-language summary of what CES knows right now | `builder-first` | `ces explain` and `ces status` are the shortest path to the current request, stage, blockers, and next step |
 | You need brownfield context for the active request before making any legacy call | `builder-first` | `ces explain --view brownfield` keeps the current request and grouped review state visible before you drop into explicit brownfield governance |
+| You need to inspect or persist project-specific verification expectations | `expert workflow` | `ces profile detect`, `ces profile show`, and `ces profile doctor` expose the required/optional/advisory/unavailable check policy before approval |
 | You need explicit governance control over review, triage, approval, or manifest lifecycle | `expert workflow` | `ces review`, `ces triage`, `ces approve`, `ces manifest`, and `ces classify` expose the lower-level governance surfaces directly |
 | You need to make a named legacy-behavior decision | `expert workflow` | `ces brownfield register`, `ces brownfield review OLB-<entry-id> --disposition preserve`, and `ces brownfield promote` are the explicit brownfield governance surfaces after the builder-first loop identifies the behavior |
 | You need an audit or reviewer handoff artifact | `expert workflow` | `ces report builder` exports a concise builder run report from the latest builder session chain |
@@ -43,11 +44,18 @@ Builder-first is the default for most day-to-day operator work because it keeps 
 
 For governed builder-first runs, evidence includes the runtime's `ces:completion`
 claim, the actual workspace delta, runtime safety disclosure, configured sensor
-results, and any scope or verification blockers. `--yes` skips the interactive
-prompt only when that evidence is clean enough for unattended approval. Missing
-configured verification artifacts are blockers. If the selected runtime cannot
-enforce manifest tool allowlists, unattended approval also requires an explicit
-`--accept-runtime-side-effects` waiver.
+results, project-aware verification profile classifications, and any scope or
+verification blockers. Required profile checks fail closed when artifacts are
+missing or failing; optional, advisory, and unavailable checks relax only the
+missing-artifact blocker. If those checks are explicitly run and fail, the
+failure remains real sensor evidence rather than being treated as clean. Profile
+changes in the same run are treated as untrusted governance changes so a runtime
+cannot weaken its own approval policy.
+`--yes` skips the interactive prompt only when that evidence is clean enough for
+unattended approval. Missing configured required verification artifacts are
+blockers. If the selected runtime cannot enforce manifest tool allowlists,
+unattended approval also requires an explicit `--accept-runtime-side-effects`
+waiver.
 `ces explain --view decisioning --governance` and `ces report builder` surface
 the evidence-quality state, runtime side-effect waiver state, tool-allowlist
 boundary, and MCP-grounding support so reviewers do not have to infer those
