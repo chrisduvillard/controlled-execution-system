@@ -61,6 +61,9 @@ class SensorResult(CESBaseModel):
     findings: tuple[SensorFinding, ...] = ()
     skipped: bool = False
     skip_reason: str | None = None
+    configured: bool | None = None
+    required: bool | None = None
+    reason: str | None = None
 
 
 class SensorPackResult(CESBaseModel):

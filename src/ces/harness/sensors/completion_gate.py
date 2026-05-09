@@ -25,6 +25,7 @@ from typing import Iterable
 
 from ces.harness.models.sensor_result import SensorFinding
 from ces.harness.sensors.base import BaseSensor
+from ces.verification.profile import VerificationCheck, VerificationStatus, load_verification_profile
 
 
 def _project_root(context: dict) -> Path | None:
@@ -42,6 +43,40 @@ def _missing_artifact_finding(artifact_name: str, suggestion: str) -> SensorFind
         message=f"Required verification artifact is missing: {artifact_name}",
         suggestion=suggestion,
     )
+
+
+def _profile_requirement(context: dict, check_name: str) -> VerificationCheck | None:
+    if context.get("profile_trusted") is False:
+        return None
+    root = _project_root(context)
+    if root is None:
+        return None
+    profile = load_verification_profile(root)
+    if profile is None:
+        return None
+    return profile.requirement_for(check_name)
+
+
+def _missing_artifact_profile_result(
+    sensor: BaseSensor,
+    context: dict,
+    *,
+    check_name: str,
+    artifact_name: str,
+) -> tuple[bool, float, str] | None:
+    requirement = _profile_requirement(context, check_name)
+    if requirement is None:
+        return None
+    sensor._set_verification_metadata(
+        configured=requirement.configured,
+        required=requirement.required,
+        reason=requirement.reason,
+    )
+    if requirement.status is VerificationStatus.REQUIRED:
+        return None
+    reason = f"{check_name} is {requirement.status.value}: {requirement.reason}"
+    sensor._mark_skipped(reason)
+    return (True, 1.0, f"Missing {artifact_name} ignored because {reason}")
 
 
 # ---------------------------------------------------------------------------
@@ -67,6 +102,14 @@ class TestPassSensor(BaseSensor):
 
         artifact = root / self.ARTIFACT_NAME
         if not artifact.is_file():
+            profile_result = _missing_artifact_profile_result(
+                self,
+                context,
+                check_name="pytest",
+                artifact_name=self.ARTIFACT_NAME,
+            )
+            if profile_result is not None:
+                return profile_result
             self._findings.append(
                 _missing_artifact_finding(
                     self.ARTIFACT_NAME,
@@ -137,6 +180,14 @@ class LintSensor(BaseSensor):
 
         artifact = root / self.ARTIFACT_NAME
         if not artifact.is_file():
+            profile_result = _missing_artifact_profile_result(
+                self,
+                context,
+                check_name="ruff",
+                artifact_name=self.ARTIFACT_NAME,
+            )
+            if profile_result is not None:
+                return profile_result
             self._findings.append(
                 _missing_artifact_finding(
                     self.ARTIFACT_NAME,
@@ -230,6 +281,14 @@ class TypeCheckSensor(BaseSensor):
 
         artifact = root / self.ARTIFACT_NAME
         if not artifact.is_file():
+            profile_result = _missing_artifact_profile_result(
+                self,
+                context,
+                check_name="mypy",
+                artifact_name=self.ARTIFACT_NAME,
+            )
+            if profile_result is not None:
+                return profile_result
             self._findings.append(
                 _missing_artifact_finding(
                     self.ARTIFACT_NAME,
