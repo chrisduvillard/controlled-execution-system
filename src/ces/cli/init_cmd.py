@@ -71,6 +71,16 @@ def derive_project_name(raw_name: str) -> str:
     return normalized
 
 
+def _has_only_profile_bootstrap_state(ces_dir: Path) -> bool:
+    """Return whether ``.ces/`` only contains pre-init verification-profile state."""
+    if not ces_dir.is_dir():
+        return False
+    allowed = {Path("verification-profile.json")}
+    children = {path.relative_to(ces_dir) for path in ces_dir.rglob("*") if path.is_file()}
+    dirs = {path.relative_to(ces_dir) for path in ces_dir.rglob("*") if path.is_dir()}
+    return bool(children) and children <= allowed and not dirs
+
+
 def initialize_local_project(project_root: Path, *, name: str) -> dict[str, Any]:
     """Create ``.ces/`` local project state and return the written config."""
     if not _PROJECT_NAME_RE.match(name):
@@ -80,10 +90,11 @@ def initialize_local_project(project_root: Path, *, name: str) -> dict[str, Any]
         )
 
     ces_dir = project_root / ".ces"
-    if ces_dir.exists():
+    profile_bootstrap_only = _has_only_profile_bootstrap_state(ces_dir)
+    if ces_dir.exists() and not profile_bootstrap_only:
         raise FileExistsError(f"Directory {project_root} is already a CES project.")
 
-    ces_dir.mkdir(mode=0o700)
+    ces_dir.mkdir(mode=0o700, exist_ok=profile_bootstrap_only)
     keys_dir = ces_dir / "keys"
     keys_dir.mkdir(mode=0o700)
     (ces_dir / "artifacts").mkdir()
@@ -213,8 +224,10 @@ async def init_project(
 
     ces_dir = cwd / ".ces"
 
-    # Check if already initialized
-    if ces_dir.exists():
+    # Check if already initialized. A profile-only .ces/ directory can be
+    # created by `ces profile detect --write` before `ces init`; upgrade it in
+    # place so profile discovery does not strand the project without keys.
+    if ces_dir.exists() and not _has_only_profile_bootstrap_state(ces_dir):
         console.print(
             Panel(
                 f"Directory [bold]{cwd}[/bold] is already a CES project.\n"
