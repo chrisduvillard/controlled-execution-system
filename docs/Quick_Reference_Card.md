@@ -67,6 +67,7 @@ Unattended `--yes` is still evidence-gated. CES should block auto-approval when 
 | Stale or incomplete evidence | `ces recover --dry-run` | If safe, use `ces recover --auto-evidence`; add `--auto-complete` only when the recovery plan explicitly supports completion |
 | Work completed outside CES | `ces complete` | Reconcile externally completed builder work with the audit trail |
 | Need independent verification | `ces verify` | Run local verification for the current project before approval; add `--write-contract` only when you want to persist an inferred contract |
+| Need to inspect verification policy | `ces profile doctor` | Confirm which checks are required, optional, advisory, or unavailable before interpreting missing artifacts |
 | Need a handoff artifact | `ces report builder` | Share the exported markdown/JSON, not raw `.ces/state.db` |
 
 ---
@@ -116,7 +117,9 @@ See the [Brownfield Guide](Brownfield_Guide.md) for the full register → review
 
 ## 7. Completion evidence
 
-Builder-created manifests require inspected repo context, verification command evidence, and configured completion-gate artifacts. Missing `pytest-results.json`, `ruff-report.json`, `mypy-report.txt`, or `coverage.json` is missing evidence, not a passing check. `pip-audit-report.json` and SAST JSON artifacts give CES deterministic dependency/security findings when those risks are in scope.
+Builder-created manifests require inspected repo context, verification command evidence, and configured completion-gate artifacts. A persisted `.ces/verification-profile.json` can classify checks as required, optional, advisory, or unavailable for the project. Missing artifacts for required checks such as `pytest-results.json`, `ruff-report.json`, or `mypy-report.txt` are blockers; missing optional/advisory/unavailable checks are relaxed by the missing-artifact policy. Present failing artifacts remain real sensor evidence rather than being treated as clean. Profile changes in the same reviewed run are treated as untrusted governance changes, so an agent cannot downgrade a required check and immediately approve against the weaker policy.
+
+For the full policy format and command workflow, see [Verification Profiles](Verification_Profile.md).
 
 Keep `.ces/` local unless you intentionally export a report. It can contain SQLite state, runtime transcripts, evidence, local keys, and audit records.
 

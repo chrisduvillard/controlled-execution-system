@@ -19,6 +19,7 @@ collect evidence, review the result, and make approval explicit.
 [Getting Started](docs/Getting_Started.md) ·
 [Operator Playbook](docs/Operator_Playbook.md) ·
 [Quick Reference](docs/Quick_Reference_Card.md) ·
+[Verification Profile](docs/Verification_Profile.md) ·
 [Changelog](CHANGELOG.md)
 
 <br>
@@ -159,8 +160,9 @@ Local state is stored in the governed project:
 | `.ces/artifacts/` | Runtime and evidence artifacts |
 | `.ces/exports/` | Builder reports and exported handoff files |
 | `.ces/baseline/` | Day-0 sensor snapshots |
+| `.ces/verification-profile.json` | Optional project-aware verification policy for required, optional, advisory, and unavailable checks |
 
-Keep `.ces/` untracked unless you intentionally share an exported report.
+Keep local `.ces/` state untracked unless you intentionally share an exported report. A repository may intentionally track `.ces/verification-profile.json` when the team wants a shared verification policy.
 
 ---
 
@@ -210,6 +212,7 @@ Use expert workflow commands when you need direct artifact control:
 | `ces status --expert` | Show the full expert status view; use `ces status --expert --watch` for live monitoring. |
 | `ces emergency declare` | Record an expert operations emergency declaration, for example `ces emergency declare "Security incident detected"`. |
 | `ces scan` / `ces baseline` | Inventory the repo and capture day-0 sensor snapshots. |
+| `ces profile detect/show/doctor` | Detect, persist, and inspect project-aware verification requirements. |
 | `ces brownfield ...` | Capture, review, and promote named legacy behavior decisions. |
 | `ces spec ...` | Author, validate, decompose, reconcile, or inspect specs. |
 | `ces setup-ci` | Generate GitHub or GitLab CI gating workflow templates. |
