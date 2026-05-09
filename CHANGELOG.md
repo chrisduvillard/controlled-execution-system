@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.15] - 2026-05-09
+
+### Fixed
+
+- Add `--project-root` to `ces profile show`, `ces profile detect`, and `ces profile doctor` so source-checkout and automation workflows can manage verification profiles for a target repo without changing cwd.
+- Allow `ces init` to safely upgrade a profile-only `.ces/verification-profile.json` bootstrap directory into a fully initialized CES project with keys, state DB, and audit HMAC material.
+
 ## [0.1.14] - 2026-05-09
 
 ### Added
