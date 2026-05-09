@@ -1067,6 +1067,112 @@ class TestRunCommand:
         ]
         assert "Merge Validation Passed" in result.stdout
 
+    def test_build_review_does_not_merge_when_control_status_not_ready(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Allowed merge preconditions do not override red/advisory governance status."""
+        monkeypatch.chdir(tmp_path)
+        ces_dir = tmp_path / ".ces"
+        ces_dir.mkdir()
+        (ces_dir / "config.yaml").write_text("project_id: local-proj\npreferred_runtime: codex\n")
+
+        manifest = MagicMock()
+        manifest.manifest_id = "M-run-advisory"
+        manifest.description = "Build portfolio site"
+        manifest.risk_tier = RiskTier.C
+        manifest.behavior_confidence = BehaviorConfidence.BC1
+        manifest.change_class = ChangeClass.CLASS_1
+        manifest.affected_files = ["portfolio.py"]
+        manifest.accepted_runtime_side_effect_risk = True
+
+        mock_manager = AsyncMock()
+        mock_manager.create_manifest.return_value = manifest
+        saved_states: list[object] = []
+
+        async def _capture_saved_manifest(saved_manifest: Any) -> Any:
+            saved_states.append(saved_manifest.workflow_state)
+            return saved_manifest
+
+        mock_manager.save_manifest.side_effect = _capture_saved_manifest
+        mock_runtime = MagicMock()
+        mock_runtime.runtime_name = "codex"
+        mock_runtime.generate_manifest_assist.return_value = {
+            "description": "Build portfolio site",
+            "risk_tier": RiskTier.C.value,
+            "behavior_confidence": BehaviorConfidence.BC1.value,
+            "change_class": ChangeClass.CLASS_1.value,
+            "affected_files": ["portfolio.py"],
+            "token_budget": 50000,
+            "reasoning": "Guided local draft",
+        }
+        mock_runtime_registry = MagicMock()
+        mock_runtime_registry.resolve_runtime.return_value = mock_runtime
+        mock_runner = AsyncMock()
+        mock_runner.execute_runtime.return_value = {
+            "runtime_name": "codex",
+            "runtime_version": "1.0.0",
+            "reported_model": None,
+            "invocation_ref": "run-123",
+            "exit_code": 0,
+            "stdout": _completion_stdout("M-run-advisory"),
+            "stderr": "",
+            "duration_seconds": 0.5,
+        }
+        mock_store = MagicMock()
+        mock_store.save_builder_brief.return_value = "BB-123"
+        mock_store.save_builder_session.return_value = "BS-123"
+        mock_synth = MagicMock()
+        mock_synth.format_summary_slots = AsyncMock(return_value=MagicMock(summary="Line 1", challenge="Challenge 1"))
+        mock_synth.triage = AsyncMock(
+            return_value=MagicMock(
+                color=SimpleNamespace(value="red"), auto_approve_eligible=False, reason="Needs review"
+            )
+        )
+        mock_merge_ctrl = AsyncMock()
+        mock_merge_ctrl.validate_merge = AsyncMock(return_value=MergeDecision(allowed=True, checks=[], reason=""))
+        mock_workflow = AsyncMock()
+        mock_workflow.submit_for_review = AsyncMock(return_value=WorkflowState.UNDER_REVIEW)
+        mock_workflow.begin_challenge = AsyncMock(return_value=ReviewSubState.CHALLENGER_BRIEF)
+        mock_workflow.begin_triage = AsyncMock(return_value=ReviewSubState.TRIAGE)
+        mock_workflow.reach_decision = AsyncMock(return_value=ReviewSubState.DECISION)
+        mock_workflow.complete_review = AsyncMock(return_value=WorkflowState.APPROVED)
+        mock_workflow.approve_merge = AsyncMock(return_value=WorkflowState.MERGED)
+
+        mock_services = {
+            "settings": MagicMock(default_runtime="codex"),
+            "manifest_manager": mock_manager,
+            "runtime_registry": mock_runtime_registry,
+            "agent_runner": mock_runner,
+            "local_store": mock_store,
+            "evidence_synthesizer": mock_synth,
+            "audit_ledger": AsyncMock(),
+            "sensor_orchestrator": MagicMock(run_all=AsyncMock(return_value=[])),
+            "legacy_behavior_service": AsyncMock(),
+            "merge_controller": mock_merge_ctrl,
+        }
+
+        monkeypatch.setattr("ces.cli.run_cmd.typer.prompt", lambda *args, **kwargs: "")
+        with _patch_services(mock_services), patch("ces.cli.run_cmd.WorkflowEngine", return_value=mock_workflow):
+            app = _get_app()
+            result = runner.invoke(
+                app,
+                [
+                    "build",
+                    "Build portfolio site",
+                    "--yes",
+                    "--governance",
+                    "--accept-runtime-side-effects",
+                    "--acceptance",
+                    "Portfolio site renders",
+                ],
+            )
+
+        assert result.exit_code == 1, f"stdout={result.stdout}"
+        mock_workflow.approve_merge.assert_not_called()
+        assert WorkflowState.MERGED not in saved_states
+        assert "Merge Validation Passed" not in result.stdout
+        assert "Governance: advisory_yellow" in result.stdout
+
     def test_build_review_complete_merge_denial_records_approved_unmerged_session(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
@@ -2581,6 +2687,33 @@ def test_completion_contract_pass_supersedes_legacy_evidence_artifact_warnings()
     independent = VerificationRunResult(passed=True, commands=())
 
     assert _completion_verification_blockers(legacy_result, independent_verification=independent) == []
+
+
+def test_completion_summary_does_not_claim_ready_when_governance_blocked() -> None:
+    from ces.cli._builder_flow import BuilderBriefDraft
+    from ces.cli.run_cmd import _build_completion_summary
+
+    summary = _build_completion_summary(
+        BuilderBriefDraft(
+            request="Build PromptVault",
+            project_mode="greenfield",
+            constraints=[],
+            acceptance_criteria=["CLI delete command works"],
+            must_not_break=[],
+            open_questions={},
+        ),
+        runtime_name="codex",
+        decision="approve",
+        merge_allowed=True,
+        triage_color="red",
+        governance=True,
+        manifest_id="M-pv",
+        auto_blockers=["risk-aware sensor policy found blocking issues"],
+    )
+
+    assert "Outcome: ready to ship" not in summary
+    assert "Outcome: approved, but governance is blocked" in summary
+    assert "Ready to ship: no" in summary
 
 
 def test_completion_summary_includes_actionable_next_command_for_blocked_build() -> None:

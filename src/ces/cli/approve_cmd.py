@@ -40,6 +40,7 @@ from ces.control.models.manifest import TaskManifest
 from ces.control.services.evidence_integrity import compute_reviewed_evidence_hash
 from ces.control.services.workflow_engine import WorkflowEngine
 from ces.execution.providers.bootstrap import resolve_primary_provider
+from ces.harness.models.control_plane_status import ControlPlaneStatus
 from ces.shared.enums import ActorType, GateType, ReviewSubState, WorkflowState
 
 # Color mapping for triage display
@@ -60,6 +61,25 @@ def _required_gate_type_for_risk(risk_tier_value: str) -> GateType:
 
 def _has_unanimous_zero_findings(review_data: dict | None) -> bool:
     return bool(review_data is not None and review_data.get("unanimous_zero_findings"))
+
+
+def _persisted_governance_blocks_merge(evidence_payload: dict | None, *, merge_allowed: bool) -> bool:
+    """Return True when persisted control-plane status is not ready to ship."""
+
+    if not isinstance(evidence_payload, dict):
+        return False
+    control_status = evidence_payload.get("control_plane_status")
+    if isinstance(control_status, dict):
+        status_data = dict(control_status)
+        status_data["approval_decision"] = "approve"
+        status_data["merge_allowed"] = merge_allowed
+        try:
+            status = ControlPlaneStatus.model_validate(status_data)
+        except ValueError:
+            return True
+        return not status.ready_to_ship
+    sensor_policy = evidence_payload.get("sensor_policy")
+    return isinstance(sensor_policy, dict) and bool(sensor_policy.get("blocking"))
 
 
 def _coerce_workflow_state_value(value: object) -> str:
@@ -439,6 +459,7 @@ async def approve_evidence(
 
             # Merge validation and workflow transitions
             merge_decision = None
+            governance_blocks_merge = False
             if approved:
                 review_sub_state_value = (
                     ReviewSubState.DECISION.value if review_data is not None else ReviewSubState.PENDING_REVIEW.value
@@ -494,7 +515,11 @@ async def approve_evidence(
                     workflow_state=workflow_state_for_merge,
                 )
 
-                if merge_decision.allowed:
+                governance_blocks_merge = _persisted_governance_blocks_merge(
+                    evidence_packet_dict,
+                    merge_allowed=merge_decision.allowed,
+                )
+                if merge_decision.allowed and not governance_blocks_merge:
                     # Transition approved -> merged
                     merged_state = await engine.approve_merge(actor=actor, actor_type=ActorType.HUMAN)
                     manifest = _with_workflow_state(manifest, merged_state)
@@ -523,8 +548,8 @@ async def approve_evidence(
                     data["high_count"] = review_data["high_count"]
                     data["unanimous_zero_findings"] = unanimous_zero_findings
                 if merge_decision is not None:
-                    data["merge_allowed"] = merge_decision.allowed
-                    data["merge_reason"] = merge_decision.reason
+                    data["merge_allowed"] = merge_decision.allowed and not governance_blocks_merge
+                    data["merge_reason"] = "governance_blocked" if governance_blocks_merge else merge_decision.reason
                 if builder_run is not None:
                     data["builder_run"] = serialize_builder_run_report(builder_run)
                 typer.echo(json.dumps(data, indent=2))
@@ -543,12 +568,20 @@ async def approve_evidence(
                 )
                 # Show merge validation result
                 if merge_decision is not None:
-                    if merge_decision.allowed:
+                    if merge_decision.allowed and not governance_blocks_merge:
                         console.print(
                             Panel(
                                 "All merge precondition checks passed.",
                                 title="[green]Merge Validation Passed[/green]",
                                 border_style="green",
+                            )
+                        )
+                    elif merge_decision.allowed and governance_blocks_merge:
+                        console.print(
+                            Panel(
+                                "Approval was recorded, but persisted evidence contains blocking governance findings.",
+                                title="[red]Governance Blocked[/red]",
+                                border_style="red",
                             )
                         )
                     else:
