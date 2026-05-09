@@ -59,6 +59,57 @@ class TestCesInit:
         result = runner.invoke(app, ["init", "myproject"])
         assert result.exit_code != 0
 
+    def test_init_upgrades_profile_only_ces_directory(self, tmp_path: Path, monkeypatch: object) -> None:
+        """`ces profile detect --write` before init must not strand projects without keys."""
+        monkeypatch.chdir(tmp_path)  # type: ignore[attr-defined]
+        app = _get_app()
+        detect = runner.invoke(app, ["profile", "detect", "--write"])
+        assert detect.exit_code == 0, detect.stdout
+        profile_path = tmp_path / ".ces" / "verification-profile.json"
+        assert profile_path.is_file()
+
+        result = runner.invoke(app, ["init", "myproject"])
+
+        assert result.exit_code == 0, result.stdout
+        assert profile_path.is_file()
+        assert (tmp_path / ".ces" / "config.yaml").is_file()
+        assert (tmp_path / ".ces" / "keys" / "ed25519_private.key").is_file()
+        assert (tmp_path / ".ces" / "state.db").is_file()
+
+    def test_init_project_root_upgrades_profile_only_target_not_cwd(self, tmp_path: Path, monkeypatch: object) -> None:
+        """Source-checkout invocations can initialize a target after profile detection."""
+        source_checkout = tmp_path / "ces-source"
+        target_repo = tmp_path / "target-repo"
+        source_checkout.mkdir()
+        profile_path = target_repo / ".ces" / "verification-profile.json"
+        profile_path.parent.mkdir(parents=True)
+        profile_path.write_text('{"version": 1, "checks": {}}', encoding="utf-8")
+        monkeypatch.chdir(source_checkout)  # type: ignore[attr-defined]
+        app = _get_app()
+
+        result = runner.invoke(app, ["init", "--project-root", str(target_repo), "myproject", "--yes"])
+
+        assert result.exit_code == 0, result.stdout
+        assert not (source_checkout / ".ces").exists()
+        assert profile_path.is_file()
+        assert (target_repo / ".ces" / "config.yaml").is_file()
+        assert (target_repo / ".ces" / "keys" / "ed25519_private.key").is_file()
+
+    def test_init_refuses_profile_directory_with_extra_state(self, tmp_path: Path, monkeypatch: object) -> None:
+        """Only a profile-only .ces/ directory is safe to upgrade in place."""
+        monkeypatch.chdir(tmp_path)  # type: ignore[attr-defined]
+        ces_dir = tmp_path / ".ces"
+        ces_dir.mkdir()
+        (ces_dir / "verification-profile.json").write_text('{"version": 1, "checks": {}}', encoding="utf-8")
+        (ces_dir / "custom.json").write_text("{}", encoding="utf-8")
+        app = _get_app()
+
+        result = runner.invoke(app, ["init", "myproject"])
+
+        assert result.exit_code != 0
+        assert not (tmp_path / ".ces" / "keys").exists()
+        assert not (tmp_path / ".ces" / "config.yaml").exists()
+
     def test_displays_success_message(self, tmp_path: Path, monkeypatch: object) -> None:
         """ces init displays a success message mentioning the project name."""
         monkeypatch.chdir(tmp_path)  # type: ignore[attr-defined]

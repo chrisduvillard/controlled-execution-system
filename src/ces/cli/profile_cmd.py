@@ -17,8 +17,16 @@ profile_app = typer.Typer(
 )
 
 
-def _project_root() -> Path:
-    return Path.cwd().resolve()
+def _project_root(project_root: Path | None = None) -> Path:
+    return (project_root or Path.cwd()).resolve()
+
+
+def _project_root_option() -> Path | None:
+    return typer.Option(
+        None,
+        "--project-root",
+        help="Repo/CES project root to inspect; defaults to the current working directory.",
+    )
 
 
 def _render_profile(profile: VerificationProfile, *, path: Path, project_root: Path, written: bool = True) -> None:
@@ -60,16 +68,17 @@ def profile_root(ctx: typer.Context) -> None:
 
 
 @profile_app.command(name="show")
-def show_profile() -> None:
+def show_profile(project_root: Path | None = _project_root_option()) -> None:
     """Show the existing ``.ces/verification-profile.json``."""
 
-    project_root = _project_root()
+    project_root = _project_root(project_root)
     profile, path = _load_existing_or_exit(project_root)
     _render_profile(profile, path=path, project_root=project_root)
 
 
 @profile_app.command(name="detect")
 def detect_profile(
+    project_root: Path | None = _project_root_option(),
     write: bool = typer.Option(
         False,
         "--write",
@@ -78,7 +87,7 @@ def detect_profile(
 ) -> None:
     """Detect verification requirements from the current project."""
 
-    project_root = _project_root()
+    project_root = _project_root(project_root)
     profile = detect_verification_profile(project_root)
     path = profile_path(project_root)
     if write:
@@ -87,10 +96,10 @@ def detect_profile(
 
 
 @profile_app.command(name="doctor")
-def doctor_profile() -> None:
+def doctor_profile(project_root: Path | None = _project_root_option()) -> None:
     """Explain whether a verification profile exists and how checks are classified."""
 
-    project_root = _project_root()
+    project_root = _project_root(project_root)
     profile = load_verification_profile(project_root)
     if profile is None:
         console.print(f"No verification profile found at {PROFILE_RELATIVE_PATH}")
