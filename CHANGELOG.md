@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.14] - 2026-05-09
+
+### Added
+
+- Add project-aware verification profiles at `.ces/verification-profile.json` so CES can distinguish required, optional, advisory, and unavailable checks per project.
+- Add `ces profile detect`, `ces profile show`, and `ces profile doctor` for inspecting and persisting verification policy.
+- Add the CES repository’s own verification profile requiring pytest, ruff, and mypy while keeping coverage advisory.
+- Add developer and operator documentation for verification profile usage, missing-artifact behavior, and same-run trust semantics.
+
+### Security / governance hardening
+
+- Treat same-run changes to `.ces/verification-profile.json` as untrusted governance changes so runtimes cannot downgrade required checks and immediately approve against weaker policy.
+- Normalize profile paths during governance checks to prevent bypasses through alternate path spellings.
+- Keep pytest detection conservative: a `tests/` directory alone no longer makes pytest required without explicit configuration or dependency evidence.
+
+### Fixed
+
+- Enforce explicit control-plane readiness before approval/merge-side effects instead of relying on user-facing green status alone.
+
 ## [0.1.13] - 2026-05-07
 
 ### Security / launch hardening
