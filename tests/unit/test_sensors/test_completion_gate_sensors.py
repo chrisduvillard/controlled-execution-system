@@ -18,10 +18,17 @@ from ces.harness.sensors.completion_gate import (
     TestPassSensor,
     TypeCheckSensor,
 )
+from ces.harness.sensors.test_coverage import CoverageSensor
 
 
 def _write(path: Path, content: str) -> None:
     path.write_text(content, encoding="utf-8")
+
+
+def _profile(root: Path, checks: dict[str, dict[str, object]]) -> None:
+    profile_path = root / ".ces" / "verification-profile.json"
+    profile_path.parent.mkdir()
+    profile_path.write_text(json.dumps({"version": 1, "checks": checks}), encoding="utf-8")
 
 
 # ---------------------------------------------------------------------------
@@ -48,6 +55,33 @@ class TestTestPassSensor:
         assert "No pytest results" in details
         assert passed is False
         assert sensor._findings[0].category == "missing_artifact"
+
+    @pytest.mark.asyncio
+    async def test_missing_artifact_is_non_blocking_when_profile_marks_optional(self, tmp_path: Path) -> None:
+        _profile(
+            tmp_path,
+            {"pytest": {"status": "optional", "configured": True, "reason": "pytest is available but optional"}},
+        )
+        sensor = TestPassSensor()
+        result = await sensor.run({"project_root": str(tmp_path)})
+        assert result.passed is True
+        assert result.skipped is True
+        assert result.required is False
+        assert result.configured is True
+        assert result.reason == "pytest is available but optional"
+
+    @pytest.mark.asyncio
+    async def test_profile_is_ignored_when_context_marks_it_untrusted(self, tmp_path: Path) -> None:
+        _profile(
+            tmp_path,
+            {"pytest": {"status": "optional", "configured": True, "reason": "pytest is available but optional"}},
+        )
+        sensor = TestPassSensor()
+        result = await sensor.run({"project_root": str(tmp_path), "profile_trusted": False})
+        assert result.passed is False
+        assert result.skipped is False
+        assert result.required is None
+        assert result.findings[0].category == "missing_artifact"
 
     @pytest.mark.asyncio
     async def test_all_passed_yields_pass(self, tmp_path: Path) -> None:
@@ -116,6 +150,17 @@ class TestLintSensor:
         assert sensor._skipped_flag is False
         assert passed is False
         assert sensor._findings[0].category == "missing_artifact"
+
+    @pytest.mark.asyncio
+    async def test_missing_artifact_still_fails_when_profile_marks_required(self, tmp_path: Path) -> None:
+        _profile(tmp_path, {"ruff": {"status": "required", "configured": True, "reason": "ruff configured"}})
+        sensor = LintSensor()
+        result = await sensor.run({"project_root": str(tmp_path)})
+        assert result.passed is False
+        assert result.required is True
+        assert result.configured is True
+        assert result.reason == "ruff configured"
+        assert result.findings[0].category == "missing_artifact"
 
     @pytest.mark.asyncio
     async def test_empty_violations_passes(self, tmp_path: Path) -> None:
@@ -191,6 +236,17 @@ class TestTypeCheckSensor:
         assert sensor._findings[0].category == "missing_artifact"
 
     @pytest.mark.asyncio
+    async def test_missing_artifact_is_non_blocking_when_profile_marks_unavailable(self, tmp_path: Path) -> None:
+        _profile(tmp_path, {"mypy": {"status": "unavailable", "configured": False, "reason": "mypy not installed"}})
+        sensor = TypeCheckSensor()
+        result = await sensor.run({"project_root": str(tmp_path)})
+        assert result.passed is True
+        assert result.skipped is True
+        assert result.required is False
+        assert result.configured is False
+        assert result.reason == "mypy not installed"
+
+    @pytest.mark.asyncio
     async def test_zero_errors_passes(self, tmp_path: Path) -> None:
         _write(tmp_path / "mypy-report.txt", "Success: no issues found in 250 source files\n")
         sensor = TypeCheckSensor()
@@ -214,3 +270,16 @@ class TestTypeCheckSensor:
         assert "2 errors" in details
         assert len(sensor._findings) == 2
         assert any("src/app.py:42" in f.location for f in sensor._findings)
+
+
+class TestCoverageProfileAwareness:
+    @pytest.mark.asyncio
+    async def test_missing_coverage_is_non_blocking_when_profile_marks_advisory(self, tmp_path: Path) -> None:
+        _profile(tmp_path, {"coverage": {"status": "advisory", "configured": True, "reason": "coverage is advisory"}})
+        sensor = CoverageSensor()
+        result = await sensor.run({"project_root": str(tmp_path)})
+        assert result.passed is True
+        assert result.skipped is True
+        assert result.required is False
+        assert result.configured is True
+        assert result.reason == "coverage is advisory"

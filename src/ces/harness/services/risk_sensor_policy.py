@@ -39,9 +39,12 @@ def evaluate_sensor_policy(risk_tier: RiskTier | str, sensor_results: list[Senso
 
 
 def _is_blocking(risk: str, result: SensorResult, finding: SensorFinding) -> bool:
-    if result.sensor_id == "test_coverage" and finding.category == "missing_artifact":
-        # Coverage is advisory because coverage generation is not a universal
-        # acceptance criterion for greenfield builds.
+    if finding.category == "missing_artifact" and result.required is False:
+        return False
+    if result.sensor_id == "test_coverage" and finding.category == "missing_artifact" and result.required is None:
+        # Preserve legacy builder policy for results emitted before profiles
+        # existed: absent coverage.json is advisory unless the profile marks it
+        # required.
         return False
     if result.sensor_pack not in _BLOCKING_PACKS and result.sensor_id not in {"perf_check", "resilience_check"}:
         return not result.passed and _SEVERITY_RANK[finding.severity] >= _SEVERITY_RANK["high"]

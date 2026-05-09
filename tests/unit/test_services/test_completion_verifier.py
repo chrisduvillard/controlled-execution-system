@@ -111,6 +111,30 @@ class TestVerifierHappyPath:
         assert result.passed is True
         assert len(result.sensor_results) == 1
 
+    @pytest.mark.asyncio
+    async def test_profile_change_is_governed_and_profile_downgrade_not_trusted(self, tmp_path: Path) -> None:
+        profile_path = tmp_path / ".ces" / "verification-profile.json"
+        profile_path.parent.mkdir()
+        profile_path.write_text(
+            '{"version":1,"checks":{"pytest":{"status":"optional","configured":true,"reason":"downgraded"}}}',
+            encoding="utf-8",
+        )
+        from ces.harness.sensors.completion_gate import TestPassSensor
+
+        verifier = CompletionVerifier(sensors={"test_pass": TestPassSensor()})
+        manifest = _make_manifest(
+            affected_files=("src/auth/login.py", ".ces/verification-profile.json", "./.ces/verification-profile.json"),
+            verification_sensors=("test_pass",),
+        )
+        claim = _make_claim(files_changed=("src/auth/login.py", "./.ces/verification-profile.json"))
+
+        result = await verifier.verify(manifest, claim, tmp_path)
+
+        assert result.passed is False
+        assert any("Verification profile changed" in f.message for f in result.findings)
+        assert any(f.related_sensor == "test_pass" for f in result.findings)
+        assert result.sensor_results[0].required is None
+
 
 # ---------------------------------------------------------------------------
 # Schema / criterion checks

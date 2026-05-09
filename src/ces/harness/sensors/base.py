@@ -41,6 +41,9 @@ class BaseSensor(ABC):
         self._findings: list[SensorFinding] = []
         self._skipped_flag: bool = False
         self._skip_reason: str | None = None
+        self._configured: bool | None = None
+        self._required: bool | None = None
+        self._reason: str | None = None
 
     @property
     def sensor_id(self) -> str:
@@ -79,6 +82,12 @@ class BaseSensor(ABC):
         self._skipped_flag = True
         self._skip_reason = reason
 
+    def _set_verification_metadata(self, *, configured: bool, required: bool, reason: str) -> None:
+        """Attach verification-profile metadata to this sensor run."""
+        self._configured = configured
+        self._required = required
+        self._reason = reason
+
     async def run(self, context: dict) -> SensorResult:
         """Execute the sensor check and return a SensorResult.
 
@@ -104,9 +113,15 @@ class BaseSensor(ABC):
             findings=tuple(self._findings),
             skipped=self._skipped_flag,
             skip_reason=self._skip_reason,
+            configured=self._configured,
+            required=self._required,
+            reason=self._reason,
         )
         # Reset per-run state for next invocation
         self._findings = []
         self._skipped_flag = False
         self._skip_reason = None
+        self._configured = None
+        self._required = None
+        self._reason = None
         return result

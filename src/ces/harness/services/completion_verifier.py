@@ -17,6 +17,7 @@ This service is deterministic and contains no LLM calls (LLM-05).
 
 from __future__ import annotations
 
+import posixpath
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -31,6 +32,7 @@ from ces.harness.models.completion_claim import (
 from ces.harness.models.sensor_result import SensorResult
 from ces.harness.sensors.base import BaseSensor
 from ces.harness.services.change_impact import detects_docs_impact
+from ces.verification.profile import PROFILE_RELATIVE_PATH
 
 if TYPE_CHECKING:
     from ces.control.models.manifest import TaskManifest
@@ -76,9 +78,10 @@ class CompletionVerifier:
         findings.extend(_check_scope(manifest, claim))
         findings.extend(_check_dependency_evidence(claim))
         findings.extend(_check_required_evidence(manifest, claim, project_root))
+        findings.extend(_check_profile_governance(claim))
         findings.extend(_check_open_questions(claim))
 
-        sensor_results = await self._run_sensors(manifest, project_root, findings)
+        sensor_results = await self._run_sensors(manifest, claim, project_root, findings)
 
         passed = len(findings) == 0
         return VerificationResult(
@@ -91,12 +94,13 @@ class CompletionVerifier:
     async def _run_sensors(
         self,
         manifest: TaskManifest,
+        claim: CompletionClaim,
         project_root: Path,
         findings: list[VerificationFinding],
     ) -> list[SensorResult]:
         """Execute every sensor listed in the manifest and emit findings on failure."""
         results: list[SensorResult] = []
-        context = {"project_root": str(project_root)}
+        context = {"project_root": str(project_root), "profile_trusted": not _profile_changed(claim)}
 
         for sensor_id in manifest.verification_sensors:
             sensor = self._sensors.get(sensor_id)
@@ -401,6 +405,34 @@ def _has_impacted_flow_evidence(claim: CompletionClaim) -> bool:
 def _is_docs_path(path: str) -> bool:
     normalized = path.replace("\\", "/")
     return normalized == "README.md" or normalized.startswith(("docs/", "CHANGELOG"))
+
+
+def _normalize_claim_path(path: str) -> str:
+    normalized = path.replace("\\", "/").strip()
+    while normalized.startswith("/"):
+        normalized = normalized[1:]
+    return posixpath.normpath(normalized)
+
+
+def _profile_changed(claim: CompletionClaim) -> bool:
+    profile_file = str(PROFILE_RELATIVE_PATH).replace("\\", "/")
+    return any(_normalize_claim_path(path) == profile_file for path in claim.files_changed)
+
+
+def _check_profile_governance(claim: CompletionClaim) -> list[VerificationFinding]:
+    if not _profile_changed(claim):
+        return []
+    return [
+        VerificationFinding(
+            kind=VerificationFindingKind.EVIDENCE_MISMATCH,
+            severity="high",
+            message="Verification profile changed in this completion claim; current-run profile downgrades are not trusted.",
+            hint=(
+                "Treat .ces/verification-profile.json as governed policy: review the profile change explicitly and "
+                "provide normal verification artifacts for this run. Future runs may use the approved profile."
+            ),
+        )
+    ]
 
 
 def _check_open_questions(claim: CompletionClaim) -> list[VerificationFinding]:

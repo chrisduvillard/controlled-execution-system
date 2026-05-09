@@ -13,6 +13,7 @@ from pathlib import Path
 
 from ces.harness.models.sensor_result import SensorFinding
 from ces.harness.sensors.base import BaseSensor
+from ces.verification.profile import VerificationStatus, load_verification_profile
 
 
 class CoverageSensor(BaseSensor):
@@ -44,6 +45,19 @@ class CoverageSensor(BaseSensor):
             return self._parse_coverage_json(coverage_json)
 
         # No coverage data found
+        profile = None if context.get("profile_trusted") is False else load_verification_profile(root)
+        if profile is not None:
+            requirement = profile.requirement_for("coverage")
+            self._set_verification_metadata(
+                configured=requirement.configured,
+                required=requirement.required,
+                reason=requirement.reason,
+            )
+            if requirement.status is not VerificationStatus.REQUIRED:
+                reason = f"coverage is {requirement.status.value}: {requirement.reason}"
+                self._mark_skipped(reason)
+                return (True, 1.0, f"Missing coverage.json ignored because {reason}")
+
         self._findings.append(
             SensorFinding(
                 category="missing_artifact",

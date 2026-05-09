@@ -74,3 +74,43 @@ def test_missing_coverage_artifact_is_advisory_for_builder_policy() -> None:
     assert decision.blocking is False
     assert decision.blocking_findings == ()
     assert len(decision.advisory_findings) == 1
+
+
+def test_missing_artifact_blocks_only_when_profile_marks_required() -> None:
+    finding = SensorFinding(
+        category="missing_artifact",
+        severity="high",
+        location="ruff-report.json",
+        message="Required verification artifact is missing: ruff-report.json",
+        suggestion="Run ruff",
+    )
+    optional = SensorResult(
+        sensor_id="lint",
+        sensor_pack="completion_gate",
+        passed=False,
+        score=0.0,
+        details="missing",
+        findings=(finding,),
+        timestamp=datetime.now(timezone.utc),
+        configured=True,
+        required=False,
+        reason="ruff optional",
+    )
+    required = SensorResult(
+        sensor_id="lint",
+        sensor_pack="completion_gate",
+        passed=False,
+        score=0.0,
+        details="missing",
+        findings=(finding,),
+        timestamp=datetime.now(timezone.utc),
+        configured=True,
+        required=True,
+        reason="ruff required",
+    )
+
+    optional_decision = evaluate_sensor_policy(RiskTier.B, [optional])
+    required_decision = evaluate_sensor_policy(RiskTier.B, [required])
+
+    assert optional_decision.blocking is False
+    assert required_decision.blocking is True
