@@ -446,6 +446,20 @@ class ManifestManager:
             "parent_spec_id": content.get("parent_spec_id"),
             "parent_story_id": content.get("parent_story_id"),
             "acceptance_criteria": content.get("acceptance_criteria", ()),
+            # Completion-gate, runtime-safety, and review-routing controls must
+            # survive repository round-trips. Dropping these fields silently
+            # resets safety gates to permissive defaults after reload.
+            "verification_sensors": content.get("verification_sensors", ()),
+            "requires_exploration_evidence": content.get("requires_exploration_evidence", False),
+            "requires_verification_commands": content.get("requires_verification_commands", False),
+            "requires_impacted_flow_evidence": content.get("requires_impacted_flow_evidence", False),
+            "requires_docs_evidence_for_public_changes": content.get(
+                "requires_docs_evidence_for_public_changes",
+                False,
+            ),
+            "accepted_runtime_side_effect_risk": content.get("accepted_runtime_side_effect_risk", False),
+            "review_in_clean_context": content.get("review_in_clean_context", True),
+            "mcp_servers": content.get("mcp_servers", ()),
         }
         return TaskManifest.model_validate(data, strict=False)
 
