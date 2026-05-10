@@ -61,6 +61,57 @@ jobs:
         run: uv build
       - name: Check distribution metadata
         run: uvx twine check dist/*
+      - name: Smoke built wheel public CLI contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          wheel_path="$(python - <<'PY'
+          from pathlib import Path
+
+          wheels = sorted(Path("dist").glob("controlled_execution_system-*.whl"))
+          if len(wheels) != 1:
+              raise SystemExit(f"Expected exactly one wheel, found {len(wheels)}: {wheels}")
+          print(wheels[0].resolve())
+          PY
+          )"
+          smoke_venv="$(mktemp -d)/venv"
+          uv venv --python 3.13 "$smoke_venv"
+          uv pip install --python "$smoke_venv/bin/python" "$wheel_path"
+          "$smoke_venv/bin/ces" --help
+          "$smoke_venv/bin/ces" --version
+
+          smoke_dir="$(mktemp -d)"
+          fake_runtime_dir="$(mktemp -d)"
+          cat > "$fake_runtime_dir/codex" <<'EOF'
+          #!/usr/bin/env bash
+          if [[ "${1:-}" == "--version" ]]; then echo "codex-cli ci-smoke"; exit 0; fi
+          echo "ci smoke runtime stub: execution is not expected" >&2
+          exit 2
+          EOF
+          chmod +x "$fake_runtime_dir/codex"
+          PATH="$fake_runtime_dir:$PATH" "$smoke_venv/bin/ces" init --project-root "$smoke_dir" --yes
+          PATH="$fake_runtime_dir:$PATH" "$smoke_venv/bin/ces" --json doctor --project-root "$smoke_dir" > "$smoke_dir/doctor.json"
+          python - "$smoke_dir/doctor.json" <<'PY'
+          import json
+          import sys
+
+          payload = json.loads(open(sys.argv[1], encoding="utf-8").read())
+          assert payload["runtime_available"] is True
+          assert payload["runtime_safety"]["codex"]["tool_allowlist_enforced"] is False
+          PY
+
+          if "$smoke_venv/bin/ces" --json audit --limit nope > "$smoke_dir/error.stdout" 2> "$smoke_dir/error.stderr"; then
+              echo "Expected handled JSON error smoke to fail" >&2
+              exit 1
+          fi
+          python - "$smoke_dir/error.stderr" <<'PY'
+          import json
+          import sys
+
+          payload = json.loads(open(sys.argv[1], encoding="utf-8").read())
+          assert payload["error"]["type"] == "user_error"
+          assert "--limit" in payload["error"]["message"]
+          PY
 
   latest-dependency-bounds:
     runs-on: ubuntu-latest

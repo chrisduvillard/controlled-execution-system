@@ -85,8 +85,9 @@ def test_publish_workflow_keeps_strict_tests_and_cli_smoke() -> None:
     workflow = (ROOT / ".github" / "workflows" / "publish.yml").read_text(encoding="utf-8")
 
     assert "uv run pytest tests/unit/ -q -W error" in workflow
-    assert "uv tool run --from" in workflow
-    assert "ces --help" in workflow
+    assert "uv pip install --python" in workflow
+    assert '"$smoke_venv/bin/ces" --help' in workflow
+    assert '"$smoke_venv/bin/ces" --json audit --limit nope' in workflow
 
 
 def test_github_community_files_exist_for_public_repo() -> None:
