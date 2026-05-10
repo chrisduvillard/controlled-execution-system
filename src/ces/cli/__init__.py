@@ -2,6 +2,12 @@
 
 from __future__ import annotations
 
+import json
+import sys
+from collections.abc import Sequence
+from typing import Any
+
+import click
 import typer
 
 from ces import __version__
@@ -39,6 +45,70 @@ from ces.cli import (
 )
 from ces.cli._output import set_json_mode
 
+
+def _root_json_requested(argv: Sequence[str]) -> bool:
+    """Return True when the root --json flag appears before the command token."""
+    for arg in argv:
+        if arg == "--json":
+            return True
+        if arg == "--":
+            return False
+        if not arg.startswith("-"):
+            return False
+    return False
+
+
+class JsonAwareTyperGroup(typer.core.TyperGroup):
+    """Typer group that preserves machine-readable usage errors under root --json."""
+
+    def main(  # type: ignore[override]
+        self,
+        args: Sequence[str] | None = None,
+        prog_name: str | None = None,
+        complete_var: str | None = None,
+        standalone_mode: bool = True,
+        windows_expand_args: bool = True,
+        **extra: Any,
+    ) -> Any:
+        argv = list(sys.argv[1:] if args is None else args)
+        json_requested = _root_json_requested(argv)
+        try:
+            result = super().main(
+                args=argv,
+                prog_name=prog_name,
+                complete_var=complete_var,
+                standalone_mode=False,
+                windows_expand_args=windows_expand_args,
+                **extra,
+            )
+        except click.ClickException as exc:
+            if not standalone_mode:
+                raise
+            if json_requested:
+                set_json_mode(True)
+                payload = {
+                    "error": {
+                        "type": "usage_error",
+                        "title": "Usage Error",
+                        "message": exc.format_message(),
+                        "exit_code": exc.exit_code,
+                    }
+                }
+                click.echo(json.dumps(payload), err=True)
+            else:
+                exc.show()
+            if standalone_mode:
+                sys.exit(exc.exit_code)
+            raise click.exceptions.Exit(exc.exit_code) from exc
+        except click.exceptions.Exit:
+            raise
+        if standalone_mode and isinstance(result, int):
+            sys.exit(result)
+        if standalone_mode:
+            sys.exit(0)
+        return result
+
+
 _ROOT_HELP = """Builder-first governed AI delivery for local repos.
 
 Start Here:
@@ -53,6 +123,7 @@ Advanced Governance:
 
 app = typer.Typer(
     name="ces",
+    cls=JsonAwareTyperGroup,
     help=_ROOT_HELP,
     rich_markup_mode="rich",
 )

@@ -29,7 +29,7 @@ from pathlib import Path
 import typer
 from rich.panel import Panel
 
-from ces.cli._output import console
+from ces.cli._output import console, is_json_mode
 from ces.cli.init_cmd import derive_project_name, initialize_local_project
 from ces.cli.ownership import parse_codeowners
 
@@ -211,19 +211,25 @@ def scan(
     modules, generated = _walk_repo(root)
     codeowners = _find_codeowners(root)
 
+    out_path = ces_dir / "brownfield" / "scan.json"
     report = {
         "root": str(root),
         "scanned_at": datetime.now(timezone.utc).isoformat(),
         "modules": modules,
         "generated_files": generated,
         "codeowners": codeowners,
+        "report_path": None if dry_run else str(out_path),
+        "dry_run": dry_run,
     }
 
-    out_path = ces_dir / "brownfield" / "scan.json"
     if not dry_run:
         out_dir = out_path.parent
         out_dir.mkdir(parents=True, exist_ok=True)
         out_path.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
+
+    if is_json_mode():
+        typer.echo(json.dumps(report, indent=2))
+        return
 
     report_line = f"  report:          {out_path}" if not dry_run else "  report:          dry run only (not written)"
     console.print(

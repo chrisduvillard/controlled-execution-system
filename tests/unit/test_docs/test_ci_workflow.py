@@ -47,6 +47,12 @@ def test_ci_smokes_installed_wheel_public_contract() -> None:
     assert '"$smoke_venv/bin/ces" --help' in workflow_text
     assert '"$smoke_venv/bin/ces" --version' in workflow_text
     assert 'ces" --json doctor --project-root "$smoke_dir"' in workflow_text
+    assert 'ces" --json scan --root "$smoke_dir"' in workflow_text
+    assert 'scan_payload["modules"]' in workflow_text
+    assert '"$smoke_venv/bin/ces" baseline' in workflow_text
+    assert '"$smoke_venv/bin/ces" setup-ci --provider github' in workflow_text
+    assert 'ces" --json scan --project-root "$smoke_dir"' in workflow_text
+    assert 'payload["error"]["type"] == "usage_error"' in workflow_text
     assert 'ces" --json audit --limit nope' in workflow_text
     assert 'payload["error"]["type"] == "user_error"' in workflow_text
 
@@ -82,6 +88,12 @@ def test_publish_workflow_validates_tag_version_and_runs_real_installed_init_smo
     assert "test -f .ces/config.yaml" in workflow_text
     assert 'ces" doctor --security' in workflow_text
     assert 'ces" --json doctor --project-root "$smoke_dir"' in workflow_text
+    assert 'ces" --json scan --root "$smoke_dir"' in workflow_text
+    assert 'scan_payload["modules"]' in workflow_text
+    assert '"$smoke_venv/bin/ces" baseline' in workflow_text
+    assert '"$smoke_venv/bin/ces" setup-ci --provider github' in workflow_text
+    assert 'ces" --json scan --project-root "$smoke_dir"' in workflow_text
+    assert 'payload["error"]["type"] == "usage_error"' in workflow_text
     assert 'ces" --json audit --limit nope' in workflow_text
     assert 'payload["error"]["type"] == "user_error"' in workflow_text
     assert "codex-cli publish-smoke" in workflow_text
