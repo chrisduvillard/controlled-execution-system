@@ -67,18 +67,42 @@ def test_sdist_excludes_internal_workspace_artifacts(tmp_path: Path) -> None:
     with tarfile.open(sdist_path, "r:gz") as archive:
         names = archive.getnames()
 
-    blocked_fragments = (
-        "/.planning/",
-        "/.tmp/",
-        "/.uv-cache/",
-        "/.pytest_cache/",
-        "/.ruff_cache/",
-        "/.mypy_cache/",
-        "/.venv/",
-        "/.coverage",
-    )
-    leaked = [name for name in names if any(fragment in name for fragment in blocked_fragments)]
-    assert leaked == []
+        blocked_fragments = (
+            "/.planning/",
+            "/.tmp/",
+            "/.uv-cache/",
+            "/.pytest_cache/",
+            "/.ruff_cache/",
+            "/.mypy_cache/",
+            "/.venv/",
+            "/.coverage",
+            "/.ces/",
+            "/dogfood-output/",
+            "/runtime-transcripts/",
+            "/state.db",
+            "/keys/",
+            "/__pycache__/",
+            ".pyc",
+            "env.sh",
+        )
+        leaked = [name for name in names if any(fragment in name for fragment in blocked_fragments)]
+        assert leaked == []
+
+        local_path_markers = ("/home/", "/Users/")
+        text_members = [
+            member
+            for member in archive.getmembers()
+            if member.isfile() and member.size <= 1_000_000 and not member.name.endswith((".png", ".gif", ".mp4"))
+        ]
+        leaked_local_paths: list[str] = []
+        for member in text_members:
+            extracted = archive.extractfile(member)
+            if extracted is None:
+                continue
+            text = extracted.read().decode("utf-8", errors="ignore")
+            if any(marker in text for marker in local_path_markers):
+                leaked_local_paths.append(member.name)
+        assert leaked_local_paths == []
 
 
 def test_built_wheel_exposes_working_plain_cli(tmp_path: Path) -> None:
