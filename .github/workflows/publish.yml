@@ -80,9 +80,12 @@ jobs:
           print(wheels[0].resolve())
           PY
           )"
-          uv tool run --from "$wheel_path" ces --help
-          uv tool run --from "$wheel_path" ces --version
-          uv tool run --from "$wheel_path" ces init --help
+          smoke_venv="$(mktemp -d)/venv"
+          uv venv --python 3.13 "$smoke_venv"
+          uv pip install --python "$smoke_venv/bin/python" "$wheel_path"
+          "$smoke_venv/bin/ces" --help
+          "$smoke_venv/bin/ces" --version
+          "$smoke_venv/bin/ces" init --help
           smoke_dir="$(mktemp -d)"
           fake_runtime_dir="$(mktemp -d)"
           cat > "$fake_runtime_dir/codex" <<'EOF'
@@ -93,10 +96,31 @@ jobs:
           EOF
           chmod +x "$fake_runtime_dir/codex"
           cd "$smoke_dir"
-          uv tool run --from "$wheel_path" ces init publish-smoke
+          "$smoke_venv/bin/ces" init publish-smoke
           test -f .ces/config.yaml
           test -f .ces/keys/audit.hmac
-          PATH="$fake_runtime_dir:$PATH" uv tool run --python 3.13 --from "$wheel_path" ces doctor --security
+          PATH="$fake_runtime_dir:$PATH" "$smoke_venv/bin/ces" doctor --security
+          PATH="$fake_runtime_dir:$PATH" "$smoke_venv/bin/ces" --json doctor --project-root "$smoke_dir" > "$smoke_dir/doctor.json"
+          python - "$smoke_dir/doctor.json" <<'PY'
+          import json
+          import sys
+
+          payload = json.loads(open(sys.argv[1], encoding="utf-8").read())
+          assert payload["runtime_available"] is True
+          assert payload["runtime_safety"]["codex"]["tool_allowlist_enforced"] is False
+          PY
+          if "$smoke_venv/bin/ces" --json audit --limit nope > "$smoke_dir/error.stdout" 2> "$smoke_dir/error.stderr"; then
+              echo "Expected handled JSON error smoke to fail" >&2
+              exit 1
+          fi
+          python - "$smoke_dir/error.stderr" <<'PY'
+          import json
+          import sys
+
+          payload = json.loads(open(sys.argv[1], encoding="utf-8").read())
+          assert payload["error"]["type"] == "user_error"
+          assert "--limit" in payload["error"]["message"]
+          PY
 
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
