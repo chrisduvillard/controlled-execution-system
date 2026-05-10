@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+
 import pytest
 import typer
 
@@ -12,6 +14,14 @@ from ces.cli._errors import (
     GovernanceViolationError,
     handle_error,
 )
+from ces.cli._output import set_json_mode
+
+
+@pytest.fixture(autouse=True)
+def _reset_json_mode() -> None:
+    set_json_mode(False)
+    yield
+    set_json_mode(False)
 
 
 class TestExitCodeConstants:
@@ -65,6 +75,39 @@ class TestHandleError:
         with pytest.raises(SystemExit) as exc_info:
             handle_error(Exception("something unexpected"))
         assert exc_info.value.code == EXIT_USER_ERROR
+
+    def test_json_mode_emits_machine_readable_error(self, capsys: pytest.CaptureFixture[str]) -> None:
+        """In --json mode, handled errors emit a stable JSON payload to stderr."""
+        set_json_mode(True)
+
+        with pytest.raises(SystemExit) as exc_info:
+            handle_error(ValueError("invalid value"))
+
+        captured = capsys.readouterr()
+        assert exc_info.value.code == EXIT_USER_ERROR
+        assert captured.out == ""
+        assert json.loads(captured.err) == {
+            "error": {
+                "type": "user_error",
+                "title": "User Error",
+                "message": "invalid value",
+                "exit_code": EXIT_USER_ERROR,
+            }
+        }
+
+    def test_json_mode_preserves_governance_exit_code(self, capsys: pytest.CaptureFixture[str]) -> None:
+        """Governance failures remain machine-readable and keep exit code 3."""
+        set_json_mode(True)
+
+        with pytest.raises(SystemExit) as exc_info:
+            handle_error(GovernanceViolationError("manifest expired"))
+
+        payload = json.loads(capsys.readouterr().err)
+        assert exc_info.value.code == EXIT_GOVERNANCE_VIOLATION
+        assert payload["error"]["type"] == "governance_violation"
+        assert payload["error"]["title"] == "Governance Violation"
+        assert payload["error"]["message"] == "manifest expired"
+        assert payload["error"]["exit_code"] == EXIT_GOVERNANCE_VIOLATION
 
 
 class TestGovernanceViolationError:
