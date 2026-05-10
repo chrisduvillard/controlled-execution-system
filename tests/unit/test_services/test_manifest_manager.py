@@ -361,6 +361,45 @@ class TestCreateManifest:
         assert saved_row.content["manifest_id"] == manifest.manifest_id
         assert saved_row.status == "draft"
 
+    async def test_row_to_manifest_preserves_governance_fields(
+        self,
+        manager: ManifestManager,
+    ) -> None:
+        """Rehydration preserves completion gate and runtime-safety fields."""
+        manifest = await manager.create_manifest(
+            description="Preserve governance fields",
+            risk_tier=RiskTier.B,
+            behavior_confidence=BehaviorConfidence.BC2,
+            change_class=ChangeClass.CLASS_2,
+            affected_files=("src/foo.py",),
+            token_budget=5000,
+            owner="dev",
+            verification_sensors=["test", "lint"],
+            requires_exploration_evidence=True,
+            requires_verification_commands=True,
+            requires_impacted_flow_evidence=True,
+            requires_docs_evidence_for_public_changes=True,
+            accepted_runtime_side_effect_risk=True,
+        )
+        manifest = manifest.model_copy(
+            update={
+                "review_in_clean_context": False,
+                "mcp_servers": ("context7", "playwright"),
+            }
+        )
+        row = _manifest_to_row(manifest)
+
+        rehydrated = ManifestManager._row_to_manifest(row)
+
+        assert rehydrated.verification_sensors == ("test", "lint")
+        assert rehydrated.requires_exploration_evidence is True
+        assert rehydrated.requires_verification_commands is True
+        assert rehydrated.requires_impacted_flow_evidence is True
+        assert rehydrated.requires_docs_evidence_for_public_changes is True
+        assert rehydrated.accepted_runtime_side_effect_risk is True
+        assert rehydrated.review_in_clean_context is False
+        assert rehydrated.mcp_servers == ("context7", "playwright")
+
 
 # ---------------------------------------------------------------------------
 # Validate manifest tests
