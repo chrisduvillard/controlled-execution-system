@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import json
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from ces.execution.processes import ProcessResult, ProcessTimeoutError
 from ces.execution.providers.cli_provider import CLILLMProvider
 from ces.execution.providers.protocol import LLMError, LLMProviderProtocol, LLMResponse
 
@@ -24,14 +25,15 @@ def _resolve_cli_paths():
         yield
 
 
-def _mock_async_proc(returncode: int = 0, stdout: bytes = b"", stderr: bytes = b"") -> MagicMock:
-    """Create a mock subprocess process with async communicate()."""
-    proc = MagicMock()
-    proc.returncode = returncode
-    proc.communicate = AsyncMock(return_value=(stdout, stderr))
-    proc.terminate = MagicMock()
-    proc.kill = MagicMock()
-    return proc
+def _process_result(returncode: int = 0, stdout: str = "", stderr: str = "") -> ProcessResult:
+    """Create a managed process result for provider tests."""
+    return ProcessResult(
+        command=("/usr/bin/claude",),
+        exit_code=returncode,
+        stdout=stdout,
+        stderr=stderr,
+        timed_out=False,
+    )
 
 
 class TestCLILLMProvider:
@@ -57,11 +59,11 @@ class TestCLILLMProvider:
                 "model": "claude-sonnet-4-20250514",
                 "result": "The answer is 42.",
             }
-        ).encode()
+        )
 
-        mock_proc = _mock_async_proc(returncode=0, stdout=stdout_data)
+        mock_run = AsyncMock(return_value=_process_result(stdout=stdout_data))
 
-        with patch("asyncio.create_subprocess_exec", return_value=mock_proc) as mock_exec:
+        with patch("ces.execution.providers.cli_provider.run_async_command", mock_run):
             response = await provider.generate(
                 model_id="claude-cli",
                 messages=[{"role": "user", "content": "What is the answer?"}],
@@ -74,21 +76,20 @@ class TestCLILLMProvider:
         assert response.input_tokens > 0
         assert response.output_tokens > 0
 
-        # Verify subprocess was called with the resolved claude path + -p
-        call_args = mock_exec.call_args[0]
+        # Verify helper was called with the resolved claude path + -p
+        call_kwargs = mock_run.call_args.kwargs
+        call_args = mock_run.call_args.args[0]
         assert call_args[0] == "/usr/bin/claude"
         assert "-p" in call_args
+        assert call_kwargs["stdin_text"] == "What is the answer?"
 
     @pytest.mark.asyncio
     async def test_generate_calls_codex_subprocess(self) -> None:
         provider = CLILLMProvider(cli_tool="codex")
 
-        mock_proc = _mock_async_proc(
-            returncode=0,
-            stdout=b"The answer is 42.",
-        )
+        mock_run = AsyncMock(return_value=_process_result(stdout="The answer is 42."))
 
-        with patch("asyncio.create_subprocess_exec", return_value=mock_proc):
+        with patch("ces.execution.providers.cli_provider.run_async_command", mock_run):
             response = await provider.generate(
                 model_id="codex-cli",
                 messages=[{"role": "user", "content": "What is the answer?"}],
@@ -103,12 +104,9 @@ class TestCLILLMProvider:
         """When claude returns plain text instead of JSON, use it as-is."""
         provider = CLILLMProvider(cli_tool="claude")
 
-        mock_proc = _mock_async_proc(
-            returncode=0,
-            stdout=b"Plain text response",
-        )
+        mock_run = AsyncMock(return_value=_process_result(stdout="Plain text response"))
 
-        with patch("asyncio.create_subprocess_exec", return_value=mock_proc):
+        with patch("ces.execution.providers.cli_provider.run_async_command", mock_run):
             response = await provider.generate(
                 model_id="claude-cli",
                 messages=[{"role": "user", "content": "Hello"}],
@@ -120,14 +118,10 @@ class TestCLILLMProvider:
     async def test_generate_raises_on_nonzero_exit(self) -> None:
         provider = CLILLMProvider(cli_tool="claude")
 
-        mock_proc = _mock_async_proc(
-            returncode=1,
-            stdout=b"",
-            stderr=b"Authentication failed",
-        )
+        mock_run = AsyncMock(return_value=_process_result(returncode=1, stderr="Authentication failed"))
 
         with (
-            patch("asyncio.create_subprocess_exec", return_value=mock_proc),
+            patch("ces.execution.providers.cli_provider.run_async_command", mock_run),
             pytest.raises(LLMError, match="CLI command failed"),
         ):
             await provider.generate(
@@ -141,14 +135,15 @@ class TestCLILLMProvider:
         token = "ghp" + "_" + "syntheticexamplevalue123"
         api_key = "sk" + "-" + "syntheticexamplevalue123"
 
-        mock_proc = _mock_async_proc(
-            returncode=1,
-            stdout=b"",
-            stderr=f"failed with GITHUB_TOKEN={token} OPENAI_API_KEY={api_key}".encode(),
+        mock_run = AsyncMock(
+            return_value=_process_result(
+                returncode=1,
+                stderr=f"failed with GITHUB_TOKEN={token} OPENAI_API_KEY={api_key}",
+            )
         )
 
         with (
-            patch("asyncio.create_subprocess_exec", return_value=mock_proc),
+            patch("ces.execution.providers.cli_provider.run_async_command", mock_run),
             pytest.raises(LLMError) as exc_info,
         ):
             await provider.generate(
@@ -166,38 +161,20 @@ class TestCLILLMProvider:
     async def test_generate_raises_on_timeout(self) -> None:
         provider = CLILLMProvider(cli_tool="claude", timeout=1)
 
-        mock_proc = _mock_async_proc()
-        mock_proc.communicate = AsyncMock(side_effect=[TimeoutError(), (b"", b"")])
+        timeout = ProcessTimeoutError(
+            "timeout",
+            ProcessResult(("/usr/bin/claude",), 124, "", "", timed_out=True),
+        )
+        mock_run = AsyncMock(side_effect=timeout)
 
         with (
-            patch("asyncio.create_subprocess_exec", return_value=mock_proc),
+            patch("ces.execution.providers.cli_provider.run_async_command", mock_run),
             pytest.raises(LLMError, match="timed out"),
         ):
             await provider.generate(
                 model_id="claude-cli",
                 messages=[{"role": "user", "content": "Hello"}],
             )
-
-    @pytest.mark.asyncio
-    async def test_generate_terminates_timed_out_process(self) -> None:
-        provider = CLILLMProvider(cli_tool="claude", timeout=1)
-
-        mock_proc = _mock_async_proc()
-        mock_proc.terminate = MagicMock()
-        mock_proc.kill = MagicMock()
-        mock_proc.communicate = AsyncMock(side_effect=[TimeoutError(), (b"", b"")])
-
-        with (
-            patch("asyncio.create_subprocess_exec", return_value=mock_proc),
-            pytest.raises(LLMError, match="timed out"),
-        ):
-            await provider.generate(
-                model_id="claude-cli",
-                messages=[{"role": "user", "content": "Hello"}],
-            )
-
-        mock_proc.terminate.assert_called_once()
-        mock_proc.kill.assert_not_called()
 
     @pytest.mark.filterwarnings("ignore::pytest.PytestUnraisableExceptionWarning")
     @pytest.mark.asyncio
@@ -209,10 +186,10 @@ class TestCLILLMProvider:
         # not reproduce on 3.13. Silence to keep `pytest -W error` green.
         provider = CLILLMProvider(cli_tool="claude")
 
-        stdout_data = json.dumps({"result": "OK"}).encode()
-        mock_proc = _mock_async_proc(returncode=0, stdout=stdout_data)
+        stdout_data = json.dumps({"result": "OK"})
+        mock_run = AsyncMock(return_value=_process_result(stdout=stdout_data))
 
-        with patch("asyncio.create_subprocess_exec", return_value=mock_proc) as mock_exec:
+        with patch("ces.execution.providers.cli_provider.run_async_command", mock_run):
             await provider.generate(
                 model_id="claude-cli",
                 messages=[
@@ -223,18 +200,17 @@ class TestCLILLMProvider:
             )
 
         # Check the prompt includes the assistant role (passed via stdin)
-        communicate_call = mock_proc.communicate.call_args
-        prompt_bytes = communicate_call[1]["input"]
-        assert b"[Assistant]" in prompt_bytes
+        prompt_text = mock_run.call_args.kwargs["stdin_text"]
+        assert "[Assistant]" in prompt_text
 
     @pytest.mark.asyncio
     async def test_stream_yields_chunks(self) -> None:
         provider = CLILLMProvider(cli_tool="claude")
 
-        stdout_data = json.dumps({"result": "Streamed response text"}).encode()
-        mock_proc = _mock_async_proc(returncode=0, stdout=stdout_data)
+        stdout_data = json.dumps({"result": "Streamed response text"})
+        mock_run = AsyncMock(return_value=_process_result(stdout=stdout_data))
 
-        with patch("asyncio.create_subprocess_exec", return_value=mock_proc):
+        with patch("ces.execution.providers.cli_provider.run_async_command", mock_run):
             chunks: list[str] = []
             async for chunk in provider.stream(
                 model_id="claude-cli",

@@ -14,9 +14,9 @@ from __future__ import annotations
 import json
 import shutil
 from collections.abc import AsyncIterator
-from contextlib import suppress
 
 from ces.execution._subprocess_env import build_subprocess_env
+from ces.execution.processes import ProcessTimeoutError, run_async_command
 from ces.execution.providers.protocol import LLMError, LLMResponse
 from ces.execution.secrets import scrub_secrets_from_text
 
@@ -144,8 +144,6 @@ class CLILLMProvider:
         Uses asyncio subprocess for true concurrency when multiple
         reviewers are dispatched in parallel via asyncio.gather.
         """
-        import asyncio
-
         prompt = self._format_prompt(messages)
         command = self._build_command()
         # Apply the same env allowlist as the runtime adapters so this spawn
@@ -153,29 +151,14 @@ class CLILLMProvider:
         # the subprocess (T-04-06 extended).
         extra_keys = _CLI_TOOL_EXTRA_ENV_KEYS.get(self._cli_tool, ())
         subprocess_env = build_subprocess_env(extra_keys)
-        proc = None
-
         try:
-            proc = await asyncio.create_subprocess_exec(
-                *command,
-                stdin=asyncio.subprocess.PIPE,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
+            result = await run_async_command(
+                command,
+                stdin_text=prompt,
                 env=subprocess_env,
+                timeout_seconds=self._timeout,
             )
-            stdout_bytes, stderr_bytes = await asyncio.wait_for(
-                proc.communicate(input=prompt.encode()),
-                timeout=self._timeout,
-            )
-        except TimeoutError as exc:
-            if proc is not None:
-                proc.terminate()
-                try:
-                    await asyncio.wait_for(proc.communicate(), timeout=5)
-                except TimeoutError:
-                    proc.kill()
-                    with suppress(TimeoutError, ProcessLookupError):
-                        await proc.communicate()
+        except ProcessTimeoutError as exc:
             raise LLMError(
                 f"CLI command timed out after {self._timeout}s",
                 provider_name=self.provider_name,
@@ -183,13 +166,13 @@ class CLILLMProvider:
                 original_error=exc,
             ) from exc
 
-        stdout_text = stdout_bytes.decode(errors="replace")
-        stderr_text = stderr_bytes.decode(errors="replace")
+        stdout_text = result.stdout
+        stderr_text = result.stderr
 
-        if proc.returncode != 0:
+        if result.exit_code != 0:
             stderr_summary = scrub_secrets_from_text(stderr_text)[:500]
             raise LLMError(
-                f"CLI command failed (exit {proc.returncode}): {stderr_summary}",
+                f"CLI command failed (exit {result.exit_code}): {stderr_summary}",
                 provider_name=self.provider_name,
                 model_id=model_id,
             )

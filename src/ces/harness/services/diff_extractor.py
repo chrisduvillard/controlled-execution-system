@@ -15,10 +15,10 @@ Service:
 
 from __future__ import annotations
 
-import asyncio
 import re
 from pathlib import Path
 
+from ces.execution.processes import run_async_command
 from ces.shared.base import CESBaseModel
 
 # ---------------------------------------------------------------------------
@@ -124,27 +124,26 @@ class DiffExtractor:
         if not base_ref or base_ref.startswith("-") or "\x00" in base_ref:
             msg = "Invalid git base ref."
             raise ValueError(msg)
-        cwd = str(working_dir) if working_dir is not None else None
-        proc = await asyncio.create_subprocess_exec(
-            "git",
-            "diff",
-            "--unified=5",
-            base_ref,
-            # ``--`` terminates revisions before pathspecs so ``base_ref`` is
-            # interpreted as a revision instead of a path.
-            "--",
-            cwd=cwd,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
+        result = await run_async_command(
+            [
+                "git",
+                "diff",
+                "--unified=5",
+                base_ref,
+                # ``--`` terminates revisions before pathspecs so ``base_ref`` is
+                # interpreted as a revision instead of a path.
+                "--",
+            ],
+            cwd=working_dir,
+            timeout_seconds=30,
         )
-        stdout, stderr = await proc.communicate()
 
-        if proc.returncode != 0:
-            err_msg = stderr.decode().strip() if stderr else "unknown error"
-            msg = f"git diff failed (exit {proc.returncode}): {err_msg}"
+        if result.exit_code != 0:
+            err_msg = result.stderr.strip() or "unknown error"
+            msg = f"git diff failed (exit {result.exit_code}): {err_msg}"
             raise RuntimeError(msg)
 
-        diff_text = stdout.decode()
+        diff_text = result.stdout
         return DiffExtractor.extract_diff_from_text(diff_text)
 
     @staticmethod

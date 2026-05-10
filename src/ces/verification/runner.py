@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 import shlex
-import subprocess
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
+from ces.execution.processes import run_sync_command
 from ces.verification.completion_contract import VerificationCommand
 
 
@@ -40,22 +40,14 @@ def run_verification_commands(
     results: list[VerificationCommandResult] = []
     for command in commands:
         cwd = project_root / command.cwd if command.cwd != "." else project_root
-        try:
-            completed = subprocess.run(  # noqa: S603 - contract commands are local verification steps
-                shlex.split(command.command),
-                cwd=cwd,
-                text=True,
-                capture_output=True,
-                timeout=command.timeout_seconds,
-                check=False,
-            )
-            exit_code = int(completed.returncode)
-            stdout = completed.stdout
-            stderr = completed.stderr
-        except (OSError, subprocess.TimeoutExpired) as exc:
-            exit_code = 124 if isinstance(exc, subprocess.TimeoutExpired) else 127
-            stdout = getattr(exc, "stdout", "") or ""
-            stderr = str(exc)
+        result = run_sync_command(
+            shlex.split(command.command),
+            cwd=cwd,
+            timeout_seconds=command.timeout_seconds,
+        )
+        exit_code = result.exit_code
+        stdout = result.stdout
+        stderr = result.stderr
         expected_exit_codes = tuple(command.expected_exit_codes or (0,))
         results.append(
             VerificationCommandResult(

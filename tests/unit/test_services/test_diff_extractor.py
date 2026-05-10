@@ -10,6 +10,7 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
+from ces.execution.processes import ProcessResult
 from ces.harness.services.diff_extractor import (
     DiffContext,
     DiffExtractor,
@@ -248,29 +249,25 @@ class TestExtractDiffFromGit:
         """The base ref is passed before `--`, so git treats it as a revision."""
         captured: dict[str, object] = {}
 
-        class FakeProc:
-            returncode = 0
-
-            async def communicate(self):
-                return (
-                    b"diff --git a/app.py b/app.py\n--- a/app.py\n+++ b/app.py\n@@ -1 +1 @@\n-value = 1\n+value = 2\n",
-                    b"",
-                )
-
-        async def fake_create_subprocess_exec(*args, **kwargs):
-            captured["args"] = args
+        async def fake_run_async_command(command, **kwargs):
+            captured["command"] = command
             captured["kwargs"] = kwargs
-            return FakeProc()
+            return ProcessResult(
+                command=tuple(command),
+                exit_code=0,
+                stdout="diff --git a/app.py b/app.py\n--- a/app.py\n+++ b/app.py\n@@ -1 +1 @@\n-value = 1\n+value = 2\n",
+                stderr="",
+            )
 
         monkeypatch.setattr(
-            "ces.harness.services.diff_extractor.asyncio.create_subprocess_exec",
-            fake_create_subprocess_exec,
+            "ces.harness.services.diff_extractor.run_async_command",
+            fake_run_async_command,
         )
 
         ctx = await DiffExtractor.extract_diff(base_ref="HEAD", working_dir=tmp_path)
 
-        assert captured["args"] == ("git", "diff", "--unified=5", "HEAD", "--")
-        assert captured["kwargs"]["cwd"] == str(tmp_path)  # type: ignore[index]
+        assert captured["command"] == ["git", "diff", "--unified=5", "HEAD", "--"]
+        assert captured["kwargs"]["cwd"] == tmp_path  # type: ignore[index]
         assert ctx.files_changed == ("app.py",)
         assert "-value = 1" in ctx.diff_text
         assert "+value = 2" in ctx.diff_text
