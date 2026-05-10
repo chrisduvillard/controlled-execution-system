@@ -40,9 +40,9 @@ import typer
 from rich.panel import Panel
 from rich.table import Table
 
-import ces.cli._output as _output_mod
 from ces.cli._context import find_project_root
-from ces.cli._output import console, set_json_mode
+from ces.cli._errors import handle_error
+from ces.cli._output import console, is_json_mode, set_json_mode
 from ces.execution.runtime_safety import safety_profile_for_runtime
 from ces.shared.crypto import AUDIT_HMAC_FILENAME, DEV_DEFAULT_HMAC_MARKER
 
@@ -369,7 +369,7 @@ def run_doctor(
         set_json_mode(True)
     runtime = runtime.lower().strip()
     if runtime not in {"all", "codex", "claude"}:
-        raise typer.BadParameter("--runtime must be one of: all, codex, claude")
+        handle_error(typer.BadParameter("--runtime must be one of: all, codex, claude"))
     python_ok, python_version = _check_python()
     providers = _check_providers()
     project_exists, project_path = _check_project_dir(project_root)
@@ -422,7 +422,7 @@ def run_doctor(
 
     overall_ok = python_ok and runtime_available and runtime_auth_ok and security_ok and strict_providers_ok
 
-    if _output_mod._json_mode:
+    if is_json_mode():
         payload = {
             "python_version": python_version,
             "python_ok": python_ok,

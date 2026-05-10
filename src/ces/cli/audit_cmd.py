@@ -16,16 +16,26 @@ Exports:
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 import typer
 from rich.table import Table
 
-import ces.cli._output as _output_mod
 from ces.cli._async import run_async
 from ces.cli._context import find_project_root, get_project_id
 from ces.cli._errors import handle_error
 from ces.cli._factory import get_services
-from ces.cli._output import console, set_json_mode
+from ces.cli._output import console, is_json_mode, set_json_mode
+
+
+def _parse_non_negative_int(value: str, *, option_name: str) -> int:
+    try:
+        parsed = int(value)
+    except ValueError as exc:
+        raise typer.BadParameter(f"{option_name} must be a non-negative integer") from exc
+    if parsed < 0:
+        raise typer.BadParameter(f"{option_name} must be a non-negative integer")
+    return parsed
 
 
 @run_async
@@ -52,14 +62,14 @@ async def query_audit(
         "--before",
         help="End time (ISO format)",
     ),
-    limit: int = typer.Option(
-        20,
+    limit: str = typer.Option(
+        "20",
         "--limit",
         "-l",
         help="Page size",
     ),
-    offset: int = typer.Option(
-        0,
+    offset: str = typer.Option(
+        "0",
         "--offset",
         "-o",
         help="Skip entries",
@@ -68,6 +78,11 @@ async def query_audit(
         False,
         "--json",
         help="Output audit entries as JSON. Equivalent to `ces --json audit`.",
+    ),
+    project_root: Path | None = typer.Option(
+        None,
+        "--project-root",
+        help="CES project root to inspect; defaults to the current directory discovery.",
     ),
 ) -> None:
     """Query audit ledger entries with optional filters and pagination.
@@ -79,10 +94,13 @@ async def query_audit(
     if json_output:
         set_json_mode(True)
     try:
-        find_project_root()
-        project_id = get_project_id()
+        limit_int = _parse_non_negative_int(limit, option_name="--limit")
+        offset_int = _parse_non_negative_int(offset, option_name="--offset")
+        resolved_project_root = find_project_root(project_root) if project_root is not None else find_project_root()
+        project_id = get_project_id(resolved_project_root)
 
-        async with get_services() as services:
+        services_kwargs = {"project_root": resolved_project_root} if project_root is not None else {}
+        async with get_services(**services_kwargs) as services:
             audit_ledger = services.get("audit_ledger")
 
             # Query entries using AuditLedgerService methods
@@ -98,9 +116,13 @@ async def query_audit(
                     et = ET(event_type.lower())
                 except ValueError:
                     raise typer.BadParameter(f"Invalid event type: {event_type}")
-                raw_entries = await audit_ledger.query_by_event_type(et, limit=limit + offset, project_id=project_id)
+                raw_entries = await audit_ledger.query_by_event_type(
+                    et, limit=limit_int + offset_int, project_id=project_id
+                )
             elif actor:
-                raw_entries = await audit_ledger.query_by_actor(actor, limit=limit + offset, project_id=project_id)
+                raw_entries = await audit_ledger.query_by_actor(
+                    actor, limit=limit_int + offset_int, project_id=project_id
+                )
             elif after or before:
                 start = datetime.fromisoformat(after) if after else datetime.min.replace(tzinfo=timezone.utc)
                 end = datetime.fromisoformat(before) if before else datetime.now(timezone.utc)
@@ -114,7 +136,7 @@ async def query_audit(
             total = len(raw_entries)
 
             # Apply pagination (service methods don't support offset natively)
-            raw_entries = raw_entries[offset : offset + limit]
+            raw_entries = raw_entries[offset_int : offset_int + limit_int]
 
             # Convert AuditEntry objects to dicts for display
             entry_dicts = []
@@ -129,7 +151,7 @@ async def query_audit(
                     }
                 )
 
-            if _output_mod._json_mode:
+            if is_json_mode():
                 typer.echo(json.dumps(entry_dicts, indent=2, default=str))
                 return
 
@@ -153,7 +175,7 @@ async def query_audit(
                 )
 
             console.print(table)
-            console.print(f"\n[dim]Showing {offset + 1}-{offset + len(entry_dicts)} of {total}[/dim]")
+            console.print(f"\n[dim]Showing {offset_int + 1}-{offset_int + len(entry_dicts)} of {total}[/dim]")
 
     except (typer.BadParameter, ValueError) as exc:
         handle_error(exc)
