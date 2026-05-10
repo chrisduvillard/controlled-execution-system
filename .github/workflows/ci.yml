@@ -90,6 +90,11 @@ jobs:
           EOF
           chmod +x "$fake_runtime_dir/codex"
           PATH="$fake_runtime_dir:$PATH" "$smoke_venv/bin/ces" init --project-root "$smoke_dir" --yes
+          cat > "$smoke_dir/pyproject.toml" <<'EOF'
+          [project]
+          name = "ces-ci-smoke"
+          version = "0.1.0"
+          EOF
           PATH="$fake_runtime_dir:$PATH" "$smoke_venv/bin/ces" --json doctor --project-root "$smoke_dir" > "$smoke_dir/doctor.json"
           python - "$smoke_dir/doctor.json" <<'PY'
           import json
@@ -98,6 +103,31 @@ jobs:
           payload = json.loads(open(sys.argv[1], encoding="utf-8").read())
           assert payload["runtime_available"] is True
           assert payload["runtime_safety"]["codex"]["tool_allowlist_enforced"] is False
+          PY
+
+          PATH="$fake_runtime_dir:$PATH" "$smoke_venv/bin/ces" --json scan --root "$smoke_dir" > "$smoke_dir/scan.json"
+          python - "$smoke_dir/scan.json" <<'PY'
+          import json
+          import sys
+
+          scan_payload = json.loads(open(sys.argv[1], encoding="utf-8").read())
+          assert scan_payload["modules"]
+          assert scan_payload["report_path"].endswith(".ces/brownfield/scan.json")
+          PY
+          (cd "$smoke_dir" && "$smoke_venv/bin/ces" baseline)
+          (cd "$smoke_dir" && "$smoke_venv/bin/ces" setup-ci --provider github)
+
+          if "$smoke_venv/bin/ces" --json scan --project-root "$smoke_dir" > "$smoke_dir/usage-error.stdout" 2> "$smoke_dir/usage-error.stderr"; then
+              echo "Expected JSON usage error smoke to fail" >&2
+              exit 1
+          fi
+          python - "$smoke_dir/usage-error.stderr" <<'PY'
+          import json
+          import sys
+
+          payload = json.loads(open(sys.argv[1], encoding="utf-8").read())
+          assert payload["error"]["type"] == "usage_error"
+          assert "--project-root" in payload["error"]["message"]
           PY
 
           if "$smoke_venv/bin/ces" --json audit --limit nope > "$smoke_dir/error.stdout" 2> "$smoke_dir/error.stderr"; then
