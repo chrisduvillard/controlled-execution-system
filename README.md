@@ -189,6 +189,7 @@ ces report builder
 | `ces why` | Explain why the latest builder run is blocked and show the next command. |
 | `ces recover --dry-run` | Preview recovery for stale, interrupted, or incomplete evidence states. |
 | `ces verify` | Run independent local verification without writing inferred contracts by default. |
+| `ces mri` | Run a read-only Project MRI diagnostic for maturity, risks, missing production-readiness signals, and recommended next CES actions. |
 | `ces complete` | Reconcile work that was actually completed outside CES. |
 | `ces report builder` | Export markdown and JSON handoff reports under `.ces/exports/`. |
 
@@ -211,7 +212,7 @@ Use expert workflow commands when you need direct artifact control:
 | `ces audit` | Inspect the local audit ledger, for example `ces audit --limit 20`. |
 | `ces status --expert` | Show the full expert status view; use `ces status --expert --watch` for live monitoring. |
 | `ces emergency declare` | Record an expert operations emergency declaration, for example `ces emergency declare "Security incident detected"`. |
-| `ces scan` / `ces baseline` | Inventory the repo and capture day-0 sensor snapshots. |
+| `ces scan` / `ces mri` / `ces baseline` | Inventory the repo, diagnose project maturity/readiness risks, and capture day-0 sensor snapshots. |
 | `ces profile detect/show/doctor` | Detect, persist, and inspect project-aware verification requirements. |
 | `ces brownfield ...` | Capture, review, and promote named legacy behavior decisions. |
 | `ces spec ...` | Author, validate, decompose, reconcile, or inspect specs. |

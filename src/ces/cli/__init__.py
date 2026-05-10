@@ -21,6 +21,7 @@ from ces.cli import (
     init_cmd,
     intake_cmd,
     manifest_cmd,
+    mri_cmd,
     profile_cmd,
     recover_cmd,
     report_cmd,
@@ -141,6 +142,9 @@ app.command(name="setup-ci", help="Generate a CI gating workflow for the chosen 
     setup_ci_cmd.setup_ci
 )
 app.command(name="scan", help="Inventory the repository: modules, generated code, CODEOWNERS.")(scan_cmd.scan)
+app.command(name="mri", help="Read-only repository diagnostic with project-health risks and next CES actions.")(
+    mri_cmd.mri
+)
 app.command(name="baseline", help="Capture a day-0 sensor snapshot under .ces/baseline/.")(baseline_cmd.baseline)
 app.add_typer(profile_cmd.profile_app, name="profile")
 app.add_typer(benchmark_cmd.benchmark_app, name="benchmark")
