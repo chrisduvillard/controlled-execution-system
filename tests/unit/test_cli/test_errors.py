@@ -109,6 +109,46 @@ class TestHandleError:
         assert payload["error"]["message"] == "manifest expired"
         assert payload["error"]["exit_code"] == EXIT_GOVERNANCE_VIOLATION
 
+    def test_json_mode_service_error_payload(self, capsys: pytest.CaptureFixture[str]) -> None:
+        """Service failures keep the stable JSON envelope and exit code 2."""
+        set_json_mode(True)
+
+        with pytest.raises(SystemExit) as exc_info:
+            handle_error(ConnectionError("database unavailable"))
+
+        captured = capsys.readouterr()
+        payload = json.loads(captured.err)
+        assert captured.out == ""
+        assert exc_info.value.code == EXIT_SERVICE_ERROR
+        assert payload == {
+            "error": {
+                "type": "service_error",
+                "title": "Service Error",
+                "message": "database unavailable",
+                "exit_code": EXIT_SERVICE_ERROR,
+            }
+        }
+
+    def test_json_mode_unknown_error_payload(self, capsys: pytest.CaptureFixture[str]) -> None:
+        """Unknown handled exceptions stay parseable and fail as user errors."""
+        set_json_mode(True)
+
+        with pytest.raises(SystemExit) as exc_info:
+            handle_error(Exception("unexpected"))
+
+        captured = capsys.readouterr()
+        payload = json.loads(captured.err)
+        assert captured.out == ""
+        assert exc_info.value.code == EXIT_USER_ERROR
+        assert payload == {
+            "error": {
+                "type": "error",
+                "title": "Error",
+                "message": "unexpected",
+                "exit_code": EXIT_USER_ERROR,
+            }
+        }
+
 
 class TestGovernanceViolationError:
     """Tests for GovernanceViolationError custom exception."""
