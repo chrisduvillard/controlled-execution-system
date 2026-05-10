@@ -197,6 +197,14 @@ def _check_dependency_freshness(project_root: Path) -> dict[str, tuple[bool, str
     return checks
 
 
+def _runtime_safety_status(profile: dict[str, object]) -> str:
+    return (
+        "[green]OK[/green]"
+        if bool(profile.get("tool_allowlist_enforced")) and bool(profile.get("workspace_scoped"))
+        else "[yellow]NOTICE[/yellow]"
+    )
+
+
 def _status_icon(ok: bool) -> str:
     return "[green]OK[/green]" if ok else "[red]MISSING[/red]"
 
@@ -487,11 +495,13 @@ def run_doctor(
         for runtime_name, profile in runtime_safety.items():
             table.add_row(
                 f"Runtime adapter: {runtime_name}",
-                _status_icon(bool(profile.get("workspace_scoped"))),
+                _runtime_safety_status(profile),
                 (
                     f"allowlist_enforced={profile.get('tool_allowlist_enforced')}; "
+                    f"workspace_scoped={profile.get('workspace_scoped')}; "
                     f"mcp_grounding_supported={profile.get('mcp_grounding_supported')}; "
-                    f"{profile.get('mcp_grounding_notes')}"
+                    f"{profile.get('mcp_grounding_notes')}; "
+                    f"{profile.get('notes')}"
                 ),
             )
     for name, (ok, detail) in dependency_freshness.items():

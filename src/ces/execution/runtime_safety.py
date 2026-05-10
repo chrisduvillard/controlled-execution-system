@@ -68,8 +68,8 @@ def safety_profile_for_runtime(
                 "OPENAI_PROJECT",
             ),
             notes=(
-                "Codex is invoked with --sandbox danger-full-access; CES manifest allowed_tools "
-                "are not enforced by the Codex adapter."
+                "Codex is intentionally disclosed as full-access for CES purposes: invoked with "
+                "--sandbox danger-full-access; CES manifest allowed_tools are not enforced by the Codex adapter."
             ),
         )
     return RuntimeSafetyProfile(
