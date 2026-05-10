@@ -39,6 +39,40 @@ line-length = 100
     assert "do-not-print" not in report.to_markdown()
 
 
+def test_project_mri_classifies_fully_signaled_project_as_production_ready(tmp_path: Path) -> None:
+    from ces.verification.mri import scan_project_mri
+
+    (tmp_path / "pyproject.toml").write_text(
+        """
+[project]
+name = "ready"
+dependencies = ["pytest", "ruff", "mypy"]
+
+[tool.pytest.ini_options]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 100
+
+[tool.mypy]
+python_version = "3.12"
+""".strip(),
+        encoding="utf-8",
+    )
+    (tmp_path / "README.md").write_text("# Ready\n", encoding="utf-8")
+    (tmp_path / "tests").mkdir()
+    (tmp_path / "tests" / "test_ready.py").write_text("def test_ready():\n    assert True\n", encoding="utf-8")
+    (tmp_path / ".github" / "workflows").mkdir(parents=True)
+    (tmp_path / ".github" / "workflows" / "ci.yml").write_text("name: CI\n", encoding="utf-8")
+    (tmp_path / "Procfile").write_text("web: ready\n", encoding="utf-8")
+    (tmp_path / ".ces").mkdir()
+    (tmp_path / ".ces" / "verification-profile.json").write_text("{}\n", encoding="utf-8")
+
+    report = scan_project_mri(tmp_path)
+
+    assert report.maturity == "production-ready"
+
+
 def test_project_mri_json_shape_is_stable(tmp_path: Path) -> None:
     from ces.verification.mri import scan_project_mri
 
@@ -57,6 +91,8 @@ def test_project_mri_json_shape_is_stable(tmp_path: Path) -> None:
         "project_type",
         "maturity",
         "summary",
+        "readiness_score",
+        "maturity_ladder",
         "signals",
         "strongest_evidence",
         "risk_findings",

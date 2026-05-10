@@ -8,6 +8,7 @@ from ces import __version__
 from ces.cli import (
     approve_cmd,
     audit_cmd,
+    autopilot_cmd,
     baseline_cmd,
     benchmark_cmd,
     brownfield_cmd,
@@ -145,6 +146,15 @@ app.command(name="scan", help="Inventory the repository: modules, generated code
 app.command(name="mri", help="Read-only repository diagnostic with project-health risks and next CES actions.")(
     mri_cmd.mri
 )
+app.command(name="next", help="Show the next safest production-readiness action.")(autopilot_cmd.next_action)
+app.command(name="next-prompt", help="Generate a guardrailed prompt for the next readiness step.")(
+    autopilot_cmd.next_prompt
+)
+app.command(name="passport", help="Produce a local Production Passport report.")(autopilot_cmd.passport)
+app.command(name="promote", help="Plan a safe maturity promotion, one checkpoint at a time.")(autopilot_cmd.promote)
+app.command(name="invariants", help="Mine conservative evidence-backed project invariants.")(autopilot_cmd.invariants)
+app.command(name="slop-scan", help="Report deterministic AI-native slop/failure findings.")(autopilot_cmd.slop_scan)
+app.add_typer(autopilot_cmd.launch_app, name="launch")
 app.command(name="baseline", help="Capture a day-0 sensor snapshot under .ces/baseline/.")(baseline_cmd.baseline)
 app.add_typer(profile_cmd.profile_app, name="profile")
 app.add_typer(benchmark_cmd.benchmark_app, name="benchmark")

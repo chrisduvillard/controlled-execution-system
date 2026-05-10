@@ -41,6 +41,16 @@ _SECRET_FILENAMES = {
 _CONTAINER_FILE = "Dock" + "erfile"
 _COMPOSE_FILES = ("dock" + "er-compose.yml", "dock" + "er-compose.yaml")
 _SEVERITY_ORDER = {"critical": 0, "high": 1, "medium": 2, "low": 3, "info": 4}
+_MATURITY_LADDER = ("vibe-prototype", "local-app", "shareable-app", "production-candidate", "production-ready")
+_READINESS_CATEGORIES = {
+    "project": 10,
+    "documentation": 10,
+    "tests": 20,
+    "quality": 15,
+    "ci": 20,
+    "runtime": 15,
+    "ces": 10,
+}
 
 
 @dataclass(frozen=True)
@@ -84,6 +94,8 @@ class ProjectMriReport:
     maturity: str
     summary: str
     signals: tuple[MriSignal, ...]
+    readiness_score: dict[str, Any]
+    maturity_ladder: tuple[str, ...]
     strongest_evidence: tuple[str, ...]
     risk_findings: tuple[MriFinding, ...]
     missing_readiness_signals: tuple[str, ...]
@@ -96,6 +108,8 @@ class ProjectMriReport:
             "project_type": self.project_type,
             "maturity": self.maturity,
             "summary": self.summary,
+            "readiness_score": self.readiness_score,
+            "maturity_ladder": list(self.maturity_ladder),
             "signals": [signal.to_dict() for signal in self.signals],
             "strongest_evidence": list(self.strongest_evidence),
             "risk_findings": [finding.to_dict() for finding in self.risk_findings],
@@ -113,6 +127,7 @@ class ProjectMriReport:
             f"Project root: `{self.project_root}`",
             f"Maturity: **{self.maturity}**",
             f"Project type: `{self.project_type}`",
+            f"Readiness score: **{self.readiness_score['score']}/{self.readiness_score['max_score']}**",
             "",
             "## Summary",
             "",
@@ -162,6 +177,8 @@ def scan_project_mri(project_root: str | Path) -> ProjectMriReport:
         maturity=maturity,
         summary=summary,
         signals=tuple(sorted(signals, key=lambda signal: (signal.category, signal.name, signal.evidence))),
+        readiness_score=_readiness_score(signals),
+        maturity_ladder=_MATURITY_LADDER,
         strongest_evidence=strongest,
         risk_findings=ordered_findings,
         missing_readiness_signals=tuple(sorted(missing)),
@@ -182,6 +199,9 @@ def _detect_project_type(root: Path) -> str:
     package_json = root / "package.json"
     if _is_regular_file(pyproject):
         payload = _read_toml(pyproject)
+        deps = _flatten_pyproject_dependencies(payload)
+        if {"fastapi", "uvicorn"} & deps:
+            return "fastapi-app"
         project = payload.get("project", {}) if isinstance(payload, dict) else {}
         scripts = project.get("scripts", {}) if isinstance(project, dict) else {}
         if isinstance(scripts, dict) and scripts:
@@ -189,13 +209,13 @@ def _detect_project_type(root: Path) -> str:
         return "python-package"
     if _is_regular_file(package_json):
         payload = _read_json(package_json)
-        deps: dict[str, Any] = {}
+        node_deps: dict[str, Any] = {}
         for key in ("dependencies", "devDependencies"):
             section = payload.get(key, {}) if isinstance(payload, dict) else {}
             if isinstance(section, dict):
-                deps.update(section)
+                node_deps.update(section)
         scripts = payload.get("scripts", {}) if isinstance(payload, dict) else {}
-        if "react" in deps and ("vite" in deps or "@vitejs/plugin-react" in deps or "build" in scripts):
+        if "react" in node_deps and ("vite" in node_deps or "@vitejs/plugin-react" in node_deps or "build" in scripts):
             return "vite-react-app"
         return "node-app"
     if _looks_like_python_project(root):
@@ -284,6 +304,7 @@ def _detect_risks(root: Path) -> list[MriFinding]:
         )
     findings.extend(_secret_hygiene_findings(root))
     findings.extend(_maintainability_findings(root))
+    findings.extend(_ai_slop_findings(root))
     return findings
 
 
@@ -355,6 +376,86 @@ def _maintainability_findings(root: Path) -> list[MriFinding]:
     return findings
 
 
+def _ai_slop_findings(root: Path) -> list[MriFinding]:
+    weak_tests: list[str] = []
+    exception_swallowers: list[str] = []
+    generated_clutter: list[str] = []
+    for path in _iter_project_files(root):
+        relative = path.relative_to(root).as_posix()
+        if relative.endswith((".min.js", ".bundle.js")) or path.name in {"package-lock.json", "yarn.lock"}:
+            generated_clutter.append(relative)
+        if path.suffix.lower() != ".py":
+            continue
+        try:
+            text = path.read_text(encoding="utf-8")
+        except UnicodeDecodeError:
+            continue
+        if "/tests/" in f"/{relative}" or path.name.startswith("test_") or path.name.endswith("_test.py"):
+            if "assert " not in text and "pytest.raises" not in text and "unittest" not in text:
+                weak_tests.append(relative)
+        if re.search(r"except\s+Exception\s*:\s*(?:\n\s*)pass\b", text):
+            exception_swallowers.append(relative)
+    findings: list[MriFinding] = []
+    if weak_tests:
+        findings.append(
+            MriFinding(
+                "medium",
+                "ai-slop",
+                "Assertion-free or trivial tests detected",
+                "; ".join(weak_tests[:5]),
+                "Add behavioral assertions that would fail if the implementation regresses",
+            )
+        )
+    if exception_swallowers:
+        findings.append(
+            MriFinding(
+                "high",
+                "ai-slop",
+                "Broad exception swallowing detected",
+                "; ".join(exception_swallowers[:5]),
+                "Handle specific exceptions and preserve actionable errors",
+            )
+        )
+    if len(generated_clutter) > 4:
+        findings.append(
+            MriFinding(
+                "low",
+                "ai-slop",
+                "Generated artifact clutter detected",
+                f"{len(generated_clutter)} generated-looking artifact(s)",
+                "Confirm generated artifacts are intentionally tracked or ignored",
+            )
+        )
+    return findings
+
+
+def _readiness_score(signals: list[MriSignal]) -> dict[str, Any]:
+    names = {signal.name for signal in signals}
+    passed: list[str] = []
+    if {"pyproject.toml", "package.json", _CONTAINER_FILE, "project-type"} & names:
+        passed.append("project")
+    if "README.md" in names:
+        passed.append("documentation")
+    if {"pytest", "npm-test", "tests-directory"} & names:
+        passed.append("tests")
+    if {"ruff", "mypy", "eslint", "typescript"} & names:
+        passed.append("quality")
+    if "github-actions" in names:
+        passed.append("ci")
+    if {_CONTAINER_FILE, *_COMPOSE_FILES, "Procfile"} & names:
+        passed.append("runtime")
+    if {".ces/verification-profile.json", ".ces/config.yaml", ".ces/state.db"} & names:
+        passed.append("ces")
+    passed = sorted(passed)
+    missing = sorted(category for category in _READINESS_CATEGORIES if category not in passed)
+    return {
+        "score": sum(_READINESS_CATEGORIES[category] for category in passed),
+        "max_score": sum(_READINESS_CATEGORIES.values()),
+        "passed": passed,
+        "missing": missing,
+    }
+
+
 def _missing_readiness_signals(signals: list[MriSignal]) -> list[str]:
     names = {signal.name for signal in signals}
     missing: list[str] = []
@@ -382,7 +483,7 @@ def _classify_maturity(signals: list[MriSignal], findings: list[MriFinding], mis
     has_ces_state = bool({".ces/verification-profile.json", ".ces/config.yaml", ".ces/state.db"} & names)
     has_high_risk = any(finding.severity in {"critical", "high"} for finding in findings)
     if has_tests and has_quality and has_ci and has_runtime and has_ces_state and not has_high_risk:
-        return "operated-product"
+        return "production-ready"
     if has_tests and has_quality and has_ci and not has_high_risk:
         return "production-candidate"
     if has_tests and (has_quality or has_ci):
@@ -599,6 +700,501 @@ def _iter_project_files(root: Path) -> list[Path]:
         if path.is_file():
             files.append(path)
     return sorted(files, key=lambda item: item.relative_to(root).as_posix())
+
+
+@dataclass(frozen=True)
+class NextActionReport:
+    project_root: Path
+    current_maturity: str
+    target_maturity: str
+    highest_priority_blockers: tuple[str, ...]
+    recommended_command: str
+    feature_work_guidance: str
+    readiness_score: dict[str, Any]
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema_version": _SCHEMA_VERSION,
+            "project_root": str(self.project_root),
+            "current_maturity": self.current_maturity,
+            "target_maturity": self.target_maturity,
+            "highest_priority_blockers": list(self.highest_priority_blockers),
+            "recommended_command": self.recommended_command,
+            "feature_work_guidance": self.feature_work_guidance,
+            "readiness_score": self.readiness_score,
+        }
+
+    def to_json(self) -> str:
+        return json.dumps(self.to_dict(), indent=2) + "\n"
+
+    def to_markdown(self) -> str:
+        return (
+            "\n".join(
+                [
+                    "# Next Production-Readiness Step",
+                    "",
+                    f"Project root: `{self.project_root}`",
+                    f"Current maturity: **{self.current_maturity}**",
+                    f"Target maturity: **{self.target_maturity}**",
+                    f"Recommended command: `{self.recommended_command}`",
+                    "",
+                    "## Highest-priority blockers",
+                    "",
+                    *_bullet(self.highest_priority_blockers),
+                    "",
+                    "## Feature-work guidance",
+                    "",
+                    self.feature_work_guidance,
+                ]
+            ).rstrip()
+            + "\n"
+        )
+
+
+@dataclass(frozen=True)
+class NextPromptReport:
+    next_action: NextActionReport
+    prompt: str
+    validation_commands: tuple[str, ...]
+    non_goals: tuple[str, ...]
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema_version": _SCHEMA_VERSION,
+            "next_action": self.next_action.to_dict(),
+            "prompt": self.prompt,
+            "validation_commands": list(self.validation_commands),
+            "non_goals": list(self.non_goals),
+        }
+
+    def to_json(self) -> str:
+        return json.dumps(self.to_dict(), indent=2) + "\n"
+
+    def to_markdown(self) -> str:
+        return self.prompt.rstrip() + "\n"
+
+
+@dataclass(frozen=True)
+class ProductionPassportReport:
+    report: ProjectMriReport
+    evidence_sources: tuple[str, ...]
+
+    def to_dict(self) -> dict[str, Any]:
+        score = self.report.readiness_score
+        findings = [finding.to_dict() for finding in self.report.risk_findings]
+        blockers = [
+            finding.to_dict() for finding in self.report.risk_findings if finding.severity in {"critical", "high"}
+        ]
+        warnings = [
+            finding.to_dict() for finding in self.report.risk_findings if finding.severity in {"medium", "low", "info"}
+        ]
+        return {
+            "schema_version": _SCHEMA_VERSION,
+            "project_root": str(self.report.project_root),
+            "detected_archetype": self.report.project_type,
+            "maturity_level": self.report.maturity,
+            "readiness_score": score,
+            "passed_signals": [signal.to_dict() for signal in self.report.signals],
+            "blockers": blockers,
+            "warnings": warnings,
+            "risk_findings": findings,
+            "missing_production_readiness_signals": list(self.report.missing_readiness_signals),
+            "recommended_next_promotion": _next_maturity(self.report.maturity),
+            "evidence_sources": list(self.evidence_sources),
+        }
+
+    def to_json(self) -> str:
+        return json.dumps(self.to_dict(), indent=2) + "\n"
+
+    def to_markdown(self) -> str:
+        payload = self.to_dict()
+        return (
+            "\n".join(
+                [
+                    "# Production Passport",
+                    "",
+                    f"Project root: `{payload['project_root']}`",
+                    f"Detected archetype: `{payload['detected_archetype']}`",
+                    f"Maturity level: **{payload['maturity_level']}**",
+                    f"Readiness score: **{payload['readiness_score']['score']}/{payload['readiness_score']['max_score']}**",
+                    f"Recommended next promotion: `{payload['recommended_next_promotion']}`",
+                    "",
+                    "## Blockers",
+                    "",
+                    *_bullet(
+                        f"{item['severity']}: {item['title']} — {item['evidence']}" for item in payload["blockers"]
+                    ),
+                    "",
+                    "## Missing production-readiness signals",
+                    "",
+                    *_bullet(payload["missing_production_readiness_signals"]),
+                    "",
+                    "## Evidence sources",
+                    "",
+                    *_bullet(payload["evidence_sources"]),
+                ]
+            ).rstrip()
+            + "\n"
+        )
+
+
+@dataclass(frozen=True)
+class PromotionStep:
+    target_maturity: str
+    objective: str
+    rationale: str
+    suggested_prompt: str
+    validation_commands: tuple[str, ...]
+    stop_conditions: tuple[str, ...]
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "target_maturity": self.target_maturity,
+            "objective": self.objective,
+            "rationale": self.rationale,
+            "suggested_prompt": self.suggested_prompt,
+            "validation_commands": list(self.validation_commands),
+            "stop_conditions": list(self.stop_conditions),
+        }
+
+
+@dataclass(frozen=True)
+class PromotionPlanReport:
+    project_root: Path
+    current_maturity: str
+    target_level: str
+    execution_mode: str
+    steps: tuple[PromotionStep, ...]
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema_version": _SCHEMA_VERSION,
+            "project_root": str(self.project_root),
+            "current_maturity": self.current_maturity,
+            "target_level": self.target_level,
+            "execution_mode": self.execution_mode,
+            "steps": [step.to_dict() for step in self.steps],
+        }
+
+    def to_json(self) -> str:
+        return json.dumps(self.to_dict(), indent=2) + "\n"
+
+    def to_markdown(self) -> str:
+        lines = [
+            "# Promotion Plan",
+            "",
+            f"Project root: `{self.project_root}`",
+            f"Current maturity: **{self.current_maturity}**",
+            f"Target level: **{self.target_level}**",
+            f"Execution mode: `{self.execution_mode}`",
+        ]
+        for index, step in enumerate(self.steps, start=1):
+            lines.extend(
+                [
+                    "",
+                    f"## Step {index}: {step.target_maturity}",
+                    "",
+                    step.objective,
+                    "",
+                    f"Rationale: {step.rationale}",
+                    "",
+                    "Suggested prompt:",
+                    "",
+                    f"```text\n{step.suggested_prompt}\n```",
+                    "",
+                    "Validation commands:",
+                    "",
+                    *_bullet(step.validation_commands),
+                ]
+            )
+        return "\n".join(lines).rstrip() + "\n"
+
+
+@dataclass(frozen=True)
+class Invariant:
+    text: str
+    source: str
+    category: str
+
+    def to_dict(self) -> dict[str, str]:
+        return {"text": self.text, "source": self.source, "category": self.category}
+
+
+@dataclass(frozen=True)
+class InvariantsReport:
+    project_root: Path
+    invariants: tuple[Invariant, ...]
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema_version": _SCHEMA_VERSION,
+            "project_root": str(self.project_root),
+            "invariants": [invariant.to_dict() for invariant in self.invariants],
+        }
+
+    def to_json(self) -> str:
+        return json.dumps(self.to_dict(), indent=2) + "\n"
+
+    def to_markdown(self) -> str:
+        return (
+            "\n".join(
+                ["# Project Invariants", "", *_bullet(f"{item.text} ({item.source})" for item in self.invariants)]
+            ).rstrip()
+            + "\n"
+        )
+
+
+@dataclass(frozen=True)
+class RehearsalCommand:
+    command: str
+    category: str
+    reason: str
+
+    def to_dict(self) -> dict[str, str]:
+        return {"command": self.command, "category": self.category, "reason": self.reason}
+
+
+@dataclass(frozen=True)
+class LaunchRehearsalReport:
+    project_root: Path
+    mode: str
+    commands: tuple[RehearsalCommand, ...]
+    skipped: tuple[str, ...]
+
+    @property
+    def recommended_commands(self) -> tuple[str, ...]:
+        return tuple(command.command for command in self.commands)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema_version": _SCHEMA_VERSION,
+            "project_root": str(self.project_root),
+            "mode": self.mode,
+            "commands": [command.to_dict() for command in self.commands],
+            "recommended_commands": list(self.recommended_commands),
+            "skipped": list(self.skipped),
+        }
+
+    def to_json(self) -> str:
+        return json.dumps(self.to_dict(), indent=2) + "\n"
+
+    def to_markdown(self) -> str:
+        return (
+            "\n".join(
+                [
+                    "# Launch Rehearsal",
+                    "",
+                    f"Project root: `{self.project_root}`",
+                    f"Mode: `{self.mode}`",
+                    "",
+                    "## Recommended commands",
+                    "",
+                    *_bullet(f"`{command.command}` — {command.reason}" for command in self.commands),
+                    "",
+                    "## Skipped",
+                    "",
+                    *_bullet(self.skipped),
+                ]
+            ).rstrip()
+            + "\n"
+        )
+
+
+def build_next_action(project_root: str | Path) -> NextActionReport:
+    report = scan_project_mri(project_root)
+    target = _next_maturity(report.maturity)
+    blockers = _highest_priority_blockers(report)
+    command = _command_for_missing(report)
+    guidance = (
+        "Pause feature work until high-risk blockers are cleared."
+        if any(f.severity in {"critical", "high"} for f in report.risk_findings)
+        else "Feature work can continue only if it also closes the next readiness gap."
+    )
+    return NextActionReport(
+        report.project_root, report.maturity, target, blockers, command, guidance, report.readiness_score
+    )
+
+
+def build_next_prompt(project_root: str | Path) -> NextPromptReport:
+    action = build_next_action(project_root)
+    validation = _validation_commands_for(scan_project_mri(project_root))
+    non_goals = (
+        "Do not add hosted services, dashboards, deployment platforms, or network calls.",
+        "Do not weaken CES governance, approval, evidence, redaction, or consent gates.",
+        "Do not print or commit secret values.",
+    )
+    prompt = "\n".join(
+        [
+            "# Next Production-Readiness Prompt",
+            "",
+            "Objective:",
+            f"Move this project from `{action.current_maturity}` toward `{action.target_maturity}` by completing the next safest production-readiness step.",
+            "",
+            "Scope:",
+            *_bullet(action.highest_priority_blockers),
+            "",
+            "Files/areas to inspect:",
+            *_bullet(
+                (
+                    "README/docs",
+                    "project config",
+                    "tests",
+                    "CI/quality configuration",
+                    ".ces verification policy if present",
+                )
+            ),
+            "",
+            "Validation commands:",
+            *_bullet(validation),
+            "",
+            "Non-goals:",
+            *_bullet(non_goals),
+            "",
+            "Secret-handling rule:",
+            "Report only secret filenames, key names, or categories. Never print secret values.",
+            "",
+            "Completion evidence:",
+            "Summarize files changed, readiness gap closed, commands run, exact results, and remaining blockers.",
+            "",
+            f"Recommended CES command after implementation: `{action.recommended_command}`",
+        ]
+    )
+    return NextPromptReport(action, prompt, validation, non_goals)
+
+
+def build_production_passport(project_root: str | Path) -> ProductionPassportReport:
+    report = scan_project_mri(project_root)
+    sources = ["deterministic project scan"]
+    if any(signal.name.startswith(".ces/") for signal in report.signals):
+        sources.append("local CES evidence/state signals")
+    return ProductionPassportReport(report, tuple(sources))
+
+
+def build_promotion_plan(project_root: str | Path, target_level: str) -> PromotionPlanReport:
+    if target_level not in {"shareable-app", "production-candidate", "production-ready"}:
+        raise ValueError("target level must be shareable-app, production-candidate, or production-ready")
+    report = scan_project_mri(project_root)
+    current_index = _MATURITY_LADDER.index(report.maturity)
+    target_index = _MATURITY_LADDER.index(target_level)
+    levels = _MATURITY_LADDER[current_index + 1 : target_index + 1] if target_index > current_index else (target_level,)
+    steps = tuple(
+        PromotionStep(
+            target_maturity=level,
+            objective=f"Close the next readiness gaps needed for `{level}`.",
+            rationale="Promotion is planned one maturity checkpoint at a time to avoid unsafe broad rewrites.",
+            suggested_prompt=build_next_prompt(project_root).prompt,
+            validation_commands=_validation_commands_for(report),
+            stop_conditions=(
+                "A high-risk finding appears",
+                "Validation fails",
+                "The next maturity checkpoint is reached",
+            ),
+        )
+        for level in levels
+    )
+    return PromotionPlanReport(report.project_root, report.maturity, target_level, "plan-only", steps)
+
+
+def mine_project_invariants(project_root: str | Path) -> InvariantsReport:
+    root = Path(project_root).resolve()
+    invariants: list[Invariant] = []
+    for relative in ("README.md", "docs/README.md"):
+        path = root / relative
+        if not _is_regular_file(path):
+            continue
+        try:
+            lines = path.read_text(encoding="utf-8").splitlines()
+        except UnicodeDecodeError:
+            continue
+        for line_number, raw_line in enumerate(lines, start=1):
+            line = raw_line.strip().strip("- ")
+            lowered = line.lower()
+            if lowered.startswith(
+                ("safety invariant:", "public boundary:", "verification policy:", "security invariant:")
+            ):
+                category = line.split(":", 1)[0].lower().replace(" ", "-")
+                invariants.append(Invariant(line, f"{relative}:{line_number}", category))
+    return InvariantsReport(root, tuple(sorted(invariants, key=lambda item: (item.text, item.source))))
+
+
+def build_launch_rehearsal(project_root: str | Path) -> LaunchRehearsalReport:
+    report = scan_project_mri(project_root)
+    root = report.project_root
+    commands: list[RehearsalCommand] = []
+    names = {signal.name for signal in report.signals}
+    if "pyproject.toml" in names:
+        if "tests-directory" in names or "pytest" in names:
+            commands.append(
+                RehearsalCommand(
+                    "uv run pytest tests/ -q", "recommended", "Run local tests without changing project files"
+                )
+            )
+        if {"ruff", "mypy"} & names:
+            commands.append(RehearsalCommand("uv run ruff check .", "recommended", "Check Python lint/quality signals"))
+        if "mypy" in names:
+            commands.append(
+                RehearsalCommand("uv run mypy . --ignore-missing-imports", "recommended", "Check type-readiness signal")
+            )
+    if "package.json" in names:
+        commands.append(
+            RehearsalCommand(
+                "npm test", "recommended", "Run configured Node test command if dependencies are installed"
+            )
+        )
+    if not commands:
+        commands.append(RehearsalCommand("ces mri --format json", "smoke", "Re-run deterministic readiness scan"))
+    skipped = ("Clean checkout rehearsal is not run by MVP mode; this command emits a read-only plan.",)
+    return LaunchRehearsalReport(root, "read-only-plan", tuple(commands), skipped)
+
+
+def build_slop_scan(project_root: str | Path) -> dict[str, Any]:
+    report = scan_project_mri(project_root)
+    findings = [finding.to_dict() for finding in report.risk_findings if finding.category == "ai-slop"]
+    return {"schema_version": _SCHEMA_VERSION, "project_root": str(report.project_root), "findings": findings}
+
+
+def _next_maturity(current: str) -> str:
+    try:
+        index = _MATURITY_LADDER.index(current)
+    except ValueError:
+        return "local-app"
+    return _MATURITY_LADDER[min(index + 1, len(_MATURITY_LADDER) - 1)]
+
+
+def _highest_priority_blockers(report: ProjectMriReport) -> tuple[str, ...]:
+    blockers = [
+        f"{finding.severity}: {finding.title} — {finding.evidence}"
+        for finding in report.risk_findings
+        if finding.severity in {"critical", "high"}
+    ]
+    if blockers:
+        return tuple(blockers[:5])
+    if report.missing_readiness_signals:
+        return tuple(report.missing_readiness_signals[:5])
+    return ("No immediate blocker detected by deterministic scan; preserve current readiness while validating.",)
+
+
+def _command_for_missing(report: ProjectMriReport) -> str:
+    if any(finding.category == "secret-hygiene" for finding in report.risk_findings):
+        return 'ces build "Harden secret hygiene without committing secret values"'
+    if report.missing_readiness_signals:
+        return 'ces build "Add the next missing production-readiness signal reported by ces next"'
+    return "ces verify"
+
+
+def _validation_commands_for(report: ProjectMriReport) -> tuple[str, ...]:
+    names = {signal.name for signal in report.signals}
+    commands = ["ces mri --format json"]
+    if "pyproject.toml" in names:
+        if "tests-directory" in names or "pytest" in names:
+            commands.append("uv run pytest tests/ -q")
+        if {"ruff", "mypy"} & names:
+            commands.append("uv run ruff check .")
+        if "mypy" in names:
+            commands.append("uv run mypy . --ignore-missing-imports")
+    if "package.json" in names:
+        commands.append("npm test")
+    return tuple(commands)
 
 
 def _bullet(items: Any) -> list[str]:

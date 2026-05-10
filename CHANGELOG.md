@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Add `ces mri`, a read-only Project MRI diagnostic that classifies repository maturity, reports deterministic project signals and prioritized risks, and recommends next CES actions in markdown or JSON.
+- Add the bounded Production Autopilot report surfaces: `ces next`, `ces next-prompt`, `ces passport`, `ces promote <target-level>`, `ces invariants`, `ces slop-scan`, and `ces launch rehearsal` with deterministic markdown/JSON output and read-only planning semantics.
 
 ## [0.1.15] - 2026-05-09
 
