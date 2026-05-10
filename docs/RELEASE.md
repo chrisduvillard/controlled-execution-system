@@ -42,9 +42,7 @@ uv run ruff check . && uv run ruff format --check .
 
 ### 2. Bump the version
 
-**This is the step that bit us most often.** Two artefacts must move in
-lockstep; a one-line patch has to hit both or the publish builds an old
-wheel and PyPI rejects it as "file already exists":
+**This is the step that bit us most often.** Keep all public version surfaces in lockstep; a one-line patch that only changes `pyproject.toml` can still publish stale metadata or fail package-contract tests:
 
 ```bash
 # 2a. pyproject.toml
@@ -52,11 +50,25 @@ wheel and PyPI rejects it as "file already exists":
 #     To:       version = "0.1.Y"
 $EDITOR pyproject.toml
 
-# 2b. CHANGELOG.md
+# 2b. Source-tree fallback for editable/dev invocations
+#     Change:   __version__ = "0.1.X"
+#     To:       __version__ = "0.1.Y"
+$EDITOR src/ces/__init__.py
+
+# 2c. uv.lock editable package version
+uv lock
+
+# 2d. CHANGELOG.md
 #     Add a new '## [0.1.Y] - YYYY-MM-DD' header under [Unreleased].
 #     Move any pending items from [Unreleased] to [0.1.Y].
 #     Keep [Unreleased] as an empty header for the next cycle.
 $EDITOR CHANGELOG.md
+
+# 2e. README public install pin and tag examples
+$EDITOR README.md
+
+# 2f. Package-contract version assertion, if present
+$EDITOR tests/unit/test_docs/test_package_contract.py
 
 # Sanity-check both match before you tag:
 grep -E '^version =' pyproject.toml
@@ -72,7 +84,29 @@ git push
 gh run watch --exit-status   # CI must go green
 ```
 
-### 4. Tag
+### 4. Validate on TestPyPI first
+
+Before pushing a real `v*` release tag, run the manual TestPyPI workflow from the merged release-prep commit:
+
+```bash
+gh workflow run publish-testpypi.yml --ref master -f package-version=0.1.Y
+gh run list --workflow=publish-testpypi.yml --limit 1
+```
+
+The workflow rebuilds the package, reruns the release gates, smoke-tests the installed wheel in a fresh project, and uploads to <https://test.pypi.org/> through the `testpypi` trusted-publishing environment. The first run requires a matching TestPyPI trusted publisher for project `controlled-execution-system`, owner `chrisduvillard`, repository `controlled-execution-system`, workflow `publish-testpypi.yml`, and environment `testpypi`.
+
+Then fresh-install from TestPyPI before touching real PyPI:
+
+```bash
+uv venv --python 3.13 /tmp/ces-testpypi-smoke
+uv pip install --python /tmp/ces-testpypi-smoke/bin/python --refresh --no-cache \
+  --index-url https://test.pypi.org/simple/ \
+  --extra-index-url https://pypi.org/simple/ \
+  controlled-execution-system==0.1.Y
+/tmp/ces-testpypi-smoke/bin/ces --help
+```
+
+### 5. Tag
 
 The tag points at the version-bump commit, not at any earlier one.
 
@@ -88,7 +122,7 @@ Pushing the tag triggers `.github/workflows/publish.yml` →
 unit tests → FreshCart E2E smoke → `uv build` → `twine check` →
 installed-CLI smoke → trusted-publish → PyPI upload.
 
-### 5. Watch the publish
+### 6. Watch the publish
 
 ```bash
 # Find the triggered run:
@@ -111,7 +145,7 @@ curl -sS https://pypi.org/pypi/controlled-execution-system/json \
 # → 0.1.Y
 ```
 
-### 6. Install smoke test
+### 7. Install smoke test
 
 ```bash
 python3.12 -m venv /tmp/ces-smoke
@@ -128,7 +162,7 @@ PyPI CDN propagation can take 30–60 s after the workflow turns green.
 If `pip install` reports `No matching distribution`, wait and retry
 rather than republishing.
 
-### 7. GitHub Release
+### 8. GitHub Release
 
 The canonical way to make the release discoverable on the repo sidebar
 and downstream tooling (Dependabot, mise, pip changelog viewers):
@@ -146,7 +180,7 @@ gh release create v0.1.Y \
   dist/controlled_execution_system-0.1.Y.tar.gz
 ```
 
-### 8. Post-release
+### 9. Post-release
 
 - Cross-check the Releases page renders correctly:
   <https://github.com/chrisduvillard/controlled-execution-system/releases>
