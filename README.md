@@ -6,26 +6,26 @@
 [![Publish](https://github.com/chrisduvillard/controlled-execution-system/actions/workflows/publish.yml/badge.svg)](https://github.com/chrisduvillard/controlled-execution-system/actions/workflows/publish.yml)
 [![PyPI](https://img.shields.io/pypi/v/controlled-execution-system.svg)](https://pypi.org/project/controlled-execution-system/)
 [![Python](https://img.shields.io/pypi/pyversions/controlled-execution-system.svg)](https://pypi.org/project/controlled-execution-system/)
-[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![License](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/chrisduvillard/controlled-execution-system/blob/master/LICENSE)
 
-<img src="docs/assets/ces-avatar.png" alt="Controlled Execution System project avatar" width="300">
+<img src="https://raw.githubusercontent.com/chrisduvillard/controlled-execution-system/master/docs/assets/ces-avatar.png" alt="Controlled Execution System project avatar" width="300">
 
 **Local-first governance for AI coding agents.**
 
 Turn an intent into a bounded manifest, execute it through Codex CLI or Claude Code,<br>
 collect evidence, review the result, and make approval explicit.
 
-[5-Minute Quickstart](docs/Quickstart.md) ·
-[Getting Started](docs/Getting_Started.md) ·
-[Operator Playbook](docs/Operator_Playbook.md) ·
-[Quick Reference](docs/Quick_Reference_Card.md) ·
-[Verification Profile](docs/Verification_Profile.md) ·
-[Changelog](CHANGELOG.md)
+[5-Minute Quickstart](https://github.com/chrisduvillard/controlled-execution-system/blob/master/docs/Quickstart.md) ·
+[Getting Started](https://github.com/chrisduvillard/controlled-execution-system/blob/master/docs/Getting_Started.md) ·
+[Operator Playbook](https://github.com/chrisduvillard/controlled-execution-system/blob/master/docs/Operator_Playbook.md) ·
+[Quick Reference](https://github.com/chrisduvillard/controlled-execution-system/blob/master/docs/Quick_Reference_Card.md) ·
+[Verification Profile](https://github.com/chrisduvillard/controlled-execution-system/blob/master/docs/Verification_Profile.md) ·
+[Changelog](https://github.com/chrisduvillard/controlled-execution-system/blob/master/CHANGELOG.md)
 
 <br>
 
-<a href="docs/assets/ces-demo.mp4">
-  <img src="docs/assets/ces-demo.gif" alt="20-second CES explainer demo" width="760">
+<a href="https://raw.githubusercontent.com/chrisduvillard/controlled-execution-system/master/docs/assets/ces-demo.mp4">
+  <img src="https://raw.githubusercontent.com/chrisduvillard/controlled-execution-system/master/docs/assets/ces-demo.gif" alt="20-second CES explainer demo" width="760">
 </a>
 
 <sub>Click the animation to open the MP4.</sub>
@@ -293,7 +293,7 @@ Unattended `--yes` runs remain evidence-gated. CES should block auto-approval wh
 | `brownfield ...` | Expert legacy behavior capture, review, and promotion. Use `ces brownfield review OLB-<entry-id> --disposition preserve` for a named legacy-behavior decision. |
 | `ces spec ...` | Work with governed specs and manifest drafts. |
 
-For the complete command boundary, use the [Quick Reference Card](docs/Quick_Reference_Card.md) and [Operator Playbook](docs/Operator_Playbook.md).
+For the complete command boundary, use the [Quick Reference Card](https://github.com/chrisduvillard/controlled-execution-system/blob/master/docs/Quick_Reference_Card.md) and [Operator Playbook](https://github.com/chrisduvillard/controlled-execution-system/blob/master/docs/Operator_Playbook.md).
 
 ---
 
@@ -330,7 +330,7 @@ uv run pytest tests/ -m integration -q
 
 Builder-created manifests expect command-backed completion evidence. When completion-gate sensors are enabled, produce matching artifacts before claiming completion: `pytest-results.json`, `ruff-report.json`, `mypy-report.txt`, and `coverage.json`. Dependency and security-sensitive changes can also be backed by `pip-audit-report.json` and SAST JSON artifacts such as `bandit-report.json`; CES parses those when present.
 
-PyPI publishing is tag-driven. Pushing to `master` runs CI only; pushing a `v*` tag such as `v0.1.15` triggers `.github/workflows/publish.yml`, which runs tests, builds distributions, smoke-tests the installed CLI, validates tag/version agreement, and publishes through trusted publishing. Follow [docs/RELEASE.md](docs/RELEASE.md) for the maintainer checklist.
+PyPI publishing is tag-driven. Pushing to `master` runs CI only; pushing a `v*` tag such as `v0.1.15` triggers `.github/workflows/publish.yml`, which runs tests, builds distributions, smoke-tests the installed CLI, validates tag/version agreement, and publishes through trusted publishing. Follow [docs/RELEASE.md](https://github.com/chrisduvillard/controlled-execution-system/blob/master/docs/RELEASE.md) for the maintainer checklist.
 
 ---
 
@@ -338,14 +338,14 @@ PyPI publishing is tag-driven. Pushing to `master` runs CI only; pushing a `v*` 
 
 | Document | Start here when you need |
 |---|---|
-| [5-Minute Quickstart](docs/Quickstart.md) | The shortest local builder-first path. |
-| [Getting Started](docs/Getting_Started.md) | Full setup and workflow walkthrough. |
-| [Operator Playbook](docs/Operator_Playbook.md) | Builder-first versus expert workflow boundaries. |
-| [Brownfield Guide](docs/Brownfield_Guide.md) | Existing-codebase and legacy-behavior governance. |
-| [Operations Runbook](docs/Operations_Runbook.md) | Expert status, audit, and emergency operations. |
-| [Quick Reference Card](docs/Quick_Reference_Card.md) | Command and gate lookup tables. |
-| [Troubleshooting](docs/Troubleshooting.md) | Common local setup and runtime issues. |
-| [Release Runbook](docs/RELEASE.md) | Maintainer release checklist. |
+| [5-Minute Quickstart](https://github.com/chrisduvillard/controlled-execution-system/blob/master/docs/Quickstart.md) | The shortest local builder-first path. |
+| [Getting Started](https://github.com/chrisduvillard/controlled-execution-system/blob/master/docs/Getting_Started.md) | Full setup and workflow walkthrough. |
+| [Operator Playbook](https://github.com/chrisduvillard/controlled-execution-system/blob/master/docs/Operator_Playbook.md) | Builder-first versus expert workflow boundaries. |
+| [Brownfield Guide](https://github.com/chrisduvillard/controlled-execution-system/blob/master/docs/Brownfield_Guide.md) | Existing-codebase and legacy-behavior governance. |
+| [Operations Runbook](https://github.com/chrisduvillard/controlled-execution-system/blob/master/docs/Operations_Runbook.md) | Expert status, audit, and emergency operations. |
+| [Quick Reference Card](https://github.com/chrisduvillard/controlled-execution-system/blob/master/docs/Quick_Reference_Card.md) | Command and gate lookup tables. |
+| [Troubleshooting](https://github.com/chrisduvillard/controlled-execution-system/blob/master/docs/Troubleshooting.md) | Common local setup and runtime issues. |
+| [Release Runbook](https://github.com/chrisduvillard/controlled-execution-system/blob/master/docs/RELEASE.md) | Maintainer release checklist. |
 
 Historical server-oriented docs live under `docs/historical/` as design archives, not as the current product contract. Current design and plan records live under `docs/designs/` and `docs/plans/`.
 
@@ -353,10 +353,10 @@ Historical server-oriented docs live under `docs/historical/` as design archives
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for development workflow, tests, and contribution expectations. Security-sensitive issues should follow [SECURITY.md](SECURITY.md).
+See [CONTRIBUTING.md](https://github.com/chrisduvillard/controlled-execution-system/blob/master/CONTRIBUTING.md) for development workflow, tests, and contribution expectations. Security-sensitive issues should follow [SECURITY.md](https://github.com/chrisduvillard/controlled-execution-system/blob/master/SECURITY.md).
 
-If you use external agent loops such as `gnhf`, keep them outside CES itself as contributor tooling rather than part of the product. Run them from a clean sibling worktree or clean clone, keep the scope away from manifest/policy, approval/triage/review, audit, kill-switch, and runtime-boundary changes, and review every generated branch manually before using it. Follow the [GNHF Trial Guide](docs/GNHF_Trial_Guide.md) and [`scripts/gnhf_trial.sh`](scripts/gnhf_trial.sh); CES's own builder-first or expert workflows remain the delivery path.
+If you use external agent loops such as `gnhf`, keep them outside CES itself as contributor tooling rather than part of the product. Run them from a clean sibling worktree or clean clone, keep the scope away from manifest/policy, approval/triage/review, audit, kill-switch, and runtime-boundary changes, and review every generated branch manually before using it. Follow the [GNHF Trial Guide](https://github.com/chrisduvillard/controlled-execution-system/blob/master/docs/GNHF_Trial_Guide.md) and [`scripts/gnhf_trial.sh`](https://github.com/chrisduvillard/controlled-execution-system/blob/master/scripts/gnhf_trial.sh); CES's own builder-first or expert workflows remain the delivery path.
 
 ## License
 
-MIT. See [LICENSE](LICENSE).
+MIT. See [LICENSE](https://github.com/chrisduvillard/controlled-execution-system/blob/master/LICENSE).

@@ -53,7 +53,10 @@ ces doctor --verify-runtime --runtime all
 ```
 
 Bare `ces doctor` is a preflight check for Python, installed providers, extras,
-and project setup. Use `--runtime-safety` to inspect runtime-boundary disclosures.
+and project setup. Use `--runtime-safety` to inspect runtime-boundary disclosures:
+Claude should appear as allowlist-enforced when available; Codex appears as a
+`NOTICE`, not a missing runtime, because CES intentionally discloses it as a
+full-access adapter that requires explicit side-effect consent for execution.
 Use `--verify-runtime` only when you deliberately want CES to probe Codex/Claude
 authentication before a build.
 

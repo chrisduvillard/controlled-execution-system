@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import shutil
 import subprocess
 import tomllib
@@ -105,6 +106,23 @@ def test_readme_documents_repo_self_dogfooding() -> None:
     assert ".ces/" in readme
 
 
+def test_readme_pypi_long_description_uses_absolute_links_and_assets() -> None:
+    """README is the PyPI long description; links/assets must render outside GitHub."""
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+
+    markdown_targets = re.findall(r"\[[^\]]+\]\(([^)#][^)]+)\)", readme)
+    relative_markdown = [
+        target for target in markdown_targets if not target.startswith(("http://", "https://", "mailto:"))
+    ]
+    assert relative_markdown == []
+
+    html_targets = re.findall(r"(?:src|href)=\"([^\"]+)\"", readme)
+    relative_html = [target for target in html_targets if not target.startswith(("http://", "https://", "mailto:"))]
+    assert relative_html == []
+
+    assert "raw.githubusercontent.com/chrisduvillard/controlled-execution-system" in readme
+
+
 def test_readme_pinned_install_example_matches_project_version() -> None:
     """README should not point users at an older pinned package release."""
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
@@ -147,6 +165,18 @@ def test_troubleshooting_uses_current_coverage_floor_and_runtime_guidance() -> N
     assert "--cov-fail-under=90" in troubleshooting
     assert "install and authenticate `codex` so it is on `PATH`" in troubleshooting
     assert "Set `CODEX_HOME`" not in troubleshooting
+
+
+def test_runtime_safety_docs_explain_codex_notice_boundary() -> None:
+    quickstart = (ROOT / "docs" / "Quickstart.md").read_text(encoding="utf-8")
+    troubleshooting = (ROOT / "docs" / "Troubleshooting.md").read_text(encoding="utf-8")
+    combined = f"{quickstart}\n{troubleshooting}"
+
+    assert "Codex appears as a\n`NOTICE`, not a missing runtime" in quickstart
+    assert "full-access adapter" in quickstart
+    assert "`ces doctor --runtime-safety` shows Codex as NOTICE" in troubleshooting
+    assert "does not enforce manifest tool allowlists before subprocess launch" in troubleshooting
+    assert "--accept-runtime-side-effects" in combined
 
 
 def test_getting_started_links_existing_prd_target() -> None:

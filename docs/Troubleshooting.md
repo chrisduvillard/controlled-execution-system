@@ -56,6 +56,17 @@ ces doctor
 
 ---
 
+## `ces doctor --runtime-safety` shows Codex as NOTICE
+
+**Cause:** Codex is installed, but CES discloses it as a full-access local runtime boundary. This is not a missing runtime. It means the Codex adapter does not enforce manifest tool allowlists before subprocess launch.
+
+**Fix:** Choose the boundary you want:
+- Use Claude Code when you need CES to pass an explicit `--allowedTools` allowlist before the agent starts.
+- Use Codex when you accept the full-access local runtime boundary, and pass `--accept-runtime-side-effects` for `ces build`, `ces continue`, or `ces execute` when prompted.
+- Use `ces doctor --verify-runtime --runtime codex` only when you also want to probe Codex authentication.
+
+---
+
 ## Legacy server-mode config detected
 
 **Error:**

@@ -258,6 +258,26 @@ class TestCesDoctor:
         result = runner.invoke(app, ["doctor"])
         assert "no optional runtime extras" not in result.stdout
 
+    def test_runtime_safety_report_labels_codex_as_notice_not_missing(
+        self, tmp_path: Path, monkeypatch: object
+    ) -> None:
+        """Codex's unsafe runtime boundary is an explicit disclosure, not a missing install."""
+        import shutil
+
+        monkeypatch.chdir(tmp_path)  # type: ignore[attr-defined]
+        monkeypatch.setattr(shutil, "which", lambda name: "/usr/bin/codex" if name == "codex" else None)  # type: ignore[attr-defined]
+        app = _get_app()
+
+        result = runner.invoke(app, ["doctor", "--runtime-safety"])
+
+        assert result.exit_code == 0
+        assert "Runtime adapter: codex" in result.stdout
+        codex_line = next(line for line in result.stdout.splitlines() if "Runtime adapter: codex" in line)
+        assert "NOTICE" in codex_line
+        assert "MISSING" not in codex_line
+        assert "intentionally disclosed" in result.stdout
+        assert "full-access" in result.stdout
+
     def test_reports_ces_directory_status(self, tmp_path: Path, monkeypatch: object) -> None:
         """ces doctor mentions whether a .ces/ project directory exists."""
         monkeypatch.chdir(tmp_path)  # type: ignore[attr-defined]
