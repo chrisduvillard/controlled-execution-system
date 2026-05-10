@@ -36,7 +36,7 @@ Implement a minimal, maintainable `ces mri` command that performs a read-only re
   - `local-app`
   - `shareable-app`
   - `production-candidate`
-  - `operated-product`
+  - `production-ready`
   Use simple deterministic heuristics, not LLM calls.
 - The scan should detect and report at least:
   - project type signals, e.g. Python package, Node package, containerized app, unknown

@@ -89,6 +89,21 @@ ces status
 
 This shows the current builder session, evidence, and next action.
 
+## 5. Use the Production Autopilot reports
+
+Before asking an agent for more feature work, inspect the repo and generate the next bounded readiness prompt:
+
+```bash
+ces mri
+ces next
+ces next-prompt
+ces passport
+ces promote production-candidate
+ces launch rehearsal
+```
+
+These report-style commands are local and read-only by default. They support `--project-root PATH` and `--format markdown|json`, so a CES source checkout can inspect a separate target project without creating `.ces/` state or launching a runtime.
+
 ## What just happened?
 
 CES created a `.ces/` directory in your project with:

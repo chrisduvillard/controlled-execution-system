@@ -21,6 +21,14 @@ def test_quick_reference_card_routes_builder_and_expert_workflows() -> None:
     assert "ces recover --dry-run" in card
     assert "ces verify" in card
     assert "ces complete" in card
+    for command in (
+        "ces next",
+        "ces next-prompt",
+        "ces passport",
+        "ces promote production-candidate",
+        "ces launch rehearsal",
+    ):
+        assert command in card
     assert "ces report builder" in card
     assert "ces manifest" in card
     assert "ces classify" in card

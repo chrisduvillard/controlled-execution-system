@@ -129,6 +129,22 @@ Independent pre-commit review then found two security blockers: secret-looking v
 - Maturity classification is conservative and may under-classify projects with strong readiness signals that use non-standard tool names.
 - Runtime/deployment detection is intentionally generic to respect the current CES repository contract that CES itself does not expose a container runtime support surface.
 
+### Checkpoint 6: maturity label contract alignment
+
+Follow-up inspection against the original standing goal found that the fully signaled top maturity path returned `operated-product`, while the requested minimum maturity vocabulary includes `production-ready`. Added a focused RED test for a fully signaled project, changed the top classification to `production-ready`, updated the CLI test expectation, and aligned the MRI planning prompt copy.
+
+Validation run:
+
+- `uv run pytest tests/unit/test_verification/test_mri.py::test_project_mri_classifies_fully_signaled_project_as_production_ready -q` — RED, failed with `operated-product` before the fix.
+- `uv run pytest tests/unit/test_verification/test_mri.py::test_project_mri_classifies_fully_signaled_project_as_production_ready tests/unit/test_verification/test_mri.py tests/unit/test_cli/test_mri_cmd.py -q` — `9 passed`.
+- `uv run ruff check src/ces/verification/mri.py tests/unit/test_cli/test_mri_cmd.py tests/unit/test_verification/test_mri.py` — passed.
+- `uv run ruff format --check src/ces/verification/mri.py tests/unit/test_cli/test_mri_cmd.py tests/unit/test_verification/test_mri.py` — passed.
+- `uv run mypy src/ces/verification/mri.py --ignore-missing-imports` — passed.
+- `uv run ces mri --format json > /tmp/ces-mri-current.json && python -m json.tool /tmp/ces-mri-current.json >/dev/null` — JSON smoke passed; CES repo currently classifies as `production-candidate`.
+- `uv run pytest tests/unit -q` — `2619 passed`.
+
+Remaining work or blocker: none for this contract alignment.
+
 ## Risks and follow-up work
 
 - Add VCS-aware secret hygiene later if CES wants to distinguish local-only files from committed files.

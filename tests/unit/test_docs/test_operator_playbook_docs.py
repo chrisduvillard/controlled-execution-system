@@ -53,6 +53,15 @@ def test_entry_docs_route_operators_to_builder_reports_and_expert_handoff() -> N
     assert "ces recover --dry-run" in readme
     assert "ces verify" in readme
     assert "ces complete" in readme
+    for command in (
+        "ces next",
+        "ces next-prompt",
+        "ces passport",
+        "ces promote production-candidate",
+        "ces launch rehearsal",
+    ):
+        assert command in readme
+        assert command in getting_started
     assert "Operator Playbook" in readme
     assert "ces status --expert" in readme
     assert "ces status --expert --watch" in readme

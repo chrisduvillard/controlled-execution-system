@@ -121,7 +121,24 @@ Use `ces status --expert` for the full expert view. `ces status` does not mutate
 local state by default; use `ces status --reconcile` when you explicitly want to
 refresh stale builder session state before display.
 
-## 6. Choose Builder-First vs Expert Workflow
+## 6. Diagnose production readiness before adding more work
+
+The Production Autopilot surfaces are read-only by default and work without Codex or Claude authentication:
+
+```bash
+ces mri --format markdown
+ces next --format markdown
+ces next-prompt --format markdown
+ces passport --format json
+ces promote production-candidate --format markdown
+ces invariants --format json
+ces slop-scan --format json
+ces launch rehearsal --format json
+```
+
+Use them when you want CES to diagnose the repository, explain the next safest production-readiness step, generate an actionable agent prompt, summarize evidence in a Production Passport, and rehearse launch checks without mutating the target project. Each command accepts `--project-root PATH` for source-checkout workflows.
+
+## 7. Choose Builder-First vs Expert Workflow
 
 Use `builder-first` when you want CES to keep the active request, artifacts, and
 recovery path together:
@@ -161,7 +178,7 @@ recovery expectations for those commands.
 The [Operator Playbook](Operator_Playbook.md) has the decision table and
 recommended command sequences.
 
-## 7. Expert Workflow
+## 8. Expert Workflow
 
 If you want the explicit manifest-first flow, CES still supports it:
 
@@ -175,7 +192,7 @@ Shows classification confidence with color coding:
 - Yellow (70-90%): Human review recommended
 - Red (<70%): Manual classification required
 
-## 8. Execute the Agent Task
+## 9. Execute the Agent Task
 
 ```bash
 ces execute M-<manifest-id> --runtime auto
@@ -185,7 +202,7 @@ The selected runtime executes locally. CES records the manifest, expected scope,
 
 Because Codex cannot enforce manifest tool allowlists before its subprocess starts, builder-first and direct execute commands fail closed before Codex launch unless you pass `--accept-runtime-side-effects`. Use that flag only when you explicitly accept the full-access runtime boundary; prefer Claude Code when runtime-level tool allowlist enforcement is required.
 
-## 9. Review the Evidence
+## 10. Review the Evidence
 
 ```bash
 ces review M-<manifest-id>
@@ -199,7 +216,7 @@ Shows:
 - Reviewer assignments
 - the current builder truth when the active builder session matches the review target
 
-## 10. Triage the Evidence
+## 11. Triage the Evidence
 
 ```bash
 ces triage M-<manifest-id>
@@ -209,7 +226,7 @@ ces triage
 
 Returns GREEN / YELLOW / RED based on the current triage matrix.
 
-## 11. Approve or Reject
+## 12. Approve or Reject
 
 ```bash
 ces approve M-<manifest-id>
@@ -219,7 +236,7 @@ ces approve --yes
 
 Records the decision in the append-only audit ledger.
 
-## 12. When a Builder Run Is Blocked
+## 13. When a Builder Run Is Blocked
 
 ```bash
 ces why
@@ -236,7 +253,7 @@ when present and otherwise keeps inferred contracts in memory unless you pass
 actually completed outside CES and you need to reconcile that fact with the audit
 trail.
 
-## 13. Export a Builder Run Report
+## 14. Export a Builder Run Report
 
 ```bash
 ces report builder
@@ -245,7 +262,7 @@ ces report builder
 This writes paired markdown and JSON artifacts under `.ces/exports/` with the
 request, linked artifacts, review state, latest outcome, and next step.
 
-## 14. Brownfield Expert Commands
+## 15. Brownfield Expert Commands
 
 ```bash
 ces brownfield register --system legacy-billing --description "Invoices above $1000 receive a 5% discount"

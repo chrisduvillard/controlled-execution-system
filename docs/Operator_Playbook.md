@@ -11,6 +11,10 @@ This playbook explains when to stay in the builder-first CES flow, when to switc
 | You want a plain-language summary of what CES knows right now | `builder-first` | `ces explain` and `ces status` are the shortest path to the current request, stage, blockers, and next step |
 | You need brownfield context for the active request before making any legacy call | `builder-first` | `ces explain --view brownfield` keeps the current request and grouped review state visible before you drop into explicit brownfield governance |
 | You need a read-only project maturity and risk diagnostic | `builder-first` | `ces mri` scans without mutating `.ces/` state and recommends the next CES action before you launch build or verification work |
+| You want the next safest production-readiness step and an agent-ready prompt | `builder-first` | `ces next` and `ces next-prompt` explain the next maturity target, blockers, validation commands, non-goals, and secret-handling expectations without running an agent |
+| You need local proof of readiness for a handoff | `builder-first` | `ces passport` summarizes deterministic signals, blockers, warnings, missing readiness signals, recommended promotion, and available CES evidence sources |
+| You want to promote readiness one checkpoint at a time | `builder-first` | `ces promote production-candidate` produces a plan-only sequence rather than bypassing existing governance gates |
+| You need conservative project constraints or AI-native failure findings | `builder-first` | `ces invariants` and `ces slop-scan` mine evidence-backed constraints and deterministic slop findings without LLM calls |
 | You need to inspect or persist project-specific verification expectations | `expert workflow` | `ces profile detect`, `ces profile show`, and `ces profile doctor` expose the required/optional/advisory/unavailable check policy before approval |
 | You need explicit governance control over review, triage, approval, or manifest lifecycle | `expert workflow` | `ces review`, `ces triage`, `ces approve`, `ces manifest`, and `ces classify` expose the lower-level governance surfaces directly |
 | You need to make a named legacy-behavior decision | `expert workflow` | `ces brownfield register`, `ces brownfield review OLB-<entry-id> --disposition preserve`, and `ces brownfield promote` are the explicit brownfield governance surfaces after the builder-first loop identifies the behavior |
@@ -101,6 +105,10 @@ Those commands sit outside the builder-first request loop. Follow the [Operation
 | `ces triage` | Approval-readiness check | Triage color, reason, auto-approval eligibility, and current builder context |
 | `ces approve` | Final operator decision | Approval/rejection plus the builder truth behind the current evidence chain |
 | `ces report builder` | Audit and handoff | Exported markdown/json report with request, linked artifacts, review state, latest outcome, and next step |
+| `ces next` | Production-readiness planning | Next maturity target, blockers, recommended command, and feature-work guidance |
+| `ces next-prompt` | Agent prompt handoff | Scoped readiness prompt with validation commands, non-goals, secret-handling rule, and completion evidence expectations |
+| `ces passport` | Readiness proof packet | Deterministic maturity, score, signals, blockers, warnings, missing signals, and evidence sources |
+| `ces launch rehearsal` | Release-readiness rehearsal | Non-destructive validation plan and local smoke commands based on detected project type |
 | `ces audit --limit 20` | Operator audit inspection | Event stream queries around incidents, recoveries, and other governance activity |
 
 ## Recommended Handoff Flow

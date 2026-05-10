@@ -189,7 +189,12 @@ ces report builder
 | `ces why` | Explain why the latest builder run is blocked and show the next command. |
 | `ces recover --dry-run` | Preview recovery for stale, interrupted, or incomplete evidence states. |
 | `ces verify` | Run independent local verification without writing inferred contracts by default. |
-| `ces mri` | Run a read-only Project MRI diagnostic for maturity, risks, missing production-readiness signals, and recommended next CES actions. |
+| `ces mri` | Run a read-only Project MRI diagnostic for maturity, readiness score, risks, missing production-readiness signals, and recommended next CES actions. |
+| `ces next` | Show the next safest production-readiness action before launching more work. |
+| `ces next-prompt` | Generate a scoped agent prompt for the next readiness step without running an agent. |
+| `ces passport` | Produce a local Production Passport from deterministic signals and available CES evidence. |
+| `ces promote production-candidate` | Produce a plan-only maturity promotion sequence, one checkpoint at a time. |
+| `ces launch rehearsal` | Produce a non-destructive launch-readiness rehearsal plan and safe local smoke checks. |
 | `ces complete` | Reconcile work that was actually completed outside CES. |
 | `ces report builder` | Export markdown and JSON handoff reports under `.ces/exports/`. |
 
@@ -213,6 +218,8 @@ Use expert workflow commands when you need direct artifact control:
 | `ces status --expert` | Show the full expert status view; use `ces status --expert --watch` for live monitoring. |
 | `ces emergency declare` | Record an expert operations emergency declaration, for example `ces emergency declare "Security incident detected"`. |
 | `ces scan` / `ces mri` / `ces baseline` | Inventory the repo, diagnose project maturity/readiness risks, and capture day-0 sensor snapshots. |
+| `ces next` / `ces next-prompt` / `ces passport` | Plan and explain the next production-readiness move with deterministic evidence. |
+| `ces invariants` / `ces slop-scan` / `ces launch rehearsal` | Mine conservative project constraints, surface AI-native failure patterns, and rehearse launch checks without mutation. |
 | `ces profile detect/show/doctor` | Detect, persist, and inspect project-aware verification requirements. |
 | `ces brownfield ...` | Capture, review, and promote named legacy behavior decisions. |
 | `ces spec ...` | Author, validate, decompose, reconcile, or inspect specs. |
@@ -267,6 +274,13 @@ Unattended `--yes` runs remain evidence-gated. CES should block auto-approval wh
 | `ces why` | Diagnose a blocked builder run. |
 | `ces recover --dry-run` | Preview recovery before mutation. |
 | `ces verify` | Independently verify the current project. |
+| `ces mri` | Diagnose maturity, readiness score, risk findings, missing signals, and recommended next actions. |
+| `ces next` | Show the next safest production-readiness action. |
+| `ces next-prompt` | Generate a guardrailed prompt for an agent without running it. |
+| `ces passport` | Produce a local Production Passport in markdown or JSON. |
+| `ces promote <target-level>` | Plan a read-only one-checkpoint maturity promotion. |
+| `ces invariants` / `ces slop-scan` | Mine conservative project constraints and AI-native failure findings. |
+| `ces launch rehearsal` | Plan non-destructive launch-readiness checks. |
 | `ces complete` | Reconcile externally completed work. |
 | `ces report builder` | Export the latest builder handoff report. |
 | `ces manifest "<request>"` | Create a task manifest directly. |

@@ -75,7 +75,7 @@ def test_mri_json_is_valid_deterministic_and_machine_readable(tmp_path: Path) ->
     assert payload["schema_version"] == 1
     assert payload["project_root"] == str(tmp_path.resolve())
     assert payload["project_type"] == "python-cli"
-    assert payload["maturity"] in {"shareable-app", "production-candidate", "operated-product"}
+    assert payload["maturity"] in {"shareable-app", "production-candidate", "production-ready"}
     assert any(signal["name"] == "pytest" for signal in payload["signals"])
     assert all("value" not in finding for finding in payload["risk_findings"])
 
