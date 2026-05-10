@@ -7,10 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.16rc1] - 2026-05-10
+
+Release candidate for the public audit-closure package. This RC collects the post-0.1.15 audit fixes and fresh-project dogfood hardening validated on `master`.
+
 ### Added
 
 - Add `ces mri`, a read-only Project MRI diagnostic that classifies repository maturity, reports deterministic project signals and prioritized risks, and recommends next CES actions in markdown or JSON.
 - Add the bounded Production Autopilot report surfaces: `ces next`, `ces next-prompt`, `ces passport`, `ces promote <target-level>`, `ces invariants`, `ces slop-scan`, and `ces launch rehearsal` with deterministic markdown/JSON output and read-only planning semantics.
+- Add the final 2026-05-10 full-codebase audit closure report under `docs/audits/`, mapping original audit findings to the merged fix sequence and verification evidence.
+- Add installed-wheel fresh-project smoke coverage to CI and publish workflows for `init`, `doctor`, `scan`, `baseline`, `setup-ci`, JSON usage errors, and handled JSON errors.
+
+### Fixed
+
+- Exclude local dogfood and workspace artifacts from source distributions and add package hygiene tests to prevent release artifact leaks.
+- Preserve manifest governance fields when rehydrating persisted task manifests so completion gates and verification sensors stay active.
+- Normalize handled CLI errors and Typer usage errors into stable JSON envelopes when root `--json` is requested.
+- Make `ces --json scan` return a machine-readable inventory payload instead of Rich output.
+- Centralize subprocess lifecycle cleanup so runtime and verification subprocesses are terminated consistently on timeout, cancellation, or interruption.
+- Polish PyPI-facing README/docs links, runtime-safety notices, and CI release guardrails for public packaging.
 
 ## [0.1.15] - 2026-05-09
 

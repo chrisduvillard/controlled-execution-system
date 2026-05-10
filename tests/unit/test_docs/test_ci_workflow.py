@@ -97,3 +97,25 @@ def test_publish_workflow_validates_tag_version_and_runs_real_installed_init_smo
     assert 'ces" --json audit --limit nope' in workflow_text
     assert 'payload["error"]["type"] == "user_error"' in workflow_text
     assert "codex-cli publish-smoke" in workflow_text
+
+
+def test_testpypi_workflow_is_manual_and_uses_test_repository() -> None:
+    workflow_text = (ROOT / ".github" / "workflows" / "publish-testpypi.yml").read_text(encoding="utf-8")
+
+    assert "workflow_dispatch" in workflow_text
+    assert "package-version" in workflow_text
+    assert "environment: testpypi" in workflow_text
+    assert "repository-url: https://test.pypi.org/legacy/" in workflow_text
+    assert "Validate requested version and package metadata agreement" in workflow_text
+    assert 'test "${{ inputs.package-version }}" = "$project_version"' in workflow_text
+
+
+def test_testpypi_workflow_runs_release_smoke_before_upload() -> None:
+    workflow_text = (ROOT / ".github" / "workflows" / "publish-testpypi.yml").read_text(encoding="utf-8")
+
+    assert "Run builder-first smoke tests" in workflow_text
+    assert "tests/integration/test_freshcart_e2e.py" in workflow_text
+    assert "Smoke test installed CLI" in workflow_text
+    assert 'ces" --json doctor --project-root "$smoke_dir"' in workflow_text
+    assert 'ces" --json scan --root "$smoke_dir"' in workflow_text
+    assert workflow_text.index("Smoke test installed CLI") < workflow_text.index("- name: Publish to TestPyPI")

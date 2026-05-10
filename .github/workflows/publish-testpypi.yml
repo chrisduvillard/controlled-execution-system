@@ -1,0 +1,121 @@
+name: Publish to TestPyPI
+
+on:
+  workflow_dispatch:
+    inputs:
+      package-version:
+        description: "Package version to validate and publish to TestPyPI, e.g. 0.1.16rc1"
+        required: true
+        type: string
+
+env:
+  # Keep this aligned with publish.yml so release-candidate validation uses the
+  # same uv binary as the real PyPI publish gate.
+  UV_VERSION: "0.11.8"
+
+jobs:
+  publish-testpypi:
+    runs-on: ubuntu-latest
+    environment: testpypi
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v7
+        with:
+          version: ${{ env.UV_VERSION }}
+      - run: uv sync --frozen --group ci
+
+      - name: Validate requested version and package metadata agreement
+        shell: bash
+        run: |
+          set -euo pipefail
+          project_version="$(uv run python - <<'PY'
+          import tomllib
+          from pathlib import Path
+          print(tomllib.loads(Path("pyproject.toml").read_text())["project"]["version"])
+          PY
+          )"
+          test "${{ inputs.package-version }}" = "$project_version"
+          grep -q "^## \[${project_version}\]" CHANGELOG.md
+
+      - name: Lint release sources
+        run: uv run ruff check src/ tests/
+
+      - name: Check release formatting
+        run: uv run ruff format --check src/ tests/
+
+      - name: Typecheck release sources
+        run: uv run mypy src/ces/ --ignore-missing-imports
+
+      - name: Audit release dependency set
+        run: |
+          uv export --frozen --group ci --format requirements-txt --no-emit-project --no-hashes --output-file /tmp/ces-testpypi-requirements.txt
+          uv run pip-audit --strict -r /tmp/ces-testpypi-requirements.txt
+
+      - name: Run tests before TestPyPI publishing
+        env:
+          CES_DATABASE_URL: "sqlite+aiosqlite:///test.db"
+          CES_DATABASE_SYNC_URL: "sqlite:///test.db"
+        run: uv run pytest tests/unit/ -q -W error
+
+      - name: Run builder-first smoke tests
+        run: uv run pytest tests/integration/test_freshcart_e2e.py -q
+
+      - name: Build distributions
+        run: uv build
+
+      - name: Check distribution metadata
+        run: uvx twine check dist/*
+
+      - name: Smoke test installed CLI
+        shell: bash
+        run: |
+          wheel_path="$(python - <<'PY'
+          from pathlib import Path
+
+          wheels = sorted(Path("dist").glob("controlled_execution_system-*.whl"))
+          if len(wheels) != 1:
+              raise SystemExit(f"Expected exactly one wheel, found {len(wheels)}: {wheels}")
+          print(wheels[0].resolve())
+          PY
+          )"
+          smoke_venv="$(mktemp -d)/venv"
+          uv venv --python 3.13 "$smoke_venv"
+          uv pip install --python "$smoke_venv/bin/python" "$wheel_path"
+          "$smoke_venv/bin/ces" --help
+          "$smoke_venv/bin/ces" --version
+          smoke_dir="$(mktemp -d)"
+          fake_runtime_dir="$(mktemp -d)"
+          cat > "$fake_runtime_dir/codex" <<'EOF'
+          #!/usr/bin/env bash
+          if [[ "${1:-}" == "--version" ]]; then echo "codex-cli testpypi-smoke"; exit 0; fi
+          echo "testpypi smoke runtime stub: execution is not expected" >&2
+          exit 2
+          EOF
+          chmod +x "$fake_runtime_dir/codex"
+          PATH="$fake_runtime_dir:$PATH" "$smoke_venv/bin/ces" init --project-root "$smoke_dir" --yes
+          cat > "$smoke_dir/pyproject.toml" <<'EOF'
+          [project]
+          name = "ces-testpypi-smoke"
+          version = "0.1.0"
+          EOF
+          PATH="$fake_runtime_dir:$PATH" "$smoke_venv/bin/ces" --json doctor --project-root "$smoke_dir" > "$smoke_dir/doctor.json"
+          PATH="$fake_runtime_dir:$PATH" "$smoke_venv/bin/ces" --json scan --root "$smoke_dir" > "$smoke_dir/scan.json"
+          python - "$smoke_dir/doctor.json" "$smoke_dir/scan.json" <<'PY'
+          import json
+          import sys
+
+          doctor_payload = json.loads(open(sys.argv[1], encoding="utf-8").read())
+          scan_payload = json.loads(open(sys.argv[2], encoding="utf-8").read())
+          assert doctor_payload["runtime_available"] is True
+          assert doctor_payload["runtime_safety"]["codex"]["tool_allowlist_enforced"] is False
+          assert scan_payload["modules"]
+          assert scan_payload["report_path"].endswith(".ces/brownfield/scan.json")
+          PY
+
+      - name: Publish to TestPyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          repository-url: https://test.pypi.org/legacy/
