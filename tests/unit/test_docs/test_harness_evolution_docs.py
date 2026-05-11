@@ -18,6 +18,8 @@ def test_operator_playbook_documents_harness_evolution_boundary() -> None:
     assert "ces harness analyze" in text
     assert "ces harness verdict" in text
     assert "regression-aware verdicts" in text
+    assert "post_success_state" in text
+    assert "post-success modification" in text
     assert "raw dogfood/runtime transcripts" in text
     assert ".ces/state.db" in text
 
@@ -34,3 +36,5 @@ def test_quick_reference_card_lists_harness_commands() -> None:
     assert "ces harness verdict" in text
     assert "evidence pointers rather than raw transcript replay" in text
     assert "unexpected regressions" in text
+    assert "post_success_state" in text
+    assert "override is paired with revalidation" in text

@@ -120,6 +120,9 @@ and rollback conditions. Secret-looking content is rejected. Transcript analysis
 emits compact reports with evidence pointers rather than raw transcript replay.
 Verdicts persist predicted fixes observed/missed, predicted regressions observed,
 unexpected regressions, and a keep/revise/rollback/inconclusive outcome.
+`post_success_state` is registered in the harness sensor orchestrator; it compares
+project-relative protected file SHA-256 snapshots after green verification and
+fails on deletion/modification unless an override is paired with revalidation.
 
 ---
 

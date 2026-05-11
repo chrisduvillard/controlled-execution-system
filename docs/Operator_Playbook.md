@@ -115,6 +115,13 @@ harness substrate. Regression verdicts intentionally separate observed fixes fro
 observed and unexpected regressions so a net-positive summary cannot hide
 regression blindness.
 
+The `post_success_state` sensor protects green evidence after success. Callers can
+pass `post_success_protected_files` snapshots with project-relative `path` and
+`sha256` fields; if a protected file is deleted or modified, the sensor fails
+unless the change is explicitly overridden **and** paired with revalidation. This
+turns the paper's "post-success modification" risk into a local, deterministic
+runtime guard without storing raw evidence contents.
+
 ## Expert Workflow
 
 Use the expert workflow when you need explicit governance checkpoints or direct artifact control.
