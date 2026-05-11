@@ -123,6 +123,9 @@ unexpected regressions, and a keep/revise/rollback/inconclusive outcome.
 `post_success_state` is registered in the harness sensor orchestrator; it compares
 project-relative protected file SHA-256 snapshots after green verification and
 fails on deletion/modification unless an override is paired with revalidation.
+`execution_risk_monitor` findings expose temporal command anti-patterns such as
+repeated failures, shallow/proxy validation, timeout loops, destructive commands
+after success, and compile-only validation for behavioral changes.
 
 ---
 

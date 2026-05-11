@@ -21,8 +21,10 @@ import json
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Literal
 
+from ces.execution.secrets import scrub_secrets_from_text
 from ces.harness.models.disclosure_set import DisclosureSet
-from ces.harness.models.sensor_result import SensorResult
+from ces.harness.models.execution_risk import ExecutionRiskFinding
+from ces.harness.models.sensor_result import SensorFinding, SensorResult
 from ces.harness.models.triage_result import (
     TriageColor,
     TriageDecision,
@@ -283,6 +285,46 @@ class EvidenceSynthesizer:
             DecisionViewSlot(position="for", content=for_content),
             DecisionViewSlot(position="against", content=against_content),
             DecisionViewSlot(position="neutral", content=neutral_content),
+        )
+
+    def execution_risk_sensor_result(self, findings: list[ExecutionRiskFinding]) -> SensorResult:
+        """Convert execution-risk findings into a standard sensor result.
+
+        This gives builder reports and evidence packets a stable way to carry
+        temporal command-sequence risks without introducing a new evidence
+        packet shape.
+        """
+        self._check_kill_switch()
+        sensor_findings = tuple(
+            SensorFinding(
+                category=finding.kind.value,
+                severity=finding.sensor_severity,
+                location=scrub_secrets_from_text(finding.command),
+                message=scrub_secrets_from_text(finding.message),
+                suggestion=scrub_secrets_from_text(finding.recommended_action),
+            )
+            for finding in findings
+        )
+        if not findings:
+            return SensorResult(
+                sensor_id="execution_risk_monitor",
+                sensor_pack="harness_evolution",
+                passed=True,
+                score=1.0,
+                details="No cross-step execution risks detected",
+                timestamp=datetime.now(timezone.utc),
+                findings=(),
+            )
+        critical_or_high = [finding for finding in findings if finding.severity.value in {"critical", "high"}]
+        score = 0.0 if critical_or_high else 0.5
+        return SensorResult(
+            sensor_id="execution_risk_monitor",
+            sensor_pack="harness_evolution",
+            passed=False,
+            score=score,
+            details=f"{len(findings)} cross-step execution risks detected",
+            timestamp=datetime.now(timezone.utc),
+            findings=sensor_findings,
         )
 
     # ---- Disclosure Set (D-04) ----
