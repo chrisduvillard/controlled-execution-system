@@ -117,6 +117,8 @@ ces harness memory draft --from-analysis report.json
 ces harness memory activate hmem-...
 ces harness memory archive hmem-...
 ces harness memory list --status active
+ces harness report --format markdown
+ces harness report --format json --output harness-report.json
 ```
 
 Manifests must include predicted fixes, predicted regressions, validation plans,

@@ -16,6 +16,7 @@ from ces.harness_evolution.distiller import distill_transcript_file
 from ces.harness_evolution.manifest_io import read_manifest
 from ces.harness_evolution.memory import draft_lesson_from_trajectory, sanitize_lesson_text
 from ces.harness_evolution.paths import HarnessPaths, create_harness_layout, relative_layout_entries
+from ces.harness_evolution.report import ReportFormat, build_harness_operator_report
 from ces.harness_evolution.repository import HarnessEvolutionRepository
 from ces.harness_evolution.verdicts import read_trajectory_report
 from ces.local_store import LocalProjectStore
@@ -179,6 +180,38 @@ def compute_verdict(
     console.print(f"predicted regressions observed: {len(verdict.observed_predicted_regressions)}")
     console.print(f"unexpected regressions: {len(verdict.unexpected_regressions)}")
     console.print(f"rationale: {verdict.rationale}")
+
+
+@harness_app.command(name="report")
+def report_harness(
+    project_root: Path | None = _project_root_option(),
+    format_: ReportFormat = typer.Option(
+        "markdown",
+        "--format",
+        help="Output format: markdown or json.",
+    ),
+    output: Path | None = typer.Option(None, "--output", help="Optional file path for the report."),
+) -> None:
+    """Generate a concise operator report for local harness evolution state."""
+
+    root = _project_root(project_root)
+    try:
+        report = build_harness_operator_report(_repository(root))
+    except (OSError, ValueError, ValidationError) as exc:
+        safe_error = scrub_secrets_from_text(str(exc))
+        console.print(f"Could not build harness report: {safe_error}")
+        raise typer.Exit(code=1) from exc
+
+    if format_ == "json":
+        output_text = json.dumps(report.to_json_dict(), indent=2, sort_keys=True) + "\n"
+    else:
+        output_text = report.to_markdown()
+    if output is not None:
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text(output_text, encoding="utf-8")
+        console.print(f"wrote harness report: {output}")
+        return
+    typer.echo(output_text, nl=False)
 
 
 @changes_app.command(name="validate")

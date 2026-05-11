@@ -26,12 +26,14 @@ def test_operator_playbook_documents_harness_evolution_boundary() -> None:
     assert "frm-*" in text
     assert "ces harness memory draft" in text
     assert "ces harness memory archive" in text
+    assert "ces harness report --format markdown" in text
     assert "hmem-*" in text
     assert "content hashes" in text
     assert "Execution pipeline consolidation" in text
     assert "ces.execution.pipeline" in text
     assert "ces.control.services.approval_pipeline" in text
     assert "raw dogfood/runtime transcripts" in text
+    assert "rollback candidates" in text
     assert ".ces/state.db" in text
 
 
@@ -49,6 +51,7 @@ def test_quick_reference_card_lists_harness_commands() -> None:
     assert "ces harness memory activate" in text
     assert "ces harness memory archive" in text
     assert "ces harness memory list" in text
+    assert "ces harness report --format json" in text
     assert "evidence pointers rather than raw transcript replay" in text
     assert "unexpected regressions" in text
     assert "post_success_state" in text
