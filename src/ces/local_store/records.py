@@ -14,6 +14,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
+from ces.harness_evolution.memory import HarnessMemoryLesson
 from ces.harness_evolution.models import HarnessChangeManifest, HarnessChangeVerdict
 
 
@@ -50,6 +51,18 @@ class LocalHarnessChangeVerdictRecord:
     verdict: str
     verdict_payload: HarnessChangeVerdict
     created_at: str
+
+
+@dataclass(frozen=True)
+class LocalHarnessMemoryLessonRecord:
+    lesson_id: str
+    kind: str
+    title: str
+    status: str
+    lesson: HarnessMemoryLesson
+    content_hash: str
+    created_at: str
+    updated_at: str
 
 
 @dataclass(frozen=True)

@@ -4,8 +4,13 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from ces.harness_evolution.memory import HarnessMemoryLesson
 from ces.harness_evolution.models import HarnessChangeManifest, HarnessChangeVerdict
-from ces.local_store.records import LocalHarnessChangeRecord, LocalHarnessChangeVerdictRecord
+from ces.local_store.records import (
+    LocalHarnessChangeRecord,
+    LocalHarnessChangeVerdictRecord,
+    LocalHarnessMemoryLessonRecord,
+)
 
 if TYPE_CHECKING:
     from ces.local_store.store import LocalProjectStore
@@ -41,3 +46,23 @@ class HarnessEvolutionRepository:
         """List verdicts for a harness change in creation order."""
 
         return self._store.list_harness_change_verdicts(change_id)
+
+    def save_memory_lesson(self, lesson: HarnessMemoryLesson) -> LocalHarnessMemoryLessonRecord:
+        """Persist a draft or active harness memory lesson."""
+
+        return self._store.save_harness_memory_lesson(lesson)
+
+    def activate_memory_lesson(self, lesson_id: str) -> LocalHarnessMemoryLessonRecord | None:
+        """Activate a reviewed harness memory lesson for runtime selection."""
+
+        return self._store.activate_harness_memory_lesson(lesson_id)
+
+    def archive_memory_lesson(self, lesson_id: str) -> LocalHarnessMemoryLessonRecord | None:
+        """Archive a harness memory lesson so it is no longer selected at runtime."""
+
+        return self._store.archive_harness_memory_lesson(lesson_id)
+
+    def list_memory_lessons(self, status: str | None = None) -> list[LocalHarnessMemoryLessonRecord]:
+        """List persisted harness memory lessons, optionally filtered by status."""
+
+        return self._store.list_harness_memory_lessons(status=status)

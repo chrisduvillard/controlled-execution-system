@@ -38,6 +38,21 @@ def _manifest_file(tmp_path: Path, *, valid: bool = True) -> Path:
     return path
 
 
+def _analysis_file(tmp_path: Path) -> Path:
+    payload: dict[str, object] = {
+        "task_run_id": "run-memory",
+        "outcome": "fail",
+        "failure_class": "proxy_validation",
+        "suspected_root_cause": "Runtime accepted compile-only checks as success evidence.",
+        "validation_commands_observed": ["python -m py_compile src/app.py"],
+        "proxy_validation_warnings": ["compile-only validation was used"],
+        "evidence_pointers": ["analysis.json#proxy-validation"],
+    }
+    path = tmp_path / "analysis.json"
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    return path
+
+
 def test_harness_init_dry_run_shows_layout_without_writing(tmp_path: Path, monkeypatch: Any) -> None:
     monkeypatch.chdir(tmp_path)
 
@@ -146,3 +161,39 @@ def test_harness_changes_show_missing_change_fails_closed(tmp_path: Path, monkey
 
     assert result.exit_code == 1
     assert "not found" in result.stdout.lower()
+
+
+def test_harness_memory_draft_activate_and_list(tmp_path: Path, monkeypatch: Any) -> None:
+    monkeypatch.chdir(tmp_path)
+    analysis_path = _analysis_file(tmp_path)
+
+    draft_result = runner.invoke(_get_app(), ["harness", "memory", "draft", "--from-analysis", str(analysis_path)])
+
+    assert draft_result.exit_code == 0, draft_result.stdout
+    assert "saved harness memory lesson" in draft_result.stdout
+    assert "status: draft" in draft_result.stdout
+    lesson_id = next(
+        line.split(": ", 1)[1] for line in draft_result.stdout.splitlines() if line.startswith("lesson id:")
+    )
+
+    list_draft_result = runner.invoke(_get_app(), ["harness", "memory", "list"])
+    assert list_draft_result.exit_code == 0, list_draft_result.stdout
+    assert lesson_id in list_draft_result.stdout
+    assert "draft" in list_draft_result.stdout
+
+    activate_result = runner.invoke(_get_app(), ["harness", "memory", "activate", lesson_id])
+    assert activate_result.exit_code == 0, activate_result.stdout
+    assert "status: active" in activate_result.stdout
+
+    archive_result = runner.invoke(_get_app(), ["harness", "memory", "archive", lesson_id])
+    assert archive_result.exit_code == 0, archive_result.stdout
+    assert "status: archived" in archive_result.stdout
+
+    reactivate_result = runner.invoke(_get_app(), ["harness", "memory", "activate", lesson_id])
+    assert reactivate_result.exit_code == 0, reactivate_result.stdout
+    assert "status: active" in reactivate_result.stdout
+
+    list_active_result = runner.invoke(_get_app(), ["harness", "memory", "list", "--status", "active"])
+    assert list_active_result.exit_code == 0, list_active_result.stdout
+    assert lesson_id in list_active_result.stdout
+    assert "hash=" in list_active_result.stdout.lower()

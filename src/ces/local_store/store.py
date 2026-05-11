@@ -23,6 +23,7 @@ from ces.control.models.audit_entry_record import AuditEntryRecord
 from ces.control.services.evidence_integrity import compute_reviewed_evidence_hash
 from ces.execution.secrets import scrub_secrets_from_text
 from ces.harness_evolution.manifest_io import manifest_to_stable_json
+from ces.harness_evolution.memory import HarnessMemoryLesson
 from ces.harness_evolution.models import HarnessChangeManifest, HarnessChangeVerdict
 from ces.local_store.codecs import (
     row_to_approval,
@@ -60,6 +61,7 @@ from ces.local_store.records import (
     LocalBuilderSessionSnapshot,
     LocalHarnessChangeRecord,
     LocalHarnessChangeVerdictRecord,
+    LocalHarnessMemoryLessonRecord,
     LocalManifestRow,
     LocalRuntimeExecutionRecord,
 )
@@ -98,6 +100,20 @@ def _row_to_harness_change_verdict(row: sqlite3.Row) -> LocalHarnessChangeVerdic
         verdict=row["verdict"],
         verdict_payload=verdict,
         created_at=row["created_at"],
+    )
+
+
+def _row_to_harness_memory_lesson(row: sqlite3.Row) -> LocalHarnessMemoryLessonRecord:
+    lesson = HarnessMemoryLesson.model_validate(json.loads(row["lesson_json"]))
+    return LocalHarnessMemoryLessonRecord(
+        lesson_id=row["lesson_id"],
+        kind=row["kind"],
+        title=row["title"],
+        status=row["status"],
+        lesson=lesson,
+        content_hash=row["content_hash"],
+        created_at=row["created_at"],
+        updated_at=row["updated_at"],
     )
 
 
@@ -296,6 +312,98 @@ class LocalProjectStore:
                 (self._project_id, change_id),
             ).fetchall()
         return [_row_to_harness_change_verdict(row) for row in rows]
+
+    def save_harness_memory_lesson(self, lesson: HarnessMemoryLesson) -> LocalHarnessMemoryLessonRecord:
+        """Persist or update a local harness memory lesson."""
+
+        now = datetime.now(timezone.utc).isoformat()
+        created_at = lesson.created_at.isoformat()
+        with self._connect() as conn:
+            existing = conn.execute(
+                """
+                SELECT created_at, status
+                FROM harness_memory_lessons
+                WHERE project_id = ? AND lesson_id = ?
+                """,
+                (self._project_id, lesson.lesson_id),
+            ).fetchone()
+            persisted_lesson = lesson
+            if existing is not None and existing["status"] == "active" and lesson.status == "draft":
+                persisted_lesson = lesson.model_copy(update={"status": "active"})
+            lesson_json = json.dumps(persisted_lesson.model_dump(mode="json"), indent=2, sort_keys=True) + "\n"
+            conn.execute(
+                """
+                INSERT OR REPLACE INTO harness_memory_lessons(
+                    lesson_id, project_id, kind, title, status, lesson_json,
+                    content_hash, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    persisted_lesson.lesson_id,
+                    self._project_id,
+                    persisted_lesson.kind,
+                    persisted_lesson.title,
+                    persisted_lesson.status,
+                    lesson_json,
+                    persisted_lesson.content_hash,
+                    existing["created_at"] if existing else created_at,
+                    now,
+                ),
+            )
+        record = self.get_harness_memory_lesson(str(lesson.lesson_id))
+        if record is None:
+            raise RuntimeError("failed to persist harness memory lesson")
+        return record
+
+    def get_harness_memory_lesson(self, lesson_id: str) -> LocalHarnessMemoryLessonRecord | None:
+        with self._connect() as conn:
+            row = conn.execute(
+                """
+                SELECT lesson_id, kind, title, status, lesson_json, content_hash, created_at, updated_at
+                FROM harness_memory_lessons
+                WHERE project_id = ? AND lesson_id = ?
+                """,
+                (self._project_id, lesson_id),
+            ).fetchone()
+        return _row_to_harness_memory_lesson(row) if row else None
+
+    def list_harness_memory_lessons(self, *, status: str | None = None) -> list[LocalHarnessMemoryLessonRecord]:
+        with self._connect() as conn:
+            if status is None:
+                rows = conn.execute(
+                    """
+                    SELECT lesson_id, kind, title, status, lesson_json, content_hash, created_at, updated_at
+                    FROM harness_memory_lessons
+                    WHERE project_id = ?
+                    ORDER BY updated_at DESC, lesson_id ASC
+                    """,
+                    (self._project_id,),
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    """
+                    SELECT lesson_id, kind, title, status, lesson_json, content_hash, created_at, updated_at
+                    FROM harness_memory_lessons
+                    WHERE project_id = ? AND status = ?
+                    ORDER BY updated_at DESC, lesson_id ASC
+                    """,
+                    (self._project_id, status),
+                ).fetchall()
+        return [_row_to_harness_memory_lesson(row) for row in rows]
+
+    def activate_harness_memory_lesson(self, lesson_id: str) -> LocalHarnessMemoryLessonRecord | None:
+        record = self.get_harness_memory_lesson(lesson_id)
+        if record is None:
+            return None
+        lesson = record.lesson.model_copy(update={"status": "active"})
+        return self.save_harness_memory_lesson(lesson)
+
+    def archive_harness_memory_lesson(self, lesson_id: str) -> LocalHarnessMemoryLessonRecord | None:
+        record = self.get_harness_memory_lesson(lesson_id)
+        if record is None:
+            return None
+        lesson = record.lesson.model_copy(update={"status": "archived"})
+        return self.save_harness_memory_lesson(lesson)
 
     def save_builder_brief(
         self,

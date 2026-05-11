@@ -113,11 +113,17 @@ ces harness changes list
 ces harness changes show hchg-...
 ces harness analyze --from-transcript runs/dogfood.log --json-output report.json --markdown-output report.md
 ces harness verdict hchg-... --from-analysis report.json
+ces harness memory draft --from-analysis report.json
+ces harness memory activate hmem-...
+ces harness memory archive hmem-...
+ces harness memory list --status active
 ```
 
 Manifests must include predicted fixes, predicted regressions, validation plans,
 and rollback conditions. Secret-looking content is rejected. Transcript analysis
 emits compact reports with evidence pointers rather than raw transcript replay.
+Harness memory lessons remain draft-only until explicitly activated; active lessons
+are injected as inert, evidence-backed context with content hashes recorded in runtime evidence.
 Verdicts persist predicted fixes observed/missed, predicted regressions observed,
 unexpected regressions, and a keep/revise/rollback/inconclusive outcome.
 `post_success_state` is registered in the harness sensor orchestrator; it compares

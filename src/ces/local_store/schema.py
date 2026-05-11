@@ -208,6 +208,20 @@ def initialize_schema(conn: sqlite3.Connection) -> None:
         );
         CREATE INDEX IF NOT EXISTS idx_harness_change_verdicts_change
             ON harness_change_verdicts (project_id, change_id, created_at);
+        CREATE TABLE IF NOT EXISTS harness_memory_lessons (
+            lesson_id TEXT NOT NULL,
+            project_id TEXT NOT NULL,
+            kind TEXT NOT NULL,
+            title TEXT NOT NULL,
+            status TEXT NOT NULL,
+            lesson_json TEXT NOT NULL,
+            content_hash TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            PRIMARY KEY (project_id, lesson_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_harness_memory_lessons_project_status
+            ON harness_memory_lessons (project_id, status, updated_at);
         """
     )
     _migrate_review_findings_to_synthetic_pk(conn)
