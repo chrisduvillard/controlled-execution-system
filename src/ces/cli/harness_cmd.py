@@ -11,10 +11,12 @@ from rich.table import Table
 
 from ces.cli._output import console
 from ces.execution.secrets import scrub_secrets_from_text
+from ces.harness_evolution.attribution import compute_change_verdict
 from ces.harness_evolution.distiller import distill_transcript_file
 from ces.harness_evolution.manifest_io import read_manifest
 from ces.harness_evolution.paths import HarnessPaths, create_harness_layout, relative_layout_entries
 from ces.harness_evolution.repository import HarnessEvolutionRepository
+from ces.harness_evolution.verdicts import read_trajectory_report
 from ces.local_store import LocalProjectStore
 
 harness_app = typer.Typer(
@@ -136,6 +138,44 @@ def analyze_transcript(
         console.print(markdown_text.rstrip())
 
 
+@harness_app.command(name="verdict")
+def compute_verdict(
+    change_id: str,
+    from_analysis: Path = typer.Option(
+        ...,
+        "--from-analysis",
+        help="Structured JSON trajectory report produced by `ces harness analyze`.",
+    ),
+    project_root: Path | None = _project_root_option(),
+) -> None:
+    """Compute and persist a regression-aware verdict for a harness change."""
+
+    root = _project_root(project_root)
+    repo = _repository(root)
+    change = repo.get_change(change_id)
+    if change is None:
+        console.print(f"Harness change not found: {change_id}")
+        raise typer.Exit(code=1)
+
+    try:
+        analysis = read_trajectory_report(from_analysis)
+        verdict = compute_change_verdict(change.manifest, analysis)
+        record = repo.save_verdict(verdict)
+    except (OSError, ValueError, ValidationError) as exc:
+        safe_error = scrub_secrets_from_text(str(exc))
+        console.print(f"Could not compute harness verdict: {safe_error}")
+        raise typer.Exit(code=1) from exc
+
+    console.print(f"saved harness verdict: {record.id}")
+    console.print(f"change id: {record.change_id}")
+    console.print(f"verdict: {record.verdict}")
+    console.print(f"predicted fixes observed: {len(verdict.observed_fixes)}")
+    console.print(f"predicted fixes missed: {len(verdict.missed_fixes)}")
+    console.print(f"predicted regressions observed: {len(verdict.observed_predicted_regressions)}")
+    console.print(f"unexpected regressions: {len(verdict.unexpected_regressions)}")
+    console.print(f"rationale: {verdict.rationale}")
+
+
 @changes_app.command(name="validate")
 def validate_change_manifest(manifest_path: Path) -> None:
     """Validate a harness change manifest without persisting it."""
@@ -215,6 +255,9 @@ def show_change(
     console.print(f"predicted fixes: {len(manifest.predicted_fixes)}")
     console.print(f"predicted regressions: {len(manifest.predicted_regressions)}")
     console.print(f"validation steps: {len(manifest.validation_plan)}")
+    verdicts = _repository(_project_root(project_root)).list_verdicts(change_id)
+    if verdicts:
+        console.print(f"latest verdict: {verdicts[-1].verdict}")
 
 
 harness_app.add_typer(changes_app, name="changes")
