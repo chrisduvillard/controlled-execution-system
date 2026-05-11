@@ -122,6 +122,13 @@ unless the change is explicitly overridden **and** paired with revalidation. Thi
 turns the paper's "post-success modification" risk into a local, deterministic
 runtime guard without storing raw evidence contents.
 
+The execution-risk monitor adds temporal command-sequence intelligence for
+builder/evidence surfaces. It detects repeated identical failures, shallow/proxy
+validation, timeout loops, destructive commands after success, and compile-only
+validation for behavioral changes, then converts findings into the standard
+`execution_risk_monitor` sensor result so builder reports and evidence packets can
+carry severity and recommended next action.
+
 ## Expert Workflow
 
 Use the expert workflow when you need explicit governance checkpoints or direct artifact control.
