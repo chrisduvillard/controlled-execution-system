@@ -32,7 +32,7 @@ from ces.cli._context import find_project_root, get_project_id
 from ces.cli._errors import handle_error
 from ces.cli._factory import get_services
 from ces.cli._output import console
-from ces.shared.enums import GateType
+from ces.control.services.approval_pipeline import required_gate_type_for_risk
 
 # Map filename keywords to governance component descriptions. The classification
 # oracle scores incoming descriptions against its rule table; descriptions that
@@ -130,14 +130,6 @@ def _aggregated_to_payload(aggregated_review: Any) -> dict[str, Any]:
         "disagreements": list(aggregated_review.disagreements),
         "findings": _findings_to_payload(aggregated_review.all_findings),
     }
-
-
-def _required_gate_type_for_risk(risk_tier: str) -> GateType:
-    if risk_tier == "A":
-        return GateType.HUMAN
-    if risk_tier == "B":
-        return GateType.HYBRID
-    return GateType.AGENT
 
 
 def _render_classification_panel(classification: dict[str, Any]) -> None:
@@ -450,7 +442,7 @@ async def dogfood(
                     assignments=assignments,
                     diff_context=diff_context,
                     manifest_context=manifest_context,
-                    current_gate_type=_required_gate_type_for_risk(risk_tier),
+                    current_gate_type=required_gate_type_for_risk(risk_tier),
                 )
             except (RuntimeError, KeyError) as exc:
                 dispatch_error = str(exc)

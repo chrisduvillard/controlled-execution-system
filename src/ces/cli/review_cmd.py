@@ -31,18 +31,11 @@ from ces.cli._context import find_project_root, get_project_id
 from ces.cli._errors import handle_error
 from ces.cli._factory import get_services
 from ces.cli._output import console
+from ces.control.services.approval_pipeline import required_gate_type_for_risk
 from ces.control.services.workflow_engine import WorkflowEngine
 from ces.execution.providers.bootstrap import resolve_primary_provider
 from ces.shared.base import CESBaseModel
-from ces.shared.enums import ActorType, GateType, WorkflowState
-
-
-def _required_gate_type_for_risk(risk_tier_value: str) -> GateType:
-    if risk_tier_value == "A":
-        return GateType.HUMAN
-    if risk_tier_value == "B":
-        return GateType.HYBRID
-    return GateType.AGENT
+from ces.shared.enums import ActorType, WorkflowState
 
 
 def _coerce_workflow_state_value(value: object) -> str:
@@ -249,7 +242,7 @@ async def review_task(
                     assignments=assignments,
                     diff_context=diff_context,
                     manifest_context=manifest_context,
-                    current_gate_type=_required_gate_type_for_risk(risk_tier_value),
+                    current_gate_type=required_gate_type_for_risk(risk_tier_value),
                 )
             except RuntimeError:
                 pass  # No review executor configured; fall through to summary-only

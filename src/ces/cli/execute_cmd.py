@@ -24,120 +24,27 @@ from ces.cli._legacy_config import reject_server_mode
 from ces.cli._output import console
 from ces.cli.ownership import resolve_actor
 from ces.control.services.workflow_engine import WorkflowEngine
+from ces.execution.pipeline import (
+    COMPLETION_CLAIM_INSTRUCTIONS,
+    build_manifest_execution_prompt,
+    completion_gate_enabled,
+    normalize_runtime_execution,
+)
 from ces.execution.runtime_safety import runtime_side_effects_require_pre_execution_consent, safety_profile_for_runtime
 from ces.harness.models.completion_claim import VerificationResult
 from ces.harness.models.tool_call_signature import ToolCallSignature
-from ces.harness.prompts.engineering_charter import attach_engineering_charter
-from ces.harness.services.change_impact import build_observability_acceptance_template
 from ces.shared.base import CESBaseModel
 from ces.shared.enums import ActorType, WorkflowState
 
-COMPLETION_CLAIM_INSTRUCTIONS = """\
-
-## Completion Gate
-
-This task is governed by the CES Completion Gate. Before exiting, you MUST
-emit a `ces:completion` fenced block containing a JSON object that addresses
-every acceptance criterion below. The verifier rejects the run if the block
-is missing, malformed, or leaves any criterion without explicit evidence.
-
-Schema (emit one such block, no markdown wrapping the JSON):
-
-```ces:completion
-{
-  "task_id": "<this manifest's id>",
-  "summary": "<one sentence: what you did>",
-  "files_changed": ["<path>", ...],
-  "exploration_evidence": [
-    {"path": "<file/test/doc inspected>", "reason": "<why it mattered>", "observation": "<convention or behavior learned>"}
-  ],
-  "verification_commands": [
-    {"command": "<command run>", "exit_code": 0, "summary": "<key result>", "artifact_path": "<optional artifact path>"}
-  ],
-  "criteria_satisfied": [
-    {"criterion": "<exact text from acceptance_criteria>", "evidence": "<command output, file path, or other concrete proof>", "evidence_kind": "command_output | file_artifact | manual_inspection"}
-  ],
-  "dependency_changes": [
-    {"file_path": "<dependency file>", "package": "<dependency/package name>", "rationale": "<why it is needed>", "existing_alternative_considered": "<stdlib or existing dependency considered>", "lockfile_evidence": "<lockfile/check evidence>", "audit_evidence": "<audit/check evidence>"}
-  ],
-  "open_questions": ["<anything you are unsure about>"],
-  "scope_deviations": ["<anything you changed beyond the stated scope>"]
-}
-```
-
-Rules:
-- The `task_id` must equal the manifest id printed below.
-- `files_changed` must list every file you edited; out-of-scope files fail the gate.
-- `exploration_evidence` must list the repo files, tests, docs, or conventions you inspected before editing when the manifest requires it.
-- `verification_commands` must list the concrete verification commands you ran when the manifest requires it.
-- Every entry in this manifest's `acceptance_criteria` MUST appear once in `criteria_satisfied` with concrete evidence (a command you ran and its output, or a file artifact you produced).
-- If you changed dependency files, include one `dependency_changes` entry per dependency file.
-- Surface uncertainty in `open_questions` rather than hide it.
-- Disclose scope deviations in `scope_deviations`.
-"""
+__all__ = ["COMPLETION_CLAIM_INSTRUCTIONS", "execute_task"]
 
 
 def _build_prompt_pack(manifest: object) -> str:
-    description = getattr(manifest, "description", "")
-    base = (
-        "You are executing a governed CES task.\n"
-        "Complete the requested work inside the current workspace.\n"
-        "Keep changes scoped to the described task.\n\n"
-        f"Task:\n{description}\n"
-        f"Manifest ID:\n{getattr(manifest, 'manifest_id', 'unknown')}"
-    )
-    mcp_servers = getattr(manifest, "mcp_servers", ())
-    if isinstance(mcp_servers, tuple) and mcp_servers:
-        base += (
-            "\nMCP grounding requested:\n"
-            + "\n".join(f"- {server}" for server in mcp_servers)
-            + "\nUse these servers only when the runtime exposes them; disclose unsupported grounding."
-        )
-    observability_template = build_observability_acceptance_template(
-        list(getattr(manifest, "affected_files", ()) or ())
-    )
-    if observability_template:
-        base += f"\n{observability_template}"
-
-    sensors = getattr(manifest, "verification_sensors", ())
-    gate_active = isinstance(sensors, tuple) and len(sensors) > 0
-    if not gate_active:
-        return attach_engineering_charter(base)
-
-    criteria = getattr(manifest, "acceptance_criteria", ())
-    if isinstance(criteria, tuple) and criteria:
-        criteria_block = "\nAcceptance criteria you must address:\n" + "\n".join(f"- {c}" for c in criteria)
-    else:
-        criteria_block = "\nAcceptance criteria: (none declared; emit an empty criteria_satisfied list)"
-
-    sensor_block = "\nConfigured verification sensors (artifacts you must produce):\n" + "\n".join(
-        f"- {s}" for s in sensors
-    )
-
-    return attach_engineering_charter(base + criteria_block + sensor_block + COMPLETION_CLAIM_INSTRUCTIONS)
+    return build_manifest_execution_prompt(manifest)
 
 
 def _normalize_runtime_execution(result: Any) -> dict[str, Any]:
-    if isinstance(result, dict):
-        return result
-    runtime_result = getattr(result, "runtime_result", None)
-    if runtime_result is not None:
-        if hasattr(runtime_result, "model_dump"):
-            return runtime_result.model_dump(mode="json")
-        return dict(runtime_result)
-    if hasattr(result, "model_dump"):
-        return result.model_dump(mode="json")
-    return {
-        "runtime_name": getattr(result, "runtime_name"),
-        "runtime_version": getattr(result, "runtime_version"),
-        "reported_model": getattr(result, "reported_model", None),
-        "invocation_ref": getattr(result, "invocation_ref"),
-        "exit_code": getattr(result, "exit_code"),
-        "stdout": getattr(result, "stdout", ""),
-        "stderr": getattr(result, "stderr", ""),
-        "duration_seconds": getattr(result, "duration_seconds", 0.0),
-        "transcript_path": getattr(result, "transcript_path", None),
-    }
+    return normalize_runtime_execution(result)
 
 
 def _coerce_workflow_state_value(value: Any) -> str:
@@ -168,13 +75,9 @@ async def _mark_execution_failed(
 
 
 def _completion_gate_enabled(manifest: object) -> bool:
-    """A manifest opts into the gate by listing real sensor IDs in a tuple.
+    """A manifest opts into the gate by listing real sensor IDs in a tuple."""
 
-    The isinstance(tuple) check protects against MagicMock-based tests where
-    attribute access yields a truthy MagicMock object.
-    """
-    sensors = getattr(manifest, "verification_sensors", ())
-    return isinstance(sensors, tuple) and len(sensors) > 0
+    return completion_gate_enabled(manifest)
 
 
 def _render_findings(result: VerificationResult) -> str:
