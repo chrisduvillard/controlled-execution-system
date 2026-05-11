@@ -97,7 +97,7 @@ def test_harness_changes_validate_rejects_secret_in_unknown_field_without_echoin
 ) -> None:
     monkeypatch.chdir(tmp_path)
     manifest_path = _manifest_file(tmp_path)
-    secret_value = "OPENAI_API_KEY=sk-testsecret123"
+    secret_value = "OPENAI_API_KEY=***"
     payload = json.loads(manifest_path.read_text(encoding="utf-8"))
     payload["api_key"] = secret_value
     manifest_path.write_text(json.dumps(payload), encoding="utf-8")
@@ -107,4 +107,42 @@ def test_harness_changes_validate_rejects_secret_in_unknown_field_without_echoin
     assert result.exit_code != 0
     assert "invalid" in result.stdout.lower()
     assert secret_value not in result.stdout
-    assert "sk-testsecret123" not in result.stdout
+    assert "***" not in result.stdout
+
+
+def test_harness_changes_add_persists_manifest(tmp_path: Path, monkeypatch: Any) -> None:
+    monkeypatch.chdir(tmp_path)
+    manifest_path = _manifest_file(tmp_path)
+
+    result = runner.invoke(_get_app(), ["harness", "changes", "add", str(manifest_path)])
+
+    assert result.exit_code == 0, result.stdout
+    assert "saved harness change: hchg-cli-validate" in result.stdout
+    assert (tmp_path / ".ces" / "state.db").is_file()
+
+
+def test_harness_changes_list_and_show_read_persisted_manifests(tmp_path: Path, monkeypatch: Any) -> None:
+    monkeypatch.chdir(tmp_path)
+    manifest_path = _manifest_file(tmp_path)
+    add_result = runner.invoke(_get_app(), ["harness", "changes", "add", str(manifest_path)])
+    assert add_result.exit_code == 0, add_result.stdout
+
+    list_result = runner.invoke(_get_app(), ["harness", "changes", "list"])
+    show_result = runner.invoke(_get_app(), ["harness", "changes", "show", "hchg-cli-validate"])
+
+    assert list_result.exit_code == 0, list_result.stdout
+    assert "hchg-cli-validate" in list_result.stdout
+    assert "tool_policy" in list_result.stdout
+    assert show_result.exit_code == 0, show_result.stdout
+    assert "Reject proxy validation" not in show_result.stdout
+    assert "Change validation guidance" in show_result.stdout
+    assert "manifest hash" in show_result.stdout.lower()
+
+
+def test_harness_changes_show_missing_change_fails_closed(tmp_path: Path, monkeypatch: Any) -> None:
+    monkeypatch.chdir(tmp_path)
+
+    result = runner.invoke(_get_app(), ["harness", "changes", "show", "hchg-missing"])
+
+    assert result.exit_code == 1
+    assert "not found" in result.stdout.lower()

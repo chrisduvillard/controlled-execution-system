@@ -108,6 +108,9 @@ ces harness init --dry-run
 ces harness init
 ces harness inspect
 ces harness changes validate path/to/manifest.json
+ces harness changes add path/to/manifest.json
+ces harness changes list
+ces harness changes show hchg-...
 ```
 
 Manifests must include predicted fixes, predicted regressions, validation plans,
