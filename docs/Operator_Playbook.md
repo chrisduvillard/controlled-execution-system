@@ -152,6 +152,12 @@ and the exact lesson IDs/content hashes used are recorded in the run evidence
 packet for auditability. Use `ces harness memory archive hmem-...` to remove a
 lesson from runtime selection without deleting its audit trail.
 
+Execution pipeline consolidation keeps builder-first and expert paths aligned.
+Completion-gate prompt fragments and runtime-result normalization live in
+`ces.execution.pipeline`, while review/approval gate mapping and persisted
+governance blocking live in `ces.control.services.approval_pipeline`. Treat CLI
+modules as thin adapters over those services so lifecycle policy does not drift.
+
 ## Expert Workflow
 
 Use the expert workflow when you need explicit governance checkpoints or direct artifact control.

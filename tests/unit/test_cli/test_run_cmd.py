@@ -94,6 +94,8 @@ def test_builder_prompt_pack_attaches_engineering_charter() -> None:
 
     assert "Explore first" in prompt
     assert "clarify or block" in prompt
+    assert "Configured verification sensors" in prompt
+    assert "- test_pass" in prompt
     assert "ces:completion" in prompt
     assert "Discounts apply at checkout" in prompt
 

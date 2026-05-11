@@ -28,6 +28,9 @@ def test_operator_playbook_documents_harness_evolution_boundary() -> None:
     assert "ces harness memory archive" in text
     assert "hmem-*" in text
     assert "content hashes" in text
+    assert "Execution pipeline consolidation" in text
+    assert "ces.execution.pipeline" in text
+    assert "ces.control.services.approval_pipeline" in text
     assert "raw dogfood/runtime transcripts" in text
     assert ".ces/state.db" in text
 

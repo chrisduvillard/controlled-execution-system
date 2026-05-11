@@ -30,15 +30,16 @@ from ces.cli._legacy_config import reject_server_mode
 from ces.cli._output import console
 from ces.cli._runtime_diagnostics import summarize_runtime_failure, write_runtime_diagnostics
 from ces.cli._wizard_helpers import WIZARD_STEPS
-from ces.cli.execute_cmd import COMPLETION_CLAIM_INSTRUCTIONS
 from ces.cli.init_cmd import derive_project_name, initialize_local_project
 from ces.cli.ownership import resolve_actor
 from ces.control.models.manifest import TaskManifest
+from ces.control.services.approval_pipeline import required_gate_type_for_risk
 from ces.control.services.evidence_integrity import compute_reviewed_evidence_hash
 from ces.control.services.workflow_engine import WorkflowEngine
 from ces.control.spec.parser import SpecParser
 from ces.control.spec.template_loader import TemplateLoader
 from ces.execution.completion_parser import parse_completion_claim
+from ces.execution.pipeline import build_completion_gate_prompt_fragment_from_values
 from ces.execution.providers.bootstrap import resolve_primary_provider
 from ces.execution.runtime_safety import (
     runtime_side_effects_block_auto_approval,
@@ -108,14 +109,6 @@ def _validate_noninteractive_brief(brief: BuilderBriefDraft) -> None:
             "Non-interactive brownfield `--yes` builds require `--source-of-truth` "
             "and at least one `--critical-flow` so CES does not silently preserve inferred behavior."
         )
-
-
-def _required_gate_type_for_risk(risk_tier_value: str) -> GateType:
-    if risk_tier_value == "A":
-        return GateType.HUMAN
-    if risk_tier_value == "B":
-        return GateType.HYBRID
-    return GateType.AGENT
 
 
 def _coerce_workflow_state_value(value: object) -> str:
@@ -393,17 +386,12 @@ def _prompt_pack(
         if promoted_prl_statements:
             lines.extend(["", "Promoted Legacy Requirements:", *[f"- {item}" for item in promoted_prl_statements]])
     criteria = brief.acceptance_criteria
-    if criteria:
-        lines.extend(
-            [
-                "",
-                "Acceptance criteria you must address in the ces:completion claim:",
-                *[f"- {item}" for item in criteria],
-            ]
-        )
-    else:
-        lines.append("\nAcceptance criteria: (none declared; emit an empty criteria_satisfied list)")
-    lines.append(COMPLETION_CLAIM_INSTRUCTIONS)
+    completion_fragment = build_completion_gate_prompt_fragment_from_values(
+        acceptance_criteria=criteria,
+        verification_sensors=list(BUILDER_COMPLETION_SENSORS),
+    )
+    if completion_fragment:
+        lines.append(completion_fragment)
     return attach_engineering_charter("\n".join(lines))
 
 
@@ -1352,7 +1340,7 @@ async def _run_brief_flow(
                 manifest_bc=getattr(manifest, "behavior_confidence", "BC2"),
                 evidence_packet=reviewed_evidence_packet,
                 evidence_manifest_hash=(reviewed_evidence_packet or {}).get("manifest_hash"),
-                required_gate_type=_required_gate_type_for_risk(risk_value),
+                required_gate_type=required_gate_type_for_risk(risk_value),
                 actual_gate_type=GateType.HUMAN,
                 review_sub_state=review_sub_state_value,
                 workflow_state=workflow_state_for_merge,
