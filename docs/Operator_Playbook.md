@@ -106,6 +106,12 @@ ces harness analyze --from-transcript runs/dogfood.log --json-output report.json
 
 # Compare a persisted change's predictions with observed analysis and persist verdict.
 ces harness verdict hchg-... --from-analysis report.json
+
+# Draft and explicitly activate compact evidence-backed local harness memory.
+ces harness memory draft --from-analysis report.json
+ces harness memory activate hmem-...
+ces harness memory archive hmem-...
+ces harness memory list --status active
 ```
 
 Treat manifests, trajectory reports, and verdicts as review artifacts: keep evidence references
@@ -136,6 +142,15 @@ builder prompt renders active reminders from explicit caller context or the prio
 builder-session evidence packet, preserving normal runs when there are no relevant
 high-salience findings. Untrusted finding text is rendered as inert evidence data,
 not as runtime instructions.
+
+Harness memory converts recurring dogfood lessons into compact local `hmem-*`
+records with source evidence and deterministic content hashes. `ces harness memory
+draft --from-analysis report.json` persists a draft lesson only; it has no runtime
+effect until an operator reviews and runs `ces harness memory activate hmem-...`.
+Active lessons are injected into builder prompts as inert evidence-backed context,
+and the exact lesson IDs/content hashes used are recorded in the run evidence
+packet for auditability. Use `ces harness memory archive hmem-...` to remove a
+lesson from runtime selection without deleting its audit trail.
 
 ## Expert Workflow
 

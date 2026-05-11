@@ -24,6 +24,10 @@ def test_operator_playbook_documents_harness_evolution_boundary() -> None:
     assert "repeated identical failures" in text
     assert "Framework reminders" in text
     assert "frm-*" in text
+    assert "ces harness memory draft" in text
+    assert "ces harness memory archive" in text
+    assert "hmem-*" in text
+    assert "content hashes" in text
     assert "raw dogfood/runtime transcripts" in text
     assert ".ces/state.db" in text
 
@@ -38,6 +42,10 @@ def test_quick_reference_card_lists_harness_commands() -> None:
     assert "ces harness changes show" in text
     assert "ces harness analyze" in text
     assert "ces harness verdict" in text
+    assert "ces harness memory draft" in text
+    assert "ces harness memory activate" in text
+    assert "ces harness memory archive" in text
+    assert "ces harness memory list" in text
     assert "evidence pointers rather than raw transcript replay" in text
     assert "unexpected regressions" in text
     assert "post_success_state" in text
@@ -46,3 +54,4 @@ def test_quick_reference_card_lists_harness_commands() -> None:
     assert "compile-only validation" in text
     assert "framework reminders" in text.lower()
     assert "content hashes" in text
+    assert "inert, evidence-backed context" in text

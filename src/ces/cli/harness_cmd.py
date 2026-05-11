@@ -14,6 +14,7 @@ from ces.execution.secrets import scrub_secrets_from_text
 from ces.harness_evolution.attribution import compute_change_verdict
 from ces.harness_evolution.distiller import distill_transcript_file
 from ces.harness_evolution.manifest_io import read_manifest
+from ces.harness_evolution.memory import draft_lesson_from_trajectory, sanitize_lesson_text
 from ces.harness_evolution.paths import HarnessPaths, create_harness_layout, relative_layout_entries
 from ces.harness_evolution.repository import HarnessEvolutionRepository
 from ces.harness_evolution.verdicts import read_trajectory_report
@@ -25,6 +26,10 @@ harness_app = typer.Typer(
 )
 changes_app = typer.Typer(
     help="Validate local harness change manifests.",
+    rich_markup_mode="rich",
+)
+memory_app = typer.Typer(
+    help="Draft, activate, and inspect evidence-backed harness memory lessons.",
     rich_markup_mode="rich",
 )
 
@@ -260,4 +265,87 @@ def show_change(
         console.print(f"latest verdict: {verdicts[-1].verdict}")
 
 
+@memory_app.command(name="draft")
+def draft_memory_lesson(
+    from_analysis: Path = typer.Option(
+        ...,
+        "--from-analysis",
+        help="Structured JSON trajectory report produced by `ces harness analyze`.",
+    ),
+    project_root: Path | None = _project_root_option(),
+) -> None:
+    """Draft a local harness memory lesson from trajectory evidence."""
+
+    root = _project_root(project_root)
+    try:
+        analysis = read_trajectory_report(from_analysis)
+        lesson = draft_lesson_from_trajectory(analysis)
+        record = _repository(root).save_memory_lesson(lesson)
+    except (OSError, ValueError, ValidationError) as exc:
+        safe_error = scrub_secrets_from_text(str(exc))
+        console.print(f"Could not draft harness memory lesson: {safe_error}")
+        raise typer.Exit(code=1) from exc
+
+    console.print(f"saved harness memory lesson: {record.lesson_id}")
+    console.print(f"lesson id: {record.lesson_id}")
+    console.print(f"status: {record.status}")
+    console.print(f"content hash: {record.content_hash}")
+
+
+@memory_app.command(name="activate")
+def activate_memory_lesson(
+    lesson_id: str,
+    project_root: Path | None = _project_root_option(),
+) -> None:
+    """Activate a reviewed harness memory lesson for future builder runs."""
+
+    root = _project_root(project_root)
+    record = _repository(root).activate_memory_lesson(lesson_id)
+    if record is None:
+        console.print(f"Harness memory lesson not found: {lesson_id}")
+        raise typer.Exit(code=1)
+    console.print(f"activated harness memory lesson: {record.lesson_id}")
+    console.print(f"status: {record.status}")
+    console.print(f"content hash: {record.content_hash}")
+
+
+@memory_app.command(name="archive")
+def archive_memory_lesson(
+    lesson_id: str,
+    project_root: Path | None = _project_root_option(),
+) -> None:
+    """Archive a harness memory lesson so it is no longer injected at runtime."""
+
+    root = _project_root(project_root)
+    record = _repository(root).archive_memory_lesson(lesson_id)
+    if record is None:
+        console.print(f"Harness memory lesson not found: {lesson_id}")
+        raise typer.Exit(code=1)
+    console.print(f"archived harness memory lesson: {record.lesson_id}")
+    console.print(f"status: {record.status}")
+    console.print(f"content hash: {record.content_hash}")
+
+
+@memory_app.command(name="list")
+def list_memory_lessons(
+    project_root: Path | None = _project_root_option(),
+    status: str | None = typer.Option(None, "--status", help="Filter by lesson status: draft, active, archived."),
+) -> None:
+    """List persisted harness memory lessons."""
+
+    root = _project_root(project_root)
+    records = _repository(root).list_memory_lessons(status=status)
+    if not records:
+        console.print("No harness memory lessons found.")
+        return
+    console.print("Harness memory lessons:")
+    for record in records:
+        safe_title = sanitize_lesson_text(record.title)
+        console.print(
+            f"- {record.lesson_id} | kind={record.kind} | status={record.status} | "
+            f"title={safe_title} | content hash={record.content_hash}"
+        )
+
+
 harness_app.add_typer(changes_app, name="changes")
+harness_app.add_typer(memory_app, name="memory")

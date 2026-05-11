@@ -58,6 +58,13 @@ from ces.harness.services.framework_reminders import (
     render_framework_reminders,
 )
 from ces.harness.services.risk_sensor_policy import evaluate_sensor_policy
+from ces.harness_evolution.memory import (
+    HarnessMemoryLesson,
+    lesson_evidence_records,
+    limit_active_memory_lessons,
+    render_active_memory_lessons,
+    select_active_memory_lessons,
+)
 from ces.recovery.reconciler import clear_builder_runtime_lock, write_builder_runtime_lock
 from ces.shared.enums import (
     ActorType,
@@ -332,6 +339,7 @@ def _prompt_pack(
     promoted_prl_statements: list[str] | None = None,
     manifest: Any | None = None,
     framework_reminders: list[FrameworkReminder] | None = None,
+    harness_memory_lessons: list[HarnessMemoryLesson] | None = None,
 ) -> str:
     lines = [
         "You are executing a governed CES task in local mode.",
@@ -349,6 +357,9 @@ def _prompt_pack(
     rendered_reminders = render_framework_reminders(framework_reminders or [])
     if rendered_reminders:
         lines.extend(["", rendered_reminders])
+    rendered_memory = render_active_memory_lessons(harness_memory_lessons or [])
+    if rendered_memory:
+        lines.extend(["", rendered_memory])
     mcp_servers = tuple(getattr(manifest, "mcp_servers", ()) or ()) if manifest is not None else ()
     if mcp_servers:
         lines.extend(
@@ -429,6 +440,24 @@ def _active_framework_reminders(services: dict[str, Any]) -> list[FrameworkRemin
             if isinstance(evidence_packet, dict):
                 return builder.from_evidence_packet(evidence_packet)
     return []
+
+
+def _active_harness_memory_lessons(services: dict[str, Any]) -> list[HarnessMemoryLesson]:
+    """Resolve activated harness memory lessons from services for runtime prompts."""
+
+    explicit = services.get("harness_memory_lessons")
+    if explicit is not None:
+        return limit_active_memory_lessons([item for item in explicit if isinstance(item, HarnessMemoryLesson)])
+    local_store = services.get("local_store")
+    if local_store is None:
+        return []
+    return select_active_memory_lessons(local_store)
+
+
+def _harness_memory_evidence(lessons: list[HarnessMemoryLesson]) -> list[dict[str, str]]:
+    """Return exact activated harness memory hashes used in this run."""
+
+    return lesson_evidence_records(lessons)
 
 
 def _ensure_builder_project(project_root: Path | None = None) -> tuple[Path, dict[str, Any], bool]:
@@ -996,6 +1025,7 @@ async def _run_brief_flow(
         )
 
     workspace_before = WorkspaceSnapshot.capture(project_root)
+    active_harness_memory_lessons = _active_harness_memory_lessons(services)
     write_builder_runtime_lock(
         project_root=project_root,
         session_id=session_id,
@@ -1010,6 +1040,7 @@ async def _run_brief_flow(
                 promoted_prl_statements=_promoted_prl_context(local_store),
                 manifest=manifest,
                 framework_reminders=_active_framework_reminders(services),
+                harness_memory_lessons=active_harness_memory_lessons,
             ),
             working_dir=project_root,
         )
@@ -1183,6 +1214,7 @@ async def _run_brief_flow(
             "sensor_policy": serialize_model(sensor_policy),
             "control_plane_status": serialize_model(evidence_control_status),
             "triage_reason": triage.reason,
+            "harness_memory_lessons": _harness_memory_evidence(active_harness_memory_lessons),
         },
     )
     local_store.update_builder_brief_artifacts(
