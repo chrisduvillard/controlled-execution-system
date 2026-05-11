@@ -77,8 +77,9 @@ describing proposed CES harness changes. It is not autonomous and does not injec
 runtime prompts or memory into builder/expert execution. The initial layer
 creates a file-level layout under `.ces/harness/`, validates falsifiable change
 manifests with predicted fixes, predicted regressions, a validation plan, and a
-rollback condition, and can persist attribution-ready change records in local
-`.ces/state.db`.
+rollback condition, can persist attribution-ready change records in local
+`.ces/state.db`, and can distill raw dogfood/runtime transcripts into compact
+JSON/markdown trajectory reports without duplicating the raw transcript body.
 
 ```bash
 # Preview exactly which local paths would be created; writes nothing.
@@ -97,11 +98,15 @@ ces harness changes validate path/to/manifest.json
 ces harness changes add path/to/manifest.json
 ces harness changes list
 ces harness changes show hchg-...
+
+# Distill a runtime/dogfood transcript into compact reports without raw replay.
+ces harness analyze --from-transcript runs/dogfood.log --json-output report.json --markdown-output report.md
 ```
 
-Treat manifests as review artifacts: keep evidence references concise, avoid raw
-transcripts, and never include credentials or secret-looking values. Secret-like
-manifest content is rejected before it can become part of the harness substrate.
+Treat manifests and trajectory reports as review artifacts: keep evidence references concise,
+avoid raw transcripts, and never include credentials or secret-looking values. Secret-like
+manifest/report content is rejected or scrubbed before it can become part of the
+harness substrate.
 
 ## Expert Workflow
 

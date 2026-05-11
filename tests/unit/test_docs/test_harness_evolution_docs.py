@@ -15,6 +15,8 @@ def test_operator_playbook_documents_harness_evolution_boundary() -> None:
     assert "not autonomous" in text
     assert "ces harness init --dry-run" in text
     assert "ces harness changes add" in text
+    assert "ces harness analyze" in text
+    assert "raw dogfood/runtime transcripts" in text
     assert ".ces/state.db" in text
 
 
@@ -26,3 +28,5 @@ def test_quick_reference_card_lists_harness_commands() -> None:
     assert "ces harness changes add" in text
     assert "ces harness changes list" in text
     assert "ces harness changes show" in text
+    assert "ces harness analyze" in text
+    assert "evidence pointers rather than raw transcript replay" in text
