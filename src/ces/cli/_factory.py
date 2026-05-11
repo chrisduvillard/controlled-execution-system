@@ -218,6 +218,7 @@ async def get_services(project_root: Path | None = None) -> AsyncGenerator[CESSe
     from ces.harness.sensors.infrastructure import InfrastructureSensor
     from ces.harness.sensors.migration import MigrationSensor
     from ces.harness.sensors.performance import PerformanceSensor
+    from ces.harness.sensors.post_success_state import PostSuccessStateSensor
     from ces.harness.sensors.resilience import ResilienceSensor
     from ces.harness.sensors.security import SecuritySensor
     from ces.harness.sensors.test_coverage import CoverageSensor
@@ -231,6 +232,7 @@ async def get_services(project_root: Path | None = None) -> AsyncGenerator[CESSe
         MigrationSensor,
         AccessibilitySensor,
         CoverageSensor,
+        PostSuccessStateSensor,
     ]:
         sensor_orchestrator.register_sensor(sensor_cls())
 
