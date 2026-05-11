@@ -605,6 +605,27 @@ class TestRunCommand:
             )
         )
 
+        from ces.harness.models.sensor_result import SensorFinding, SensorResult
+        from ces.harness.services.framework_reminders import FrameworkReminderBuilder
+
+        active_sensor_result = SensorResult(
+            sensor_id="execution_risk_monitor",
+            sensor_pack="harness_evolution",
+            passed=False,
+            score=0.0,
+            details="risk found",
+            timestamp=datetime.now(timezone.utc),
+            findings=(
+                SensorFinding(
+                    category="destructive_after_success",
+                    severity="critical",
+                    location="rm -rf dist",
+                    message="destructive cleanup after success",
+                    suggestion="rerun validation",
+                ),
+            ),
+        )
+
         mock_services = {
             "settings": MagicMock(default_runtime="codex"),
             "manifest_manager": mock_manager,
@@ -612,6 +633,8 @@ class TestRunCommand:
             "agent_runner": mock_runner,
             "local_store": mock_store,
             "evidence_synthesizer": mock_synth,
+            "framework_reminder_builder": FrameworkReminderBuilder(),
+            "active_sensor_results": [active_sensor_result],
             "audit_ledger": AsyncMock(),
             "sensor_orchestrator": MagicMock(run_all=AsyncMock(return_value=[])),
             "legacy_behavior_service": AsyncMock(),
@@ -921,6 +944,27 @@ class TestRunCommand:
             )
         )
 
+        from ces.harness.models.sensor_result import SensorFinding, SensorResult
+        from ces.harness.services.framework_reminders import FrameworkReminderBuilder
+
+        active_sensor_result = SensorResult(
+            sensor_id="execution_risk_monitor",
+            sensor_pack="harness_evolution",
+            passed=False,
+            score=0.0,
+            details="risk found",
+            timestamp=datetime.now(timezone.utc),
+            findings=(
+                SensorFinding(
+                    category="destructive_after_success",
+                    severity="critical",
+                    location="rm -rf dist",
+                    message="destructive cleanup after success",
+                    suggestion="rerun validation",
+                ),
+            ),
+        )
+
         mock_services = {
             "settings": MagicMock(default_runtime="codex"),
             "manifest_manager": mock_manager,
@@ -928,6 +972,8 @@ class TestRunCommand:
             "agent_runner": mock_runner,
             "local_store": mock_store,
             "evidence_synthesizer": mock_synth,
+            "framework_reminder_builder": FrameworkReminderBuilder(),
+            "active_sensor_results": [active_sensor_result],
             "audit_ledger": AsyncMock(),
             "sensor_orchestrator": MagicMock(run_all=AsyncMock(return_value=[])),
             "legacy_behavior_service": AsyncMock(),
@@ -952,6 +998,10 @@ class TestRunCommand:
         mock_manager.create_manifest.assert_awaited_once()
         mock_runtime_registry.resolve_runtime.assert_called_once()
         mock_runner.execute_runtime.assert_awaited_once()
+        prompt_pack = mock_runner.execute_runtime.await_args.kwargs["prompt_pack"]
+        assert "Framework Reminders:" in prompt_pack
+        assert "destructive_after_success" in prompt_pack
+        assert "rerun validation" in prompt_pack
         mock_store.save_runtime_execution.assert_called_once()
         mock_store.save_evidence.assert_called_once()
         mock_store.save_approval.assert_called_once()

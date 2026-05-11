@@ -44,6 +44,7 @@ from ces.local_store.queries import (
     fetch_evidence_by_packet,
     fetch_latest_builder_brief,
     fetch_latest_builder_session,
+    fetch_latest_evidence_packet,
     fetch_legacy_behavior,
     fetch_legacy_behaviors_by_system,
     fetch_manifest,
@@ -710,6 +711,24 @@ class LocalProjectStore:
     def get_evidence_by_packet_id(self, packet_id: str) -> dict[str, Any] | None:
         with self._connect() as conn:
             row = fetch_evidence_by_packet(conn, self._project_id, packet_id)
+        if row is None:
+            return None
+        data = json.loads(row["content"])
+        data.update(
+            {
+                "manifest_id": row["manifest_id"],
+                "packet_id": row["packet_id"],
+                "summary": row["summary"],
+                "challenge": row["challenge"],
+                "triage_color": row["triage_color"],
+            }
+        )
+        return data
+
+    def get_latest_evidence_packet(self) -> dict[str, Any] | None:
+        """Return the latest persisted evidence packet for this project."""
+        with self._connect() as conn:
+            row = fetch_latest_evidence_packet(conn, self._project_id)
         if row is None:
             return None
         data = json.loads(row["content"])

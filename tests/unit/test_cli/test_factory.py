@@ -120,6 +120,7 @@ class TestGetServices:
                 "agent_runner",
                 "completion_verifier",
                 "self_correction_manager",
+                "framework_reminder_builder",
                 "local_store",
                 "project_config",
             }

@@ -129,6 +129,14 @@ validation for behavioral changes, then converts findings into the standard
 `execution_risk_monitor` sensor result so builder reports and evidence packets can
 carry severity and recommended next action.
 
+Framework reminders promote critical/high harness findings into the next runtime
+prompt context. The reminder builder emits deterministic, scrubbed reminders with
+a stable `frm-*` ID, source sensor/category, evidence reason, and content hash; the
+builder prompt renders active reminders from explicit caller context or the prior
+builder-session evidence packet, preserving normal runs when there are no relevant
+high-salience findings. Untrusted finding text is rendered as inert evidence data,
+not as runtime instructions.
+
 ## Expert Workflow
 
 Use the expert workflow when you need explicit governance checkpoints or direct artifact control.
