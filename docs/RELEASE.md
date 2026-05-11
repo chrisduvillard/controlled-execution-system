@@ -102,9 +102,12 @@ uv venv --python 3.13 /tmp/ces-testpypi-smoke
 uv pip install --python /tmp/ces-testpypi-smoke/bin/python --refresh --no-cache \
   --index-url https://test.pypi.org/simple/ \
   --extra-index-url https://pypi.org/simple/ \
+  --index-strategy unsafe-best-match \
   controlled-execution-system==0.1.Y
 /tmp/ces-testpypi-smoke/bin/ces --help
 ```
+
+`--index-strategy unsafe-best-match` is intentional for this TestPyPI-only smoke: once production PyPI already contains `controlled-execution-system` at an older version, `uv` otherwise stops at the first index with that package name and may report the TestPyPI-only candidate as unavailable.
 
 ### 5. Tag
 
