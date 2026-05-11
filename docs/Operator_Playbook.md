@@ -70,6 +70,33 @@ For day-to-day brownfield delivery, stay builder-first with `ces build`, `ces co
 
 If you want manual setup before the first builder-first run, use `ces init <name>`. It is no longer required for the default flow.
 
+## Harness evolution substrate
+
+Harness evolution is a local, explicit, operator-controlled substrate for
+describing proposed CES harness changes. It is not autonomous and does not inject
+runtime prompts or memory into builder/expert execution. PR1 only creates a
+file-level layout under `.ces/harness/` and validates falsifiable change
+manifests with predicted fixes, predicted regressions, a validation plan, and a
+rollback condition.
+
+```bash
+# Preview exactly which local paths would be created; writes nothing.
+ces harness init --dry-run
+
+# Create only .ces/harness directories and .ces/harness/index.json.
+ces harness init
+
+# Check whether the local substrate exists.
+ces harness inspect
+
+# Validate a proposed change manifest without persisting or activating it.
+ces harness changes validate path/to/manifest.json
+```
+
+Treat manifests as review artifacts: keep evidence references concise, avoid raw
+transcripts, and never include credentials or secret-looking values. Secret-like
+manifest content is rejected before it can become part of the harness substrate.
+
 ## Expert Workflow
 
 Use the expert workflow when you need explicit governance checkpoints or direct artifact control.

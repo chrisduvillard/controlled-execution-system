@@ -98,7 +98,24 @@ Notes:
 
 ---
 
-## 6. Brownfield handoff
+## 6. Harness evolution substrate
+
+Harness evolution is local and explicit by default. The current substrate does
+not autonomously modify CES behavior and does not inject runtime prompts.
+
+```bash
+ces harness init --dry-run
+ces harness init
+ces harness inspect
+ces harness changes validate path/to/manifest.json
+```
+
+Manifests must include predicted fixes, predicted regressions, validation plans,
+and rollback conditions. Secret-looking content is rejected.
+
+---
+
+## 7. Brownfield handoff
 
 Stay builder-first for normal brownfield work:
 
@@ -120,7 +137,7 @@ See the [Brownfield Guide](Brownfield_Guide.md) for the full register → review
 
 ---
 
-## 7. Completion evidence
+## 8. Completion evidence
 
 Builder-created manifests require inspected repo context, verification command evidence, and configured completion-gate artifacts. A persisted `.ces/verification-profile.json` can classify checks as required, optional, advisory, or unavailable for the project. Missing artifacts for required checks such as `pytest-results.json`, `ruff-report.json`, or `mypy-report.txt` are blockers; missing optional/advisory/unavailable checks are relaxed by the missing-artifact policy. Present failing artifacts remain real sensor evidence rather than being treated as clean. Profile changes in the same reviewed run are treated as untrusted governance changes, so an agent cannot downgrade a required check and immediately approve against the weaker policy.
 
@@ -130,7 +147,7 @@ Keep `.ces/` local unless you intentionally export a report. It can contain SQLi
 
 ---
 
-## 8. Spec authoring
+## 9. Spec authoring
 
 Turn a PRD into governed manifest drafts for the `ces build` pipeline.
 
