@@ -111,10 +111,12 @@ ces harness changes validate path/to/manifest.json
 ces harness changes add path/to/manifest.json
 ces harness changes list
 ces harness changes show hchg-...
+ces harness analyze --from-transcript runs/dogfood.log --json-output report.json --markdown-output report.md
 ```
 
 Manifests must include predicted fixes, predicted regressions, validation plans,
-and rollback conditions. Secret-looking content is rejected.
+and rollback conditions. Secret-looking content is rejected. Transcript analysis
+emits compact reports with evidence pointers rather than raw transcript replay.
 
 ---
 

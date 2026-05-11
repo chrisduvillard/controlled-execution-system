@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import typer
@@ -10,6 +11,7 @@ from rich.table import Table
 
 from ces.cli._output import console
 from ces.execution.secrets import scrub_secrets_from_text
+from ces.harness_evolution.distiller import distill_transcript_file
 from ces.harness_evolution.manifest_io import read_manifest
 from ces.harness_evolution.paths import HarnessPaths, create_harness_layout, relative_layout_entries
 from ces.harness_evolution.repository import HarnessEvolutionRepository
@@ -97,6 +99,41 @@ def inspect_harness(project_root: Path | None = _project_root_option()) -> None:
         table.add_row(entry, "present" if path.exists() else "missing")
     console.print(table)
     console.print("Runtime prompt injection: disabled")
+
+
+@harness_app.command(name="analyze")
+def analyze_transcript(
+    from_transcript: Path = typer.Option(
+        ...,
+        "--from-transcript",
+        help="Raw runtime/dogfood transcript to distill into a compact harness trajectory report.",
+    ),
+    json_output: Path | None = typer.Option(None, "--json-output", help="Write structured JSON report here."),
+    markdown_output: Path | None = typer.Option(None, "--markdown-output", help="Write markdown report here."),
+) -> None:
+    """Distill a transcript into structured JSON and markdown reports."""
+
+    try:
+        report = distill_transcript_file(from_transcript)
+    except (OSError, ValueError, ValidationError) as exc:
+        safe_error = scrub_secrets_from_text(str(exc))
+        console.print(f"Could not analyze transcript: {safe_error}")
+        raise typer.Exit(code=1) from exc
+
+    json_text = json.dumps(report.model_dump(mode="json"), indent=2, sort_keys=True) + "\n"
+    markdown_text = report.to_markdown()
+    if json_output is not None:
+        json_output.parent.mkdir(parents=True, exist_ok=True)
+        json_output.write_text(json_text, encoding="utf-8")
+        console.print(f"wrote JSON: {json_output}")
+    else:
+        console.print(json_text.rstrip())
+    if markdown_output is not None:
+        markdown_output.parent.mkdir(parents=True, exist_ok=True)
+        markdown_output.write_text(markdown_text, encoding="utf-8")
+        console.print(f"wrote markdown: {markdown_output}")
+    else:
+        console.print(markdown_text.rstrip())
 
 
 @changes_app.command(name="validate")
