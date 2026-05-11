@@ -78,8 +78,10 @@ runtime prompts or memory into builder/expert execution. The initial layer
 creates a file-level layout under `.ces/harness/`, validates falsifiable change
 manifests with predicted fixes, predicted regressions, a validation plan, and a
 rollback condition, can persist attribution-ready change records in local
-`.ces/state.db`, and can distill raw dogfood/runtime transcripts into compact
-JSON/markdown trajectory reports without duplicating the raw transcript body.
+`.ces/state.db`, can distill raw dogfood/runtime transcripts into compact
+JSON/markdown trajectory reports without duplicating the raw transcript body, and
+can persist regression-aware verdicts that compare predicted fixes/regressions
+against observed analysis.
 
 ```bash
 # Preview exactly which local paths would be created; writes nothing.
@@ -101,12 +103,17 @@ ces harness changes show hchg-...
 
 # Distill a runtime/dogfood transcript into compact reports without raw replay.
 ces harness analyze --from-transcript runs/dogfood.log --json-output report.json --markdown-output report.md
+
+# Compare a persisted change's predictions with observed analysis and persist verdict.
+ces harness verdict hchg-... --from-analysis report.json
 ```
 
-Treat manifests and trajectory reports as review artifacts: keep evidence references concise,
-avoid raw transcripts, and never include credentials or secret-looking values. Secret-like
+Treat manifests, trajectory reports, and verdicts as review artifacts: keep evidence references
+concise, avoid raw transcripts, and never include credentials or secret-looking values. Secret-like
 manifest/report content is rejected or scrubbed before it can become part of the
-harness substrate.
+harness substrate. Regression verdicts intentionally separate observed fixes from
+observed and unexpected regressions so a net-positive summary cannot hide
+regression blindness.
 
 ## Expert Workflow
 
