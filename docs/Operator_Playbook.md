@@ -112,6 +112,8 @@ ces harness memory draft --from-analysis report.json
 ces harness memory activate hmem-...
 ces harness memory archive hmem-...
 ces harness memory list --status active
+ces harness report --format markdown
+ces harness report --format json --output harness-report.json
 ```
 
 Treat manifests, trajectory reports, and verdicts as review artifacts: keep evidence references
@@ -157,6 +159,12 @@ Completion-gate prompt fragments and runtime-result normalization live in
 `ces.execution.pipeline`, while review/approval gate mapping and persisted
 governance blocking live in `ces.control.services.approval_pipeline`. Treat CLI
 modules as thin adapters over those services so lifecycle policy does not drift.
+
+`ces harness report --format markdown` produces the operator snapshot for the
+harness evolution layer: active harness components, change history, predictions
+vs observed outcomes, regressions, current recommendations, rollback candidates,
+and active memory lessons. Use `--format json --output ...` when another tool
+needs drill-down data; the report remains concise and scrubbed by default.
 
 ## Expert Workflow
 

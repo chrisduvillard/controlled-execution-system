@@ -197,3 +197,30 @@ def test_harness_memory_draft_activate_and_list(tmp_path: Path, monkeypatch: Any
     assert list_active_result.exit_code == 0, list_active_result.stdout
     assert lesson_id in list_active_result.stdout
     assert "hash=" in list_active_result.stdout.lower()
+
+
+def test_harness_report_outputs_markdown_and_json(tmp_path: Path, monkeypatch: Any) -> None:
+    monkeypatch.chdir(tmp_path)
+    manifest_path = _manifest_file(tmp_path)
+    add_result = runner.invoke(_get_app(), ["harness", "changes", "add", str(manifest_path)])
+    assert add_result.exit_code == 0, add_result.stdout
+
+    markdown_result = runner.invoke(_get_app(), ["harness", "report", "--format", "markdown"])
+    assert markdown_result.exit_code == 0, markdown_result.stdout
+    assert "# CES Harness Operator Report" in markdown_result.stdout
+    assert "## Change history" in markdown_result.stdout
+    assert "## Current recommendations" in markdown_result.stdout
+    assert "hchg-cli-validate [draft]" in markdown_result.stdout
+    assert "hchg-cli-validate" in markdown_result.stdout
+
+    json_stdout_result = runner.invoke(_get_app(), ["harness", "report", "--format", "json"])
+    assert json_stdout_result.exit_code == 0, json_stdout_result.stdout
+    stdout_payload = json.loads(json_stdout_result.stdout)
+    assert stdout_payload["change_history"][0]["status"] == "draft"
+
+    json_output = tmp_path / "report.json"
+    json_result = runner.invoke(_get_app(), ["harness", "report", "--format", "json", "--output", str(json_output)])
+    assert json_result.exit_code == 0, json_result.stdout
+    payload = json.loads(json_output.read_text(encoding="utf-8"))
+    assert payload["change_history"][0]["change_id"] == "hchg-cli-validate"
+    assert "rollback_candidates" in payload
