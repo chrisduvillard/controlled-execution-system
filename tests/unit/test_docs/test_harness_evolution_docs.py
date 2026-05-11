@@ -22,6 +22,8 @@ def test_operator_playbook_documents_harness_evolution_boundary() -> None:
     assert "post-success modification" in text
     assert "execution-risk monitor" in text
     assert "repeated identical failures" in text
+    assert "Framework reminders" in text
+    assert "frm-*" in text
     assert "raw dogfood/runtime transcripts" in text
     assert ".ces/state.db" in text
 
@@ -42,3 +44,5 @@ def test_quick_reference_card_lists_harness_commands() -> None:
     assert "override is paired with revalidation" in text
     assert "execution_risk_monitor" in text
     assert "compile-only validation" in text
+    assert "framework reminders" in text.lower()
+    assert "content hashes" in text

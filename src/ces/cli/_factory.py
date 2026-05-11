@@ -109,6 +109,7 @@ async def get_services(project_root: Path | None = None) -> AsyncGenerator[CESSe
     from ces.control.services.merge_controller import MergeController
     from ces.emergency.services.emergency_service import EmergencyService
     from ces.harness.services.evidence_synthesizer import EvidenceSynthesizer
+    from ces.harness.services.framework_reminders import FrameworkReminderBuilder
     from ces.harness.services.guide_pack_builder import GuidePackBuilder
     from ces.harness.services.hidden_check_engine import HiddenCheckEngine
     from ces.harness.services.review_router import ReviewRouter
@@ -273,6 +274,7 @@ async def get_services(project_root: Path | None = None) -> AsyncGenerator[CESSe
         kill_switch=kill_switch,
         audit_ledger=audit_ledger,
     )
+    framework_reminder_builder = FrameworkReminderBuilder()
     hidden_check_engine = HiddenCheckEngine(pool=[])
     vault_service = KnowledgeVaultService(audit_ledger=audit_ledger)
     intake_engine = IntakeInterviewEngine(audit_ledger=audit_ledger)
@@ -320,6 +322,7 @@ async def get_services(project_root: Path | None = None) -> AsyncGenerator[CESSe
             ),
             "review_router": review_router,
             "evidence_synthesizer": evidence_synthesizer,
+            "framework_reminder_builder": framework_reminder_builder,
             "hidden_check_engine": hidden_check_engine,
             "intake_engine": intake_engine,
             "vault_service": vault_service,

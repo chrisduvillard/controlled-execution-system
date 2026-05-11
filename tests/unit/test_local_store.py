@@ -803,3 +803,35 @@ def test_save_evidence_hash_matches_json_round_trip_payload(tmp_path: Path) -> N
         assert packet["reviewed_evidence_hash"] == compute_reviewed_evidence_hash(packet)
     finally:
         store.close()
+
+
+def test_get_latest_evidence_packet_uses_stable_packet_id_tiebreaker(tmp_path: Path) -> None:
+    store = LocalProjectStore(tmp_path / ".ces" / "state.db", project_id="proj-local")
+    try:
+        store.save_evidence(
+            "M-earlier",
+            packet_id="EP-001",
+            summary="Earlier packet",
+            challenge="No blockers",
+            triage_color="green",
+            content={"marker": "earlier"},
+        )
+        store.save_evidence(
+            "M-later",
+            packet_id="EP-999",
+            summary="Later packet",
+            challenge="No blockers",
+            triage_color="green",
+            content={"marker": "later"},
+        )
+        same_created_at = "2026-05-11T17:45:00+00:00"
+        with store._connect() as conn:
+            conn.execute("UPDATE evidence_packets SET created_at = ?", (same_created_at,))
+
+        packet = store.get_latest_evidence_packet()
+
+        assert packet is not None
+        assert packet["packet_id"] == "EP-999"
+        assert packet["marker"] == "later"
+    finally:
+        store.close()

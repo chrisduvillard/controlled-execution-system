@@ -126,6 +126,11 @@ fails on deletion/modification unless an override is paired with revalidation.
 `execution_risk_monitor` findings expose temporal command anti-patterns such as
 repeated failures, shallow/proxy validation, timeout loops, destructive commands
 after success, and compile-only validation for behavioral changes.
+Critical/high findings can be promoted into deterministic framework reminders for
+subsequent runtime prompts. Reminders include IDs, evidence reasons, content hashes,
+and scrubbed non-secret next actions so high-salience warnings are not buried in logs.
+Finding text is treated as inert evidence data; active reminders can come from explicit
+runtime context or the prior builder-session evidence packet.
 
 ---
 

@@ -81,6 +81,13 @@ def fetch_evidence_by_packet(conn: sqlite3.Connection, project_id: str, packet_i
     ).fetchone()
 
 
+def fetch_latest_evidence_packet(conn: sqlite3.Connection, project_id: str) -> sqlite3.Row | None:
+    return conn.execute(
+        "SELECT * FROM evidence_packets WHERE project_id = ? ORDER BY created_at DESC, packet_id DESC LIMIT 1",
+        (project_id,),
+    ).fetchone()
+
+
 def fetch_approval(conn: sqlite3.Connection, project_id: str, manifest_id: str) -> sqlite3.Row | None:
     return conn.execute(
         "SELECT * FROM approvals WHERE manifest_id = ? AND project_id = ?",

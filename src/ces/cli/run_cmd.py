@@ -52,6 +52,11 @@ from ces.harness.prompts.engineering_charter import attach_engineering_charter
 from ces.harness.sensors.security import SecuritySensor
 from ces.harness.services.change_impact import build_observability_acceptance_template
 from ces.harness.services.control_plane_status import build_control_plane_status
+from ces.harness.services.framework_reminders import (
+    FrameworkReminder,
+    FrameworkReminderBuilder,
+    render_framework_reminders,
+)
 from ces.harness.services.risk_sensor_policy import evaluate_sensor_policy
 from ces.recovery.reconciler import clear_builder_runtime_lock, write_builder_runtime_lock
 from ces.shared.enums import (
@@ -326,6 +331,7 @@ def _prompt_pack(
     *,
     promoted_prl_statements: list[str] | None = None,
     manifest: Any | None = None,
+    framework_reminders: list[FrameworkReminder] | None = None,
 ) -> str:
     lines = [
         "You are executing a governed CES task in local mode.",
@@ -340,6 +346,9 @@ def _prompt_pack(
         lines.extend(["", "Acceptance Criteria:", *[f"- {item}" for item in brief.acceptance_criteria]])
     if brief.must_not_break:
         lines.extend(["", "Must Not Break:", *[f"- {item}" for item in brief.must_not_break]])
+    rendered_reminders = render_framework_reminders(framework_reminders or [])
+    if rendered_reminders:
+        lines.extend(["", rendered_reminders])
     mcp_servers = tuple(getattr(manifest, "mcp_servers", ()) or ()) if manifest is not None else ()
     if mcp_servers:
         lines.extend(
@@ -385,6 +394,41 @@ def _prompt_pack(
         lines.append("\nAcceptance criteria: (none declared; emit an empty criteria_satisfied list)")
     lines.append(COMPLETION_CLAIM_INSTRUCTIONS)
     return attach_engineering_charter("\n".join(lines))
+
+
+def _active_framework_reminders(services: dict[str, Any]) -> list[FrameworkReminder]:
+    """Resolve active framework reminders from services for the next runtime prompt."""
+
+    def safe_call(callable_obj: Any, *args: Any) -> Any | None:
+        try:
+            return callable_obj(*args)
+        except (TypeError, ValueError):
+            return None
+
+    explicit = services.get("framework_reminders")
+    if explicit is not None:
+        return [item for item in explicit if isinstance(item, FrameworkReminder)]
+    builder = services.get("framework_reminder_builder")
+    sensor_results = services.get("active_sensor_results")
+    if sensor_results and isinstance(builder, FrameworkReminderBuilder):
+        return builder.from_sensor_results(list(sensor_results))
+    local_store = services.get("local_store")
+    if isinstance(builder, FrameworkReminderBuilder) and local_store is not None:
+        latest_session_getter = getattr(local_store, "get_latest_builder_session", None)
+        packet_getter = getattr(local_store, "get_evidence_by_packet_id", None)
+        if callable(latest_session_getter) and callable(packet_getter):
+            latest_session = safe_call(latest_session_getter)
+            packet_id = getattr(latest_session, "evidence_packet_id", None) if latest_session is not None else None
+            if isinstance(packet_id, str) and packet_id:
+                evidence_packet = safe_call(packet_getter, packet_id)
+                if isinstance(evidence_packet, dict):
+                    return builder.from_evidence_packet(evidence_packet)
+        latest_packet_getter = getattr(local_store, "get_latest_evidence_packet", None)
+        if callable(latest_packet_getter):
+            evidence_packet = safe_call(latest_packet_getter)
+            if isinstance(evidence_packet, dict):
+                return builder.from_evidence_packet(evidence_packet)
+    return []
 
 
 def _ensure_builder_project(project_root: Path | None = None) -> tuple[Path, dict[str, Any], bool]:
@@ -965,6 +1009,7 @@ async def _run_brief_flow(
                 brief_draft,
                 promoted_prl_statements=_promoted_prl_context(local_store),
                 manifest=manifest,
+                framework_reminders=_active_framework_reminders(services),
             ),
             working_dir=project_root,
         )

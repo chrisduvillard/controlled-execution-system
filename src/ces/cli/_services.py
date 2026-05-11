@@ -29,6 +29,7 @@ if TYPE_CHECKING:
     from ces.execution.runtimes.registry import RuntimeRegistry
     from ces.harness.services.completion_verifier import CompletionVerifier
     from ces.harness.services.evidence_synthesizer import EvidenceSynthesizer
+    from ces.harness.services.framework_reminders import FrameworkReminder, FrameworkReminderBuilder
     from ces.harness.services.guide_pack_builder import GuidePackBuilder
     from ces.harness.services.hidden_check_engine import HiddenCheckEngine
     from ces.harness.services.review_router import ReviewRouter
@@ -69,6 +70,9 @@ class CESServices(TypedDict, total=False):
 
     review_router: ReviewRouter
     evidence_synthesizer: EvidenceSynthesizer
+    framework_reminder_builder: FrameworkReminderBuilder
+    framework_reminders: list[FrameworkReminder]
+    active_sensor_results: list[Any]
     hidden_check_engine: HiddenCheckEngine
     intake_engine: IntakeInterviewEngine
     vault_service: KnowledgeVaultService
