@@ -25,6 +25,7 @@ from ces.cli import (
     emergency_cmd,
     execute_cmd,
     gate_cmd,
+    harness_cmd,
     init_cmd,
     intake_cmd,
     manifest_cmd,
@@ -228,6 +229,7 @@ app.command(name="slop-scan", help="Report deterministic AI-native slop/failure 
 app.add_typer(autopilot_cmd.launch_app, name="launch")
 app.command(name="baseline", help="Capture a day-0 sensor snapshot under .ces/baseline/.")(baseline_cmd.baseline)
 app.add_typer(profile_cmd.profile_app, name="profile")
+app.add_typer(harness_cmd.harness_app, name="harness")
 app.add_typer(benchmark_cmd.benchmark_app, name="benchmark")
 app.command(name="audit", help="Inspect the local audit ledger.")(audit_cmd.query_audit)
 app.add_typer(report_cmd.report_app, name="report")
