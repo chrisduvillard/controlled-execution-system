@@ -8,6 +8,7 @@ adapters, not on the store directly.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import sqlite3
@@ -21,6 +22,8 @@ from ces.brownfield.records import LegacyBehaviorRecord
 from ces.control.models.audit_entry_record import AuditEntryRecord
 from ces.control.services.evidence_integrity import compute_reviewed_evidence_hash
 from ces.execution.secrets import scrub_secrets_from_text
+from ces.harness_evolution.manifest_io import manifest_to_stable_json
+from ces.harness_evolution.models import HarnessChangeManifest, HarnessChangeVerdict
 from ces.local_store.codecs import (
     row_to_approval,
     row_to_audit_entry,
@@ -54,6 +57,8 @@ from ces.local_store.records import (
     LocalBuilderBriefRecord,
     LocalBuilderSessionRecord,
     LocalBuilderSessionSnapshot,
+    LocalHarnessChangeRecord,
+    LocalHarnessChangeVerdictRecord,
     LocalManifestRow,
     LocalRuntimeExecutionRecord,
 )
@@ -68,6 +73,31 @@ if TYPE_CHECKING:
     from ces.harness.services.findings_aggregator import AggregatedReview
 
 _UNSET = object()
+
+
+def _row_to_harness_change(row: sqlite3.Row) -> LocalHarnessChangeRecord:
+    manifest = HarnessChangeManifest.model_validate(json.loads(row["manifest_json"]))
+    return LocalHarnessChangeRecord(
+        change_id=row["change_id"],
+        component_type=row["component_type"],
+        title=row["title"],
+        status=row["status"],
+        manifest=manifest,
+        manifest_hash=row["manifest_hash"],
+        created_at=row["created_at"],
+        updated_at=row["updated_at"],
+    )
+
+
+def _row_to_harness_change_verdict(row: sqlite3.Row) -> LocalHarnessChangeVerdictRecord:
+    verdict = HarnessChangeVerdict.model_validate(json.loads(row["verdict_json"]))
+    return LocalHarnessChangeVerdictRecord(
+        id=row["id"],
+        change_id=row["change_id"],
+        verdict=row["verdict"],
+        verdict_payload=verdict,
+        created_at=row["created_at"],
+    )
 
 
 def _json_default(value: Any) -> Any:
@@ -150,6 +180,121 @@ class LocalProjectStore:
         with self._connect() as conn:
             rows = conn.execute("SELECT key, value FROM project_settings").fetchall()
         return {row["key"]: json.loads(row["value"]) for row in rows}
+
+    def save_harness_change(self, manifest: HarnessChangeManifest) -> LocalHarnessChangeRecord:
+        """Persist or update a local harness change manifest."""
+
+        manifest_json = manifest_to_stable_json(manifest)
+        manifest_hash = hashlib.sha256(manifest_json.encode("utf-8")).hexdigest()
+        now = datetime.now(timezone.utc).isoformat()
+        created_at = manifest.created_at.isoformat()
+        with self._connect() as conn:
+            existing = conn.execute(
+                "SELECT created_at FROM harness_changes WHERE project_id = ? AND change_id = ?",
+                (self._project_id, manifest.change_id),
+            ).fetchone()
+            conn.execute(
+                """
+                INSERT OR REPLACE INTO harness_changes(
+                    change_id, project_id, component_type, title, status,
+                    manifest_json, manifest_hash, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    manifest.change_id,
+                    self._project_id,
+                    manifest.component_type.value,
+                    manifest.title,
+                    manifest.status,
+                    manifest_json,
+                    manifest_hash,
+                    existing["created_at"] if existing else created_at,
+                    now,
+                ),
+            )
+        record = self.get_harness_change(manifest.change_id)
+        if record is None:
+            raise RuntimeError("failed to persist harness change")
+        return record
+
+    def get_harness_change(self, change_id: str) -> LocalHarnessChangeRecord | None:
+        with self._connect() as conn:
+            row = conn.execute(
+                """
+                SELECT change_id, component_type, title, status, manifest_json,
+                       manifest_hash, created_at, updated_at
+                FROM harness_changes
+                WHERE project_id = ? AND change_id = ?
+                """,
+                (self._project_id, change_id),
+            ).fetchone()
+        return _row_to_harness_change(row) if row else None
+
+    def list_harness_changes(self, *, status: str | None = None) -> list[LocalHarnessChangeRecord]:
+        with self._connect() as conn:
+            if status is None:
+                rows = conn.execute(
+                    """
+                    SELECT change_id, component_type, title, status, manifest_json,
+                           manifest_hash, created_at, updated_at
+                    FROM harness_changes
+                    WHERE project_id = ?
+                    ORDER BY updated_at DESC, change_id ASC
+                    """,
+                    (self._project_id,),
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    """
+                    SELECT change_id, component_type, title, status, manifest_json,
+                           manifest_hash, created_at, updated_at
+                    FROM harness_changes
+                    WHERE project_id = ? AND status = ?
+                    ORDER BY updated_at DESC, change_id ASC
+                    """,
+                    (self._project_id, status),
+                ).fetchall()
+        return [_row_to_harness_change(row) for row in rows]
+
+    def save_harness_change_verdict(self, verdict: HarnessChangeVerdict) -> LocalHarnessChangeVerdictRecord:
+        if self.get_harness_change(verdict.change_id) is None:
+            raise ValueError(f"unknown harness change: {verdict.change_id}")
+        verdict_json = json.dumps(verdict.model_dump(mode="json"), indent=2, sort_keys=True) + "\n"
+        verdict_id = f"hcv-{uuid.uuid4().hex[:12]}"
+        created_at = verdict.created_at.isoformat()
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO harness_change_verdicts(
+                    id, project_id, change_id, verdict, verdict_json, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (verdict_id, self._project_id, verdict.change_id, verdict.verdict, verdict_json, created_at),
+            )
+            row = conn.execute(
+                """
+                SELECT id, change_id, verdict, verdict_json, created_at
+                FROM harness_change_verdicts
+                WHERE project_id = ? AND id = ?
+                """,
+                (self._project_id, verdict_id),
+            ).fetchone()
+        if row is None:
+            raise RuntimeError("failed to persist harness change verdict")
+        return _row_to_harness_change_verdict(row)
+
+    def list_harness_change_verdicts(self, change_id: str) -> list[LocalHarnessChangeVerdictRecord]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT id, change_id, verdict, verdict_json, created_at
+                FROM harness_change_verdicts
+                WHERE project_id = ? AND change_id = ?
+                ORDER BY created_at ASC, id ASC
+                """,
+                (self._project_id, change_id),
+            ).fetchall()
+        return [_row_to_harness_change_verdict(row) for row in rows]
 
     def save_builder_brief(
         self,

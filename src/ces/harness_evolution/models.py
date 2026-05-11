@@ -26,6 +26,7 @@ class HarnessComponentType(StrEnum):
 
 
 HarnessChangeStatus = Literal["draft", "proposed", "active", "superseded", "rolled_back"]
+HarnessVerdictStatus = Literal["keep", "revise", "rollback", "inconclusive"]
 
 
 _TEXT_FIELDS = {
@@ -120,3 +121,50 @@ class HarnessChangeManifest(CESBaseModel):
         if not self.validation_plan:
             raise ValueError("validation_plan must contain at least one validation step")
         return self
+
+
+class HarnessChangeVerdict(CESBaseModel):
+    """Observed effect verdict for a persisted harness change."""
+
+    model_config = ConfigDict(strict=True, frozen=True, extra="forbid", hide_input_in_errors=True)
+
+    change_id: str = Field(pattern=r"^hchg-[a-zA-Z0-9_.:-]+$")
+    observed_fixes: list[str] = Field(default_factory=list)
+    missed_fixes: list[str] = Field(default_factory=list)
+    observed_predicted_regressions: list[str] = Field(default_factory=list)
+    unexpected_regressions: list[str] = Field(default_factory=list)
+    verdict: HarnessVerdictStatus
+    rationale: str
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+
+    @field_validator("change_id")
+    @classmethod
+    def _validate_verdict_change_id(cls, value: str) -> str:
+        _reject_secret_like_text(value, "change_id")
+        return value
+
+    @field_validator(
+        "observed_fixes",
+        "missed_fixes",
+        "observed_predicted_regressions",
+        "unexpected_regressions",
+    )
+    @classmethod
+    def _validate_verdict_text_list(cls, value: list[str], info: ValidationInfo) -> list[str]:
+        for item in value:
+            _reject_blank_text(item, info.field_name)
+            _reject_secret_like_text(item, info.field_name)
+        return value
+
+    @field_validator("rationale")
+    @classmethod
+    def _validate_rationale(cls, value: str) -> str:
+        value = _reject_blank_text(value, "rationale")
+        return _reject_secret_like_text(value, "rationale")
+
+    @field_validator("created_at", mode="before")
+    @classmethod
+    def _parse_verdict_created_at(cls, value: object) -> object:
+        if isinstance(value, str):
+            return datetime.fromisoformat(value.replace("Z", "+00:00"))
+        return value

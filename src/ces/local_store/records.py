@@ -14,6 +14,8 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
+from ces.harness_evolution.models import HarnessChangeManifest, HarnessChangeVerdict
+
 
 @dataclass(frozen=True)
 class LocalRuntimeExecutionRecord:
@@ -27,6 +29,27 @@ class LocalRuntimeExecutionRecord:
     stderr: str
     duration_seconds: float
     transcript_path: str | None = None
+
+
+@dataclass(frozen=True)
+class LocalHarnessChangeRecord:
+    change_id: str
+    component_type: str
+    title: str
+    status: str
+    manifest: HarnessChangeManifest
+    manifest_hash: str
+    created_at: str
+    updated_at: str
+
+
+@dataclass(frozen=True)
+class LocalHarnessChangeVerdictRecord:
+    id: str
+    change_id: str
+    verdict: str
+    verdict_payload: HarnessChangeVerdict
+    created_at: str
 
 
 @dataclass(frozen=True)

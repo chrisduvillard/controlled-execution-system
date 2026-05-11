@@ -14,6 +14,8 @@ def test_operator_playbook_documents_harness_evolution_boundary() -> None:
     assert "local" in text
     assert "not autonomous" in text
     assert "ces harness init --dry-run" in text
+    assert "ces harness changes add" in text
+    assert ".ces/state.db" in text
 
 
 def test_quick_reference_card_lists_harness_commands() -> None:
@@ -21,3 +23,6 @@ def test_quick_reference_card_lists_harness_commands() -> None:
 
     assert "ces harness init --dry-run" in text
     assert "ces harness changes validate" in text
+    assert "ces harness changes add" in text
+    assert "ces harness changes list" in text
+    assert "ces harness changes show" in text

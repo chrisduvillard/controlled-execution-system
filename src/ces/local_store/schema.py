@@ -184,6 +184,30 @@ def initialize_schema(conn: sqlite3.Connection) -> None:
             unanimous_zero_findings INTEGER NOT NULL DEFAULT 0,
             created_at TEXT NOT NULL
         );
+        CREATE TABLE IF NOT EXISTS harness_changes (
+            change_id TEXT PRIMARY KEY,
+            project_id TEXT NOT NULL,
+            component_type TEXT NOT NULL,
+            title TEXT NOT NULL,
+            status TEXT NOT NULL,
+            manifest_json TEXT NOT NULL,
+            manifest_hash TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_harness_changes_project_status
+            ON harness_changes (project_id, status, updated_at);
+        CREATE TABLE IF NOT EXISTS harness_change_verdicts (
+            id TEXT PRIMARY KEY,
+            project_id TEXT NOT NULL,
+            change_id TEXT NOT NULL,
+            verdict TEXT NOT NULL,
+            verdict_json TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY(change_id) REFERENCES harness_changes(change_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_harness_change_verdicts_change
+            ON harness_change_verdicts (project_id, change_id, created_at);
         """
     )
     _migrate_review_findings_to_synthetic_pk(conn)

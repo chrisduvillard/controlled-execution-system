@@ -74,10 +74,11 @@ If you want manual setup before the first builder-first run, use `ces init <name
 
 Harness evolution is a local, explicit, operator-controlled substrate for
 describing proposed CES harness changes. It is not autonomous and does not inject
-runtime prompts or memory into builder/expert execution. PR1 only creates a
-file-level layout under `.ces/harness/` and validates falsifiable change
+runtime prompts or memory into builder/expert execution. The initial layer
+creates a file-level layout under `.ces/harness/`, validates falsifiable change
 manifests with predicted fixes, predicted regressions, a validation plan, and a
-rollback condition.
+rollback condition, and can persist attribution-ready change records in local
+`.ces/state.db`.
 
 ```bash
 # Preview exactly which local paths would be created; writes nothing.
@@ -91,6 +92,11 @@ ces harness inspect
 
 # Validate a proposed change manifest without persisting or activating it.
 ces harness changes validate path/to/manifest.json
+
+# Persist, list, and inspect attribution-ready harness change records locally.
+ces harness changes add path/to/manifest.json
+ces harness changes list
+ces harness changes show hchg-...
 ```
 
 Treat manifests as review artifacts: keep evidence references concise, avoid raw

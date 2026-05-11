@@ -12,6 +12,8 @@ from ces.cli._output import console
 from ces.execution.secrets import scrub_secrets_from_text
 from ces.harness_evolution.manifest_io import read_manifest
 from ces.harness_evolution.paths import HarnessPaths, create_harness_layout, relative_layout_entries
+from ces.harness_evolution.repository import HarnessEvolutionRepository
+from ces.local_store import LocalProjectStore
 
 harness_app = typer.Typer(
     help="Inspect and initialize local harness evolution artifacts.",
@@ -33,6 +35,10 @@ def _project_root_option() -> Path | None:
         "--project-root",
         help="Repo/CES project root to inspect; defaults to the current working directory.",
     )
+
+
+def _repository(root: Path) -> HarnessEvolutionRepository:
+    return HarnessEvolutionRepository(LocalProjectStore(root / ".ces" / "state.db", project_id="default"))
 
 
 @harness_app.callback(invoke_without_command=True)
@@ -108,6 +114,70 @@ def validate_change_manifest(manifest_path: Path) -> None:
     console.print(f"component: {manifest.component_type.value}")
     console.print(f"predicted fixes: {len(manifest.predicted_fixes)}")
     console.print(f"predicted regressions: {len(manifest.predicted_regressions)}")
+
+
+@changes_app.command(name="add")
+def add_change_manifest(
+    manifest_path: Path,
+    project_root: Path | None = _project_root_option(),
+) -> None:
+    """Validate and persist a harness change manifest in `.ces/state.db`."""
+
+    root = _project_root(project_root)
+    try:
+        manifest = read_manifest(manifest_path)
+        record = _repository(root).save_change(manifest)
+    except (OSError, ValueError, ValidationError) as exc:
+        safe_error = scrub_secrets_from_text(str(exc))
+        console.print(f"Could not save harness change manifest: {safe_error}")
+        raise typer.Exit(code=1) from exc
+
+    console.print(f"saved harness change: {record.change_id}")
+    console.print(f"status: {record.status}")
+    console.print(f"manifest hash: {record.manifest_hash}")
+
+
+@changes_app.command(name="list")
+def list_changes(
+    project_root: Path | None = _project_root_option(),
+    status: str | None = typer.Option(None, "--status", help="Filter by harness change status."),
+) -> None:
+    """List persisted harness change manifests."""
+
+    records = _repository(_project_root(project_root)).list_changes(status=status)
+    if not records:
+        console.print("No harness changes found.")
+        return
+
+    console.print("Harness changes:")
+    for record in records:
+        console.print(
+            f"- {record.change_id} | component={record.component_type} | "
+            f"status={record.status} | title={record.title} | updated={record.updated_at}"
+        )
+
+
+@changes_app.command(name="show")
+def show_change(
+    change_id: str,
+    project_root: Path | None = _project_root_option(),
+) -> None:
+    """Show a persisted harness change manifest summary."""
+
+    record = _repository(_project_root(project_root)).get_change(change_id)
+    if record is None:
+        console.print(f"Harness change not found: {change_id}")
+        raise typer.Exit(code=1)
+
+    manifest = record.manifest
+    console.print(f"change id: {record.change_id}")
+    console.print(f"title: {record.title}")
+    console.print(f"component: {record.component_type}")
+    console.print(f"status: {record.status}")
+    console.print(f"manifest hash: {record.manifest_hash}")
+    console.print(f"predicted fixes: {len(manifest.predicted_fixes)}")
+    console.print(f"predicted regressions: {len(manifest.predicted_regressions)}")
+    console.print(f"validation steps: {len(manifest.validation_plan)}")
 
 
 harness_app.add_typer(changes_app, name="changes")
