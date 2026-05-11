@@ -7,9 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.1.16rc1] - 2026-05-10
+## [0.1.16] - 2026-05-11
 
-Release candidate for the public audit-closure package. This RC collects the post-0.1.15 audit fixes and fresh-project dogfood hardening validated on `master`.
+Stable public audit-closure release. This promotes the `0.1.16rc1` package after successful TestPyPI publishing, production PyPI prerelease publishing, and fresh-project dogfood validation from the installed PyPI artifact.
 
 ### Added
 

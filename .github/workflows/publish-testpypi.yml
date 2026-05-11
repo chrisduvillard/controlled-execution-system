@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       package-version:
-        description: "Package version to validate and publish to TestPyPI, e.g. 0.1.16rc1"
+        description: "Package version to validate and publish to TestPyPI, e.g. 0.1.16"
         required: true
         type: string
 
