@@ -415,7 +415,9 @@ def _looks_like_subproject_build(brief: BuilderBriefDraft, manifest: Any | None)
             *[str(path) for path in (getattr(manifest, "affected_files", ()) or ())],
         ]
     ).casefold()
-    return "/" in haystack and any(marker in haystack for marker in ("package.json", "vite", "node", "npm", "app", "examples/"))
+    return "/" in haystack and any(
+        marker in haystack for marker in ("package.json", "vite", "node", "npm", "app", "examples/")
+    )
 
 
 def _active_framework_reminders(services: dict[str, Any]) -> list[FrameworkReminder]:
