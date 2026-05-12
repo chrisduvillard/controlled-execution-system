@@ -191,6 +191,7 @@ class _BaseRuntimeAdapter:
                 f"process_group_id={process_group_id if process_group_id is not None else 'unknown'}",
                 f"stdout_bytes={stdout_bytes if stdout_bytes is not None else 'unknown'}",
                 f"stderr_bytes={stderr_bytes if stderr_bytes is not None else 'unknown'}",
+                "runtime_heartbeat=stalled_or_silent_until_timeout",
                 "Process tree before termination:",
                 process_tree,
                 "",

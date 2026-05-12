@@ -385,6 +385,17 @@ def _prompt_pack(
             )
         if promoted_prl_statements:
             lines.extend(["", "Promoted Legacy Requirements:", *[f"- {item}" for item in promoted_prl_statements]])
+    elif _looks_like_subproject_build(brief, manifest):
+        lines.extend(
+            [
+                "",
+                "Subproject Hygiene:",
+                "- If you create an app/package in a subdirectory, run the subproject's own validation commands from that subdirectory.",
+                "- Include install, test, typecheck, build, and lint evidence when those scripts exist.",
+                "- For Node/Vite apps, remove generated artifacts such as node_modules, dist, and coverage before final parent-repo verification.",
+                "- Document clean-checkout validation evidence and any provider/browser caveats in the subproject README or report.",
+            ]
+        )
     criteria = brief.acceptance_criteria
     completion_fragment = build_completion_gate_prompt_fragment_from_values(
         acceptance_criteria=criteria,
@@ -393,6 +404,18 @@ def _prompt_pack(
     if completion_fragment:
         lines.append(completion_fragment)
     return attach_engineering_charter("\n".join(lines))
+
+
+def _looks_like_subproject_build(brief: BuilderBriefDraft, manifest: Any | None) -> bool:
+    haystack = "\n".join(
+        [
+            brief.request,
+            *brief.constraints,
+            *brief.acceptance_criteria,
+            *[str(path) for path in (getattr(manifest, "affected_files", ()) or ())],
+        ]
+    ).casefold()
+    return "/" in haystack and any(marker in haystack for marker in ("package.json", "vite", "node", "npm", "app", "examples/"))
 
 
 def _active_framework_reminders(services: dict[str, Any]) -> list[FrameworkReminder]:
@@ -1155,7 +1178,9 @@ async def _run_brief_flow(
     if independent_verification is not None and not independent_verification.passed:
         auto_blockers.append("independent verification failed; run `ces verify --json` for command details")
     if workspace_scope_violations:
-        auto_blockers.append("workspace changes exceeded manifest scope")
+        preview = ", ".join(workspace_scope_violations[:5])
+        suffix = "" if len(workspace_scope_violations) <= 5 else f" (+{len(workspace_scope_violations) - 5} more)"
+        auto_blockers.append(f"workspace changes exceeded manifest scope: {preview}{suffix}")
     if sensor_policy.blocking:
         auto_blockers.append("risk-aware sensor policy found blocking issues")
     if (

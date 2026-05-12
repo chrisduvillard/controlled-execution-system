@@ -27,11 +27,14 @@ def infer_verification_commands(
     project_type: str,
     acceptance_criteria: tuple[str, ...] | list[str] = (),
 ) -> tuple[VerificationCommand, ...]:
+    commands: list[VerificationCommand] = []
     if project_type.startswith("python"):
-        return (*_python_commands(project_root, project_type), *_criterion_commands(acceptance_criteria, project_root))
-    if project_type in {"node-app", "vite-react-app"}:
-        return (*_node_commands(project_root), *_criterion_commands(acceptance_criteria, project_root))
-    return ()
+        commands.extend(_python_commands(project_root, project_type))
+    elif project_type in {"node-app", "vite-react-app"}:
+        commands.extend(_node_commands(project_root))
+    commands.extend(_subproject_commands(project_root, acceptance_criteria, start_index=len(commands)))
+    commands.extend(_criterion_commands(acceptance_criteria, project_root))
+    return tuple(commands)
 
 
 def _python_commands(project_root: Path, project_type: str) -> tuple[VerificationCommand, ...]:
@@ -72,7 +75,7 @@ def _node_commands(project_root: Path) -> tuple[VerificationCommand, ...]:
     payload = _read_json(project_root / "package.json")
     scripts = payload.get("scripts", {}) if isinstance(payload, dict) else {}
     commands: list[VerificationCommand] = []
-    for name, kind in (("test", "test"), ("lint", "lint"), ("build", "build")):
+    for name, kind in (("test", "test"), ("typecheck", "typecheck"), ("build", "build"), ("lint", "lint")):
         if isinstance(scripts, dict) and name in scripts:
             commands.append(
                 VerificationCommand(
@@ -80,6 +83,54 @@ def _node_commands(project_root: Path) -> tuple[VerificationCommand, ...]:
                 )
             )
     return tuple(commands)
+
+
+def _subproject_commands(
+    project_root: Path,
+    acceptance_criteria: tuple[str, ...] | list[str],
+    *,
+    start_index: int,
+) -> tuple[VerificationCommand, ...]:
+    """Infer validation commands for nested projects explicitly named by the task."""
+    commands: list[VerificationCommand] = []
+    for rel_path in _mentioned_project_paths(acceptance_criteria):
+        subproject = project_root / rel_path
+        if not (subproject / "package.json").is_file():
+            continue
+        node_commands = _node_commands(subproject)
+        if not node_commands:
+            continue
+        commands.append(
+            VerificationCommand(
+                id=f"VC-{start_index + len(commands) + 1:03d}",
+                kind="install",
+                command="npm ci",
+                cwd=rel_path,
+                timeout_seconds=300,
+            )
+        )
+        for command in node_commands:
+            commands.append(
+                VerificationCommand(
+                    id=f"VC-{start_index + len(commands) + 1:03d}",
+                    kind=command.kind,
+                    command=command.command,
+                    cwd=rel_path,
+                    timeout_seconds=command.timeout_seconds,
+                    expected_exit_codes=command.expected_exit_codes,
+                )
+            )
+    return tuple(commands)
+
+
+def _mentioned_project_paths(criteria: tuple[str, ...] | list[str]) -> tuple[str, ...]:
+    paths: list[str] = []
+    for criterion in criteria:
+        for match in re.finditer(r"(?:^|\s)([A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)+)/?", str(criterion)):
+            path = match.group(1).strip("`.,:;()[]{}")
+            if path and path not in paths:
+                paths.append(path)
+    return tuple(paths)
 
 
 def _first_project_script(project_root: Path) -> str | None:

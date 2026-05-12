@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import re
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -47,6 +47,9 @@ class BuilderRunReport:
     brownfield_item_remaining_count: int = 0
     brownfield_progress_kind: str = "behavior_inventory"
     runtime_transcript_path: str | None = None
+    runtime_duration_seconds: float | None = None
+    token_usage_summary: str = field(default="unavailable")
+    cost_summary: str = field(default="unavailable")
 
 
 @dataclass(frozen=True)
@@ -98,6 +101,7 @@ def build_builder_run_report(snapshot: Any) -> BuilderRunReport | None:
         soft_merge_not_applied=soft_merge_not_applied,
     )
     runtime_safety = _runtime_safety_content(evidence if isinstance(evidence, dict) else None)
+    accounting = _runtime_accounting_content(evidence if isinstance(evidence, dict) else None)
     raw_verification_findings = _verification_findings(evidence if isinstance(evidence, dict) else None)
     raw_superseded_verification_findings = _superseded_verification_findings(
         evidence if isinstance(evidence, dict) else None
@@ -170,6 +174,9 @@ def build_builder_run_report(snapshot: Any) -> BuilderRunReport | None:
         brownfield_item_remaining_count=brownfield_counts["item_remaining"],
         brownfield_progress_kind=brownfield_counts["entry_kind"],
         runtime_transcript_path=_text(getattr(runtime_execution, "transcript_path", None)),
+        runtime_duration_seconds=_optional_float(getattr(runtime_execution, "duration_seconds", None)),
+        token_usage_summary=_token_usage_summary(accounting),
+        cost_summary=_cost_summary(accounting),
     )
 
 
@@ -225,6 +232,10 @@ def summarize_builder_run(report: BuilderRunReport) -> list[str]:
         lines.append(f"MCP grounding supported: {report.mcp_grounding_supported}")
     if report.runtime_transcript_path:
         lines.append(f"Runtime transcript: {report.runtime_transcript_path}")
+    if report.runtime_duration_seconds is not None:
+        lines.append(f"Runtime duration: {report.runtime_duration_seconds:.1f}s")
+    lines.append(f"Token usage: {report.token_usage_summary}")
+    lines.append(f"Cost: {report.cost_summary}")
     if report.manual_completion_supersedes_rejected_auto_review:
         lines.append("Manual completion superseded failed auto-approval: True")
     if report.verification_findings:
@@ -286,6 +297,9 @@ def render_builder_run_report_markdown(report: BuilderRunReport) -> str:
         f"- MCP grounding supported: {_render_optional_bool(report.mcp_grounding_supported)}",
         f"- Reported model: {report.reported_model or 'unknown'}",
         f"- Runtime transcript: {report.runtime_transcript_path or 'none'}",
+        f"- Runtime duration: {_render_duration(report.runtime_duration_seconds)}",
+        f"- Token usage: {report.token_usage_summary}",
+        f"- Cost: {report.cost_summary}",
         f"- Manual completion superseded failed auto-approval: {report.manual_completion_supersedes_rejected_auto_review}",
     ]
     if report.prl_draft_path:
@@ -546,6 +560,51 @@ def _runtime_safety_content(evidence: dict[str, Any] | None) -> dict[str, Any]:
     return runtime_safety if isinstance(runtime_safety, dict) else {}
 
 
+def _runtime_accounting_content(evidence: dict[str, Any] | None) -> dict[str, Any]:
+    content = _evidence_content(evidence)
+    for key in ("runtime_accounting", "accounting", "usage"):
+        value = content.get(key)
+        if isinstance(value, dict):
+            return value
+    superseded = _superseded_evidence_content(content)
+    for key in ("runtime_accounting", "accounting", "usage"):
+        value = superseded.get(key)
+        if isinstance(value, dict):
+            return value
+    return {}
+
+
+def _token_usage_summary(accounting: dict[str, Any]) -> str:
+    input_tokens = _optional_int(accounting.get("input_tokens") or accounting.get("prompt_tokens"))
+    output_tokens = _optional_int(accounting.get("output_tokens") or accounting.get("completion_tokens"))
+    total_tokens = _optional_int(accounting.get("total_tokens"))
+    if total_tokens is None and (input_tokens is not None or output_tokens is not None):
+        total_tokens = (input_tokens or 0) + (output_tokens or 0)
+    if total_tokens is None:
+        return "unavailable"
+    parts = [f"{total_tokens:,} tokens"]
+    details: list[str] = []
+    if input_tokens is not None:
+        details.append(f"input {input_tokens:,}")
+    if output_tokens is not None:
+        details.append(f"output {output_tokens:,}")
+    if details:
+        parts.append(f"({', '.join(details)})")
+    return " ".join(parts)
+
+
+def _cost_summary(accounting: dict[str, Any]) -> str:
+    cost = _optional_float(
+        accounting.get("estimated_cost_usd")
+        if accounting.get("estimated_cost_usd") is not None
+        else accounting.get("cost_usd")
+    )
+    if cost is None:
+        return "unavailable"
+    suffix = " estimated" if "estimated_cost_usd" in accounting else ""
+    return f"${cost:.4f}{suffix}"
+
+
 def _verification_findings(evidence: dict[str, Any] | None) -> tuple[str, ...]:
     content = _evidence_content(evidence)
     verification = content.get("verification_result")
@@ -605,6 +664,28 @@ def _evidence_content(evidence: Any) -> dict[str, Any]:
 
 def _optional_bool(value: Any) -> bool | None:
     return value if isinstance(value, bool) else None
+
+
+def _optional_int(value: Any) -> int | None:
+    if isinstance(value, bool) or value is None:
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _optional_float(value: Any) -> float | None:
+    if isinstance(value, bool) or value is None:
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _render_duration(value: float | None) -> str:
+    return "unknown" if value is None else f"{value:.1f}s"
 
 
 def _render_optional_bool(value: bool | None) -> str:

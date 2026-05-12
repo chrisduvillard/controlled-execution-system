@@ -100,6 +100,30 @@ def test_builder_prompt_pack_attaches_engineering_charter() -> None:
     assert "Discounts apply at checkout" in prompt
 
 
+def test_greenfield_prompt_pack_guides_subdirectory_app_artifact_hygiene() -> None:
+    from ces.cli._builder_flow import BuilderBriefDraft
+    from ces.cli.run_cmd import _prompt_pack
+
+    prompt = _prompt_pack(
+        BuilderBriefDraft(
+            request="Create a Vite voice-to-text app under examples/voice-to-text-mvp/",
+            project_mode="greenfield",
+            constraints=["Keep the app dependency-light"],
+            acceptance_criteria=["examples/voice-to-text-mvp has README, tests, and local run instructions"],
+            must_not_break=[],
+            open_questions={},
+            source_of_truth=None,
+            critical_flows=[],
+        ),
+        manifest=SimpleNamespace(manifest_id="M-vtt", affected_files=("examples/voice-to-text-mvp/**",)),
+    )
+
+    assert "Subproject Hygiene" in prompt
+    assert "run the subproject's own validation commands from that subdirectory" in prompt
+    assert "remove generated artifacts such as node_modules, dist, and coverage" in prompt
+    assert "clean-checkout validation evidence" in prompt
+
+
 def test_greenfield_empty_manifest_scope_derives_runtime_changed_files() -> None:
     """RunLens dogfood: greenfield builds should verify against actual workspace delta."""
     from ces.cli._builder_flow import BuilderBriefDraft

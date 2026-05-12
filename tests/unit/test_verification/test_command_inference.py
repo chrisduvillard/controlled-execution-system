@@ -49,6 +49,48 @@ def test_infers_node_package_commands(tmp_path: Path) -> None:
     assert [command.command for command in commands] == ["npm test", "npm run build"]
 
 
+def test_infers_node_subproject_commands_from_acceptance_paths(tmp_path: Path) -> None:
+    from ces.verification.command_inference import infer_verification_commands
+
+    (tmp_path / "pyproject.toml").write_text("[project]\nname='ces'\n", encoding="utf-8")
+    (tmp_path / "uv.lock").write_text("", encoding="utf-8")
+    (tmp_path / "tests").mkdir()
+    app = tmp_path / "examples" / "voice-to-text-mvp"
+    app.mkdir(parents=True)
+    (app / "package.json").write_text(
+        json.dumps(
+            {
+                "scripts": {
+                    "test": "vitest",
+                    "typecheck": "tsc --noEmit",
+                    "build": "vite build",
+                    "lint": "eslint .",
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    commands = infer_verification_commands(
+        tmp_path,
+        "python-package",
+        acceptance_criteria=(
+            "examples/voice-to-text-mvp contains a working local voice-to-text MVP",
+            "Automated validation exists and passes locally",
+        ),
+    )
+
+    subproject_commands = [command for command in commands if command.cwd == "examples/voice-to-text-mvp"]
+    assert [command.kind for command in subproject_commands] == ["install", "test", "typecheck", "build", "lint"]
+    assert [command.command for command in subproject_commands] == [
+        "npm ci",
+        "npm test",
+        "npm run typecheck",
+        "npm run build",
+        "npm run lint",
+    ]
+
+
 def test_infers_uv_cli_smoke_command_when_lockfile_exists(tmp_path: Path) -> None:
     from ces.verification.command_inference import infer_verification_commands
 

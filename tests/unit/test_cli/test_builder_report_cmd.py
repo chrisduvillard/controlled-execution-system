@@ -497,6 +497,77 @@ def test_builder_report_surfaces_completion_contract_and_independent_verificatio
     assert "Independent verification passed: True" in markdown
 
 
+def test_builder_report_surfaces_runtime_duration_and_unavailable_token_cost_accounting() -> None:
+    from ces.cli._builder_report import build_builder_run_report, render_builder_run_report_markdown
+
+    snapshot = SimpleNamespace(
+        request="Build voice-to-text MVP",
+        project_mode="greenfield",
+        stage="completed",
+        next_action="start_new_session",
+        next_step="Start a new task",
+        latest_activity="CES recorded approval",
+        latest_artifact="approval",
+        brief=SimpleNamespace(prl_draft_path=None),
+        manifest=SimpleNamespace(manifest_id="M-vtt", workflow_state="approved"),
+        runtime_execution=SimpleNamespace(exit_code=0, reported_model="gpt-5.5", duration_seconds=125.4),
+        evidence={"packet_id": "EP-vtt", "content": {"independent_verification": {"passed": True}}},
+        approval=SimpleNamespace(decision="approve"),
+        session=SimpleNamespace(session_id="BS-vtt"),
+        brownfield=None,
+    )
+
+    report = build_builder_run_report(snapshot)
+
+    assert report is not None
+    assert report.runtime_duration_seconds == 125.4
+    assert report.token_usage_summary == "unavailable"
+    assert report.cost_summary == "unavailable"
+    markdown = render_builder_run_report_markdown(report)
+    assert "Runtime duration: 125.4s" in markdown
+    assert "Token usage: unavailable" in markdown
+    assert "Cost: unavailable" in markdown
+
+
+def test_builder_report_surfaces_available_token_and_cost_accounting_from_evidence() -> None:
+    from ces.cli._builder_report import build_builder_run_report, render_builder_run_report_markdown
+
+    snapshot = SimpleNamespace(
+        request="Build voice-to-text MVP",
+        project_mode="greenfield",
+        stage="completed",
+        next_action="start_new_session",
+        next_step="Start a new task",
+        latest_activity="CES recorded approval",
+        latest_artifact="approval",
+        brief=SimpleNamespace(prl_draft_path=None),
+        manifest=SimpleNamespace(manifest_id="M-vtt", workflow_state="approved"),
+        runtime_execution=SimpleNamespace(exit_code=0, reported_model="gpt-5.5", duration_seconds=60.0),
+        evidence={
+            "packet_id": "EP-vtt",
+            "content": {
+                "runtime_accounting": {
+                    "input_tokens": 1200,
+                    "output_tokens": 345,
+                    "estimated_cost_usd": 0.1234,
+                }
+            },
+        },
+        approval=SimpleNamespace(decision="approve"),
+        session=SimpleNamespace(session_id="BS-vtt"),
+        brownfield=None,
+    )
+
+    report = build_builder_run_report(snapshot)
+
+    assert report is not None
+    assert report.token_usage_summary == "1,545 tokens (input 1,200, output 345)"
+    assert report.cost_summary == "$0.1234 estimated"
+    markdown = render_builder_run_report_markdown(report)
+    assert "Token usage: 1,545 tokens (input 1,200, output 345)" in markdown
+    assert "Cost: $0.1234 estimated" in markdown
+
+
 def test_builder_report_hard_merge_block_overrides_approval() -> None:
     """TaskLedger dogfood: hard merge integrity blocks must not be reported as approved."""
     from ces.cli._builder_report import build_builder_run_report
