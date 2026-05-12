@@ -385,6 +385,11 @@ class TestRuntimeAdapterEnvScrubbing:
         assert result.exit_code == 124
         assert "timed out after 3 seconds" in result.stderr
         assert "partial stderr before hang" in result.stderr
+        assert "Runtime timeout diagnostics" in result.stderr
+        assert "Process tree before termination" in result.stderr
+        assert "stdout_bytes=" in result.stderr
+        assert "stderr_bytes=" in result.stderr
+        assert "pid=4242" in result.stderr
         assert result.transcript_path is not None
         mock_getpgid.assert_called_once_with(4242)
         assert mock_killpg.call_args_list[0].args == (9001, signal.SIGTERM)

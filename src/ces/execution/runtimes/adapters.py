@@ -106,6 +106,97 @@ class _BaseRuntimeAdapter:
             time.sleep(0.05)
         return not cls._process_group_exists(pgid)
 
+    @staticmethod
+    def _stream_position(stream: object) -> int | None:
+        """Return the current byte offset for an output stream, if available."""
+        if not hasattr(stream, "tell"):
+            return None
+        try:
+            if hasattr(stream, "flush"):
+                stream.flush()
+            return int(stream.tell())
+        except (OSError, ValueError, TypeError):
+            return None
+
+    @staticmethod
+    def _process_tree_snapshot(root_pid: int) -> str:
+        """Return a best-effort Linux /proc process-tree snapshot rooted at root_pid."""
+        proc_root = Path("/proc")
+        if not proc_root.exists():
+            return f"pid={root_pid} process_tree_unavailable=procfs_missing"
+        parent_to_children: dict[int, list[int]] = {}
+        seen: set[int] = set()
+        for entry in proc_root.iterdir():
+            if not entry.name.isdigit():
+                continue
+            pid = int(entry.name)
+            try:
+                stat_text = (entry / "stat").read_text(encoding="utf-8")
+                after_comm = stat_text.rsplit(")", maxsplit=1)[1].strip()
+                fields = after_comm.split()
+                ppid = int(fields[1])
+            except (OSError, IndexError, ValueError):
+                continue
+            seen.add(pid)
+            parent_to_children.setdefault(ppid, []).append(pid)
+        if root_pid not in seen:
+            return f"pid={root_pid} process_tree_unavailable=process_exited"
+
+        def label(pid: int) -> str:
+            cmdline_path = proc_root / str(pid) / "cmdline"
+            comm_path = proc_root / str(pid) / "comm"
+            try:
+                raw = cmdline_path.read_bytes().replace(b"\x00", b" ").strip()
+            except OSError:
+                raw = b""
+            if raw:
+                command = raw.decode("utf-8", errors="replace")
+            else:
+                try:
+                    command = comm_path.read_text(encoding="utf-8", errors="replace").strip()
+                except OSError:
+                    command = "unknown"
+            return scrub_secrets_from_text(command)[:240]
+
+        lines: list[str] = []
+        stack: list[tuple[int, int]] = [(root_pid, 0)]
+        while stack and len(lines) < 50:
+            pid, depth = stack.pop()
+            lines.append(f"{'  ' * depth}pid={pid} cmd={label(pid)}")
+            for child in sorted(parent_to_children.get(pid, ()), reverse=True):
+                stack.append((child, depth + 1))
+        if stack:
+            lines.append("... process tree truncated ...")
+        return "\n".join(lines)
+
+    @classmethod
+    def _timeout_diagnostics(
+        cls,
+        *,
+        process: subprocess.Popen[bytes],
+        process_group_id: int | None,
+        stdout_file: object,
+        stderr_file: object,
+        timeout_seconds: int,
+    ) -> str:
+        stdout_bytes = cls._stream_position(stdout_file)
+        stderr_bytes = cls._stream_position(stderr_file)
+        process_tree = cls._process_tree_snapshot(process.pid)
+        return "\n".join(
+            [
+                "",
+                "Runtime timeout diagnostics:",
+                f"timeout_seconds={timeout_seconds}",
+                f"pid={process.pid}",
+                f"process_group_id={process_group_id if process_group_id is not None else 'unknown'}",
+                f"stdout_bytes={stdout_bytes if stdout_bytes is not None else 'unknown'}",
+                f"stderr_bytes={stderr_bytes if stderr_bytes is not None else 'unknown'}",
+                "Process tree before termination:",
+                process_tree,
+                "",
+            ]
+        )
+
     @classmethod
     def _terminate_process_tree(cls, process: subprocess.Popen[bytes], pgid: int | None = None) -> None:
         """Terminate the runtime subprocess group so spawned CLI children do not outlive CES."""
@@ -189,6 +280,20 @@ class _BaseRuntimeAdapter:
             process.communicate(timeout=timeout_seconds)
             return int(process.returncode or 0)
         except subprocess.TimeoutExpired:
+            diagnostic = self._timeout_diagnostics(
+                process=process,
+                process_group_id=process_group_id,
+                stdout_file=stdout_file,
+                stderr_file=stderr_file,
+                timeout_seconds=timeout_seconds,
+            )
+            if hasattr(stderr_file, "write"):
+                try:
+                    stderr_file.write(diagnostic.encode("utf-8"))
+                    if hasattr(stderr_file, "flush"):
+                        stderr_file.flush()
+                except (OSError, TypeError, ValueError):
+                    pass
             self._terminate_process_tree(process, process_group_id)
             raise
         finally:
