@@ -323,6 +323,41 @@ class TestLocalProjectStoreHardening:
         assert parent_mode == 0o700, f".ces/ is 0o{parent_mode:o}, expected 0o700"
         assert db_mode == 0o600, f"state.db is 0o{db_mode:o}, expected 0o600"
 
+    def test_store_configures_sqlite_for_cli_concurrency(self, tmp_path: Path) -> None:
+        """Local CLI invocations should tolerate overlapping readers/writers better than SQLite defaults."""
+        from ces.local_store import LocalProjectStore
+
+        store = LocalProjectStore(db_path=tmp_path / ".ces" / "state.db", project_id="probe")
+        try:
+            with store._connect() as conn:
+                busy_timeout = conn.execute("PRAGMA busy_timeout").fetchone()[0]
+                journal_mode = conn.execute("PRAGMA journal_mode").fetchone()[0]
+                synchronous = conn.execute("PRAGMA synchronous").fetchone()[0]
+                foreign_keys = conn.execute("PRAGMA foreign_keys").fetchone()[0]
+        finally:
+            store.close()
+
+        assert busy_timeout >= 30_000
+        assert journal_mode.lower() == "wal"
+        assert synchronous == 1  # NORMAL
+        assert foreign_keys == 1
+
+    def test_two_store_instances_can_write_same_database(self, tmp_path: Path) -> None:
+        """Separate CES commands should be able to share state.db without immediate lock failures."""
+        from ces.local_store import LocalProjectStore
+
+        db_path = tmp_path / ".ces" / "state.db"
+        store_a = LocalProjectStore(db_path=db_path, project_id="probe")
+        store_b = LocalProjectStore(db_path=db_path, project_id="probe")
+        try:
+            store_a.save_project_settings({"writer_a": True})
+            store_b.save_project_settings({"writer_b": True})
+            assert store_a.get_project_settings()["writer_b"] is True
+            assert store_b.get_project_settings()["writer_a"] is True
+        finally:
+            store_a.close()
+            store_b.close()
+
     def test_save_runtime_execution_scrubs_stdout_stderr(self, tmp_path: Path) -> None:
         from types import SimpleNamespace
 
