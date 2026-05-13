@@ -13,7 +13,11 @@ from ces.cli._context import find_project_root
 from ces.cli._errors import handle_error
 from ces.cli._factory import get_services
 from ces.cli._output import console
+from ces.execution.secrets import scrub_secrets_from_text
 from ces.shared.enums import WorkflowState
+
+MAX_MANUAL_EVIDENCE_BYTES = 1_048_576
+TRUNCATED_MANUAL_EVIDENCE_MARKER = "\n...[truncated manual evidence]"
 
 
 def _manifest_id_from_session(session: Any, explicit_manifest_id: str | None) -> str:
@@ -23,6 +27,39 @@ def _manifest_id_from_session(session: Any, explicit_manifest_id: str | None) ->
     if not manifest_id:
         raise RuntimeError("No manifest id found for the latest builder session; pass --manifest-id.")
     return str(manifest_id)
+
+
+def _is_relative_to(path: Path, root: Path) -> bool:
+    try:
+        path.relative_to(root)
+    except ValueError:
+        return False
+    return True
+
+
+def _resolve_manual_evidence_path(evidence: Path, project_root: Path, *, allow_external: bool) -> Path:
+    evidence_path = evidence.resolve()
+    if not evidence_path.exists():
+        raise typer.BadParameter(f"Evidence path does not exist: {evidence_path}")
+    if not evidence_path.is_file():
+        raise typer.BadParameter(f"Evidence path must be a file: {evidence_path}")
+    resolved_project_root = project_root.resolve()
+    if not allow_external and not _is_relative_to(evidence_path, resolved_project_root):
+        raise typer.BadParameter(
+            "Evidence path is outside the CES project root; re-run with --allow-external-evidence "
+            "only if you intentionally want to attach that file."
+        )
+    return evidence_path
+
+
+def _read_manual_evidence_text(evidence_path: Path) -> str:
+    raw = evidence_path.read_bytes()
+    truncated = len(raw) > MAX_MANUAL_EVIDENCE_BYTES
+    text = raw[:MAX_MANUAL_EVIDENCE_BYTES].decode("utf-8", errors="replace")
+    text = scrub_secrets_from_text(text)
+    if truncated:
+        text += TRUNCATED_MANUAL_EVIDENCE_MARKER
+    return text
 
 
 @run_async
@@ -37,6 +74,11 @@ async def complete_builder_session(
         None,
         "--evidence",
         help="Path to operator-supplied verification evidence for externally completed work.",
+    ),
+    allow_external_evidence: bool = typer.Option(
+        False,
+        "--allow-external-evidence",
+        help="Allow --evidence to point outside the CES project root after explicit operator review.",
     ),
     rationale: str = typer.Option(
         "Completed externally by operator",
@@ -71,9 +113,11 @@ async def complete_builder_session(
                 candidate = get_evidence(resolved_manifest_id)
                 existing_evidence = candidate if isinstance(candidate, dict) else None
             if evidence is not None:
-                evidence_path = evidence.resolve()
-                if not evidence_path.exists():
-                    raise typer.BadParameter(f"Evidence path does not exist: {evidence_path}")
+                evidence_path = _resolve_manual_evidence_path(
+                    evidence,
+                    resolved_project_root,
+                    allow_external=allow_external_evidence,
+                )
                 evidence_packet_id = f"EP-manual-{session.session_id}"
                 local_store.save_evidence(
                     resolved_manifest_id,
@@ -84,7 +128,7 @@ async def complete_builder_session(
                     content={
                         "manual_completion": True,
                         "evidence_path": str(evidence_path),
-                        "evidence_text": evidence_path.read_text(encoding="utf-8", errors="replace"),
+                        "evidence_text": _read_manual_evidence_text(evidence_path),
                         "rationale": rationale,
                         "superseded_evidence": existing_evidence,
                     },
