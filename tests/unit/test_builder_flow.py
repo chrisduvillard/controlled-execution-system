@@ -99,6 +99,50 @@ class TestBuilderPromptCopy:
 
 
 class TestUnattendedBrief:
+    def test_collect_brief_answers_intent_gate_clarification_for_high_risk_request(self, tmp_path: Path) -> None:
+        orchestrator = BuilderFlowOrchestrator(tmp_path)
+        prompts_seen: list[str] = []
+        responses = iter(
+            [
+                "",  # constraints
+                "",  # normal acceptance prompt
+                "",  # must-not-break
+                "Only add password reset email request flow; do not change token validation.",
+            ]
+        )
+
+        def prompt_fn(prompt: str, default: str = "") -> str:
+            prompts_seen.append(prompt)
+            return next(responses)
+
+        brief = orchestrator.collect_brief(
+            description="Add password reset support",
+            prompt_fn=prompt_fn,
+            force_greenfield=True,
+        )
+
+        assert brief.intent_preflight is not None
+        assert brief.intent_preflight.decision == "proceed"
+        assert "Only add password reset email request flow" in brief.acceptance_criteria[0]
+        assert any("high-risk change" in prompt for prompt in prompts_seen)
+
+    def test_collect_brief_keeps_ask_when_intent_gate_clarification_is_blank(self, tmp_path: Path) -> None:
+        orchestrator = BuilderFlowOrchestrator(tmp_path)
+        responses = iter(["", "", "", ""])
+
+        def prompt_fn(prompt: str, default: str = "") -> str:
+            return next(responses)
+
+        brief = orchestrator.collect_brief(
+            description="Change admin authorization",
+            prompt_fn=prompt_fn,
+            force_greenfield=True,
+        )
+
+        assert brief.intent_preflight is not None
+        assert brief.intent_preflight.decision == "ask"
+        assert brief.acceptance_criteria == []
+
     def test_collect_brief_accepts_empty_defaults_for_unattended_mode(self, tmp_path: Path) -> None:
         """When prompt_fn returns defaults (empty strings), collect_brief still works."""
         orchestrator = BuilderFlowOrchestrator(tmp_path)

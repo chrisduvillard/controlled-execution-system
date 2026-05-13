@@ -11,6 +11,7 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+import typer
 from typer.testing import CliRunner
 
 from ces.control.models.manifest import TaskManifest
@@ -271,6 +272,41 @@ async def test_continue_after_interrupted_session_terminalizes_previous_manifest
 
 
 class TestRunCommand:
+    @pytest.mark.asyncio
+    async def test_wizard_unanswered_intent_gate_blocks_before_confirmation(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from ces.cli import run_cmd
+
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / ".ces").mkdir()
+        (tmp_path / ".ces" / "config.yaml").write_text("project_id: local-proj\npreferred_runtime: codex\n")
+        prompts = iter(["", "", "", ""])
+        monkeypatch.setattr("ces.cli.run_cmd.typer.prompt", lambda *args, **kwargs: next(prompts))
+        confirm = MagicMock(side_effect=RuntimeError("confirmation should not run"))
+        monkeypatch.setattr("ces.cli.run_cmd.typer.confirm", confirm)
+        execute = AsyncMock(side_effect=RuntimeError("runtime should not run"))
+        monkeypatch.setattr("ces.cli.run_cmd._run_brief_flow", execute)
+
+        with pytest.raises(typer.BadParameter, match="Intent Gate"):
+            await run_cmd._wizard_flow(
+                services={},
+                project_config={"preferred_runtime": "codex"},
+                runtime="codex",
+                brief=False,
+                full=False,
+                governance=False,
+                export_prl_draft=False,
+                project_root=tmp_path,
+                description="Change admin authorization",
+                greenfield=True,
+                brownfield_flag=False,
+                accept_runtime_side_effects=False,
+            )
+
+        confirm.assert_not_called()
+        execute.assert_not_called()
+
     def test_build_yes_with_description_requires_acceptance_context(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
@@ -298,6 +334,36 @@ class TestRunCommand:
         assert result.exit_code != 0
         assert "--acceptance" in result.stdout
         mock_services["runtime_registry"].resolve_runtime.assert_not_called()
+
+    def test_build_yes_high_risk_without_acceptance_blocks_at_intent_gate(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.chdir(tmp_path)
+        ces_dir = tmp_path / ".ces"
+        ces_dir.mkdir()
+        (ces_dir / "config.yaml").write_text("project_id: local-proj\npreferred_runtime: codex\n")
+
+        mock_services = {
+            "settings": MagicMock(default_runtime="codex"),
+            "manifest_manager": AsyncMock(),
+            "runtime_registry": MagicMock(resolve_runtime=MagicMock(side_effect=RuntimeError("should not run"))),
+            "agent_runner": AsyncMock(),
+            "local_store": MagicMock(),
+            "evidence_synthesizer": MagicMock(),
+            "audit_ledger": AsyncMock(),
+            "sensor_orchestrator": MagicMock(run_all=AsyncMock(return_value=[])),
+            "legacy_behavior_service": AsyncMock(),
+        }
+
+        with _patch_services(mock_services):
+            app = _get_app()
+            result = runner.invoke(app, ["build", "Change admin authorization", "--yes"])
+
+        assert result.exit_code != 0
+        assert "Intent Gate" in result.stdout
+        assert "What acceptance criteria" in result.stdout
+        mock_services["runtime_registry"].resolve_runtime.assert_not_called()
+        mock_services["agent_runner"].execute_runtime.assert_not_called()
 
     def test_brownfield_yes_requires_explicit_preservation_context(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch

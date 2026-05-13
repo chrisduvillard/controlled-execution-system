@@ -6,6 +6,8 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, Callable
 
+from ces.intent_gate.classifier import classify_intent
+from ces.intent_gate.models import IntentGatePreflight
 from ces.shared.enums import LegacyDisposition
 
 PromptFn = Callable[..., str]
@@ -50,6 +52,7 @@ class BuilderBriefDraft:
     open_questions: dict[str, str]
     source_of_truth: str = ""
     critical_flows: list[str] | None = None
+    intent_preflight: IntentGatePreflight | None = None
 
 
 class BuilderFlowOrchestrator:
@@ -70,6 +73,7 @@ class BuilderFlowOrchestrator:
         provided_must_not_break: list[str] | None = None,
         provided_source_of_truth: str | None = None,
         provided_critical_flows: list[str] | None = None,
+        non_interactive: bool = False,
     ) -> BuilderBriefDraft:
         request = description.strip() if description else ""
         if not request:
@@ -129,15 +133,46 @@ class BuilderFlowOrchestrator:
             open_questions["source_of_truth"] = source_of_truth
             open_questions["critical_flows"] = critical_flows_raw
 
+        constraints = _split_list(constraints_raw)
+        acceptance_criteria = _split_list(acceptance_raw)
+        must_not_break = _split_list(must_not_break_raw)
+        intent_preflight = classify_intent(
+            request,
+            constraints,
+            acceptance_criteria,
+            must_not_break,
+            project_mode,
+            non_interactive,
+        )
+
+        if not non_interactive and intent_preflight.decision == "ask":
+            answers: list[str] = []
+            for question in intent_preflight.ledger.open_questions:
+                answer = prompt_fn(question.question, default="").strip()
+                open_questions[question.question] = answer
+                if answer:
+                    answers.append(answer)
+            if answers:
+                acceptance_criteria.extend(answers)
+                intent_preflight = classify_intent(
+                    request,
+                    constraints,
+                    acceptance_criteria,
+                    must_not_break,
+                    project_mode,
+                    non_interactive,
+                )
+
         return BuilderBriefDraft(
             request=request,
             project_mode=project_mode,
-            constraints=_split_list(constraints_raw),
-            acceptance_criteria=_split_list(acceptance_raw),
-            must_not_break=_split_list(must_not_break_raw),
+            constraints=constraints,
+            acceptance_criteria=acceptance_criteria,
+            must_not_break=must_not_break,
             open_questions=open_questions,
             source_of_truth=source_of_truth,
             critical_flows=critical_flows,
+            intent_preflight=intent_preflight,
         )
 
     def detect_project_mode(

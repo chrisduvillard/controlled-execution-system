@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 import uuid
+from dataclasses import replace
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -66,6 +67,8 @@ from ces.harness_evolution.memory import (
     render_active_memory_lessons,
     select_active_memory_lessons,
 )
+from ces.intent_gate.classifier import classify_intent
+from ces.intent_gate.models import IntentGatePreflight
 from ces.recovery.reconciler import clear_builder_runtime_lock, write_builder_runtime_lock
 from ces.shared.enums import (
     ActorType,
@@ -109,6 +112,35 @@ def _validate_noninteractive_brief(brief: BuilderBriefDraft) -> None:
             "Non-interactive brownfield `--yes` builds require `--source-of-truth` "
             "and at least one `--critical-flow` so CES does not silently preserve inferred behavior."
         )
+
+
+def _intent_preflight_for_brief(brief: BuilderBriefDraft, *, non_interactive: bool) -> IntentGatePreflight:
+    preflight = brief.intent_preflight
+    if preflight is not None:
+        return preflight
+    return classify_intent(
+        brief.request,
+        brief.constraints,
+        brief.acceptance_criteria,
+        brief.must_not_break,
+        brief.project_mode,
+        non_interactive,
+    )
+
+
+def _format_intent_gate_block(preflight: IntentGatePreflight) -> str:
+    details = ["Intent Gate blocked execution before runtime launch.", f"Safe next step: {preflight.safe_next_step}"]
+    if preflight.ledger.open_questions:
+        details.append("Open question: " + preflight.ledger.open_questions[0].question)
+    return "\n".join(details)
+
+
+def _validate_intent_gate_allows_runtime(brief: BuilderBriefDraft, *, non_interactive: bool) -> BuilderBriefDraft:
+    preflight = _intent_preflight_for_brief(brief, non_interactive=non_interactive)
+    brief_with_preflight = replace(brief, intent_preflight=preflight)
+    if preflight.decision in {"ask", "blocked"}:
+        raise typer.BadParameter(_format_intent_gate_block(preflight))
+    return brief_with_preflight
 
 
 def _coerce_workflow_state_value(value: object) -> str:
@@ -701,6 +733,7 @@ async def _wizard_flow(
         f"Request: {brief_draft.request}\nMode: {brief_draft.project_mode}",
         help_text="CES uses your brief to scope the work contract.",
     )
+    brief_draft = _validate_intent_gate_allows_runtime(brief_draft, non_interactive=False)
 
     # Step 3 - Brownfield Review
     if brief_draft.project_mode == "brownfield":
@@ -788,6 +821,7 @@ async def _run_brief_flow(
     builder_flow = BuilderFlowOrchestrator(project_root)
     brief_id = existing_brief_id
     session_id = existing_session_id
+    brief_draft = _validate_intent_gate_allows_runtime(brief_draft, non_interactive=yes)
     if brief_id is None:
         brief_id = local_store.save_builder_brief(
             request=brief_draft.request,
@@ -1638,8 +1672,10 @@ async def run_task(
                     provided_must_not_break=_normalize_option_values(must_not_break),
                     provided_source_of_truth=source_of_truth,
                     provided_critical_flows=_normalize_option_values(critical_flows),
+                    non_interactive=bool(description),
                 )
                 if description:
+                    brief_draft = _validate_intent_gate_allows_runtime(brief_draft, non_interactive=True)
                     _validate_noninteractive_brief(brief_draft)
                 await _run_brief_flow(
                     brief_draft=brief_draft,
