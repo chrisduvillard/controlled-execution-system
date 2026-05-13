@@ -63,6 +63,18 @@ jobs:
       - name: Run builder-first smoke tests
         run: uv run pytest tests/integration/test_freshcart_e2e.py -q
 
+      - name: Verify clean release tree before build
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --exit-code
+          git diff --cached --exit-code
+          if [[ -n "$(git status --porcelain)" ]]; then
+            git status --short
+            echo "Refusing to build distributions from a dirty checkout." >&2
+            exit 1
+          fi
+
       - name: Build distributions
         run: uv build
 
