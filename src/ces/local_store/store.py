@@ -76,6 +76,15 @@ if TYPE_CHECKING:
     from ces.harness.services.findings_aggregator import AggregatedReview
 
 _UNSET = object()
+SQLITE_BUSY_TIMEOUT_MS = 30_000
+
+
+def _configure_sqlite_connection(conn: sqlite3.Connection) -> None:
+    """Apply local-first concurrency settings to every store connection."""
+    conn.execute(f"PRAGMA busy_timeout = {SQLITE_BUSY_TIMEOUT_MS}")
+    conn.execute("PRAGMA journal_mode = WAL")
+    conn.execute("PRAGMA synchronous = NORMAL")
+    conn.execute("PRAGMA foreign_keys = ON")
 
 
 def _row_to_harness_change(row: sqlite3.Row) -> LocalHarnessChangeRecord:
@@ -141,8 +150,13 @@ class LocalProjectStore:
         # every read. ``check_same_thread=False`` is intentional — the
         # connection is owned exclusively by this instance and access patterns
         # are sequential within the async event loop.
-        self._conn = sqlite3.connect(self._db_path, check_same_thread=False)
+        self._conn = sqlite3.connect(
+            self._db_path,
+            timeout=SQLITE_BUSY_TIMEOUT_MS / 1000,
+            check_same_thread=False,
+        )
         self._conn.row_factory = sqlite3.Row
+        _configure_sqlite_connection(self._conn)
         self.initialize()
         # Tighten file perms after SQLite has created the file. Wrapped in
         # try/except so Windows (which doesn't honour POSIX bits the same way)
