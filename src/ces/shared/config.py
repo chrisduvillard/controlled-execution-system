@@ -22,6 +22,7 @@ class CESSettings(BaseSettings):
     # Local runtime defaults.
     default_model_id: str = "claude-sonnet-4-6"
     default_runtime: str = "codex"
+    reverse_preflight_mode: str = "rules"
     model_roster: list[str] = [
         "claude-sonnet-4-6",
         "claude-haiku-4-5",

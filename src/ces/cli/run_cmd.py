@@ -26,7 +26,7 @@ from ces.cli._builder_flow import BuilderBriefDraft, BuilderFlowOrchestrator
 from ces.cli._builder_report import format_brownfield_progress
 from ces.cli._context import find_project_root, get_project_config
 from ces.cli._errors import handle_error
-from ces.cli._factory import get_services
+from ces.cli._factory import get_services, get_settings
 from ces.cli._legacy_config import reject_server_mode
 from ces.cli._output import console
 from ces.cli._runtime_diagnostics import summarize_runtime_failure, write_runtime_diagnostics
@@ -68,6 +68,11 @@ from ces.harness_evolution.memory import (
     select_active_memory_lessons,
 )
 from ces.intent_gate.classifier import classify_intent
+from ces.intent_gate.llm_preflight import (
+    generate_llm_preflight_payload,
+    parse_llm_preflight,
+    preflight_with_fallback_note,
+)
 from ces.intent_gate.models import IntentGatePreflight
 from ces.recovery.reconciler import clear_builder_runtime_lock, write_builder_runtime_lock
 from ces.shared.enums import (
@@ -114,10 +119,39 @@ def _validate_noninteractive_brief(brief: BuilderBriefDraft) -> None:
         )
 
 
-def _intent_preflight_for_brief(brief: BuilderBriefDraft, *, non_interactive: bool) -> IntentGatePreflight:
-    preflight = brief.intent_preflight
-    if preflight is not None:
-        return preflight
+_REVERSE_PREFLIGHT_MODES = {"off", "rules", "strict", "llm"}
+
+
+def _normalize_reverse_preflight_mode(value: str) -> str:
+    mode = value.strip().lower()
+    if mode not in _REVERSE_PREFLIGHT_MODES:
+        raise typer.BadParameter("Intent Gate mode must be one of: off, rules, llm, or strict.")
+    return mode
+
+
+def _resolve_reverse_preflight_mode(
+    cli_value: str,
+    *,
+    settings: Any | None = None,
+    project_config: dict[str, Any] | None = None,
+) -> str:
+    """Resolve CLI/config/env Intent Gate mode while preserving CLI opt-in overrides."""
+    cli_mode = _normalize_reverse_preflight_mode(cli_value)
+    if cli_mode != "rules":
+        return cli_mode
+    configured = None
+    if project_config:
+        configured = project_config.get("reverse_preflight") or project_config.get("reverse_preflight_mode")
+    if configured is None and settings is not None:
+        configured = getattr(settings, "reverse_preflight_mode", None)
+    if configured in (None, ""):
+        return cli_mode
+    return _normalize_reverse_preflight_mode(str(configured))
+
+
+def _deterministic_intent_preflight_for_brief(
+    brief: BuilderBriefDraft, *, non_interactive: bool
+) -> IntentGatePreflight:
     return classify_intent(
         brief.request,
         brief.constraints,
@@ -128,6 +162,41 @@ def _intent_preflight_for_brief(brief: BuilderBriefDraft, *, non_interactive: bo
     )
 
 
+def _strict_intent_preflight(preflight: IntentGatePreflight) -> IntentGatePreflight:
+    if preflight.decision != "ask":
+        return preflight
+    ledger = preflight.ledger.model_copy(
+        update={"decisions": (*preflight.ledger.decisions, "Strict Intent Gate mode converted ask to blocked.")}
+    )
+    return IntentGatePreflight(
+        decision="blocked",
+        ledger=ledger,
+        safe_next_step=preflight.safe_next_step,
+    )
+
+
+def _intent_preflight_for_brief(
+    brief: BuilderBriefDraft,
+    *,
+    non_interactive: bool,
+    reverse_preflight: str = "rules",
+    llm_preflight_payload: str | bytes | bytearray | None = None,
+) -> IntentGatePreflight:
+    mode = _normalize_reverse_preflight_mode(reverse_preflight)
+    preflight = brief.intent_preflight
+    if mode == "llm":
+        llm_preflight = parse_llm_preflight(llm_preflight_payload)
+        if llm_preflight is not None:
+            return llm_preflight
+        deterministic = preflight or _deterministic_intent_preflight_for_brief(brief, non_interactive=non_interactive)
+        return preflight_with_fallback_note(deterministic)
+    if preflight is None:
+        preflight = _deterministic_intent_preflight_for_brief(brief, non_interactive=non_interactive)
+    if mode == "strict":
+        return _strict_intent_preflight(preflight)
+    return preflight
+
+
 def _format_intent_gate_block(preflight: IntentGatePreflight) -> str:
     details = ["Intent Gate blocked execution before runtime launch.", f"Safe next step: {preflight.safe_next_step}"]
     if preflight.ledger.open_questions:
@@ -135,12 +204,55 @@ def _format_intent_gate_block(preflight: IntentGatePreflight) -> str:
     return "\n".join(details)
 
 
-def _validate_intent_gate_allows_runtime(brief: BuilderBriefDraft, *, non_interactive: bool) -> BuilderBriefDraft:
-    preflight = _intent_preflight_for_brief(brief, non_interactive=non_interactive)
+def _validate_intent_gate_allows_runtime(
+    brief: BuilderBriefDraft,
+    *,
+    non_interactive: bool,
+    reverse_preflight: str = "rules",
+    llm_preflight_payload: str | bytes | bytearray | None = None,
+) -> BuilderBriefDraft:
+    mode = _normalize_reverse_preflight_mode(reverse_preflight)
+    if mode == "off":
+        return replace(brief, intent_preflight=None)
+    preflight = _intent_preflight_for_brief(
+        brief,
+        non_interactive=non_interactive,
+        reverse_preflight=mode,
+        llm_preflight_payload=llm_preflight_payload,
+    )
     brief_with_preflight = replace(brief, intent_preflight=preflight)
     if preflight.decision in {"ask", "blocked"}:
         raise typer.BadParameter(_format_intent_gate_block(preflight))
     return brief_with_preflight
+
+
+async def _llm_preflight_payload_from_services(
+    services: dict[str, Any],
+    brief: BuilderBriefDraft,
+    *,
+    reverse_preflight: str,
+) -> str | None:
+    """Fetch an opt-in LLM preflight payload from the configured provider, if available."""
+    if _normalize_reverse_preflight_mode(reverse_preflight) != "llm":
+        return None
+    provider_registry = services.get("provider_registry")
+    settings = services.get("settings")
+    if provider_registry is None or settings is None:
+        return None
+    model_id = getattr(settings, "default_model_id", "") or ""
+    try:
+        provider = resolve_primary_provider(provider_registry, model_id)
+    except Exception:
+        provider = None
+    return await generate_llm_preflight_payload(
+        provider,
+        model_id=model_id,
+        request=brief.request,
+        project_mode=brief.project_mode,
+        constraints=brief.constraints,
+        acceptance_criteria=brief.acceptance_criteria,
+        must_not_break=brief.must_not_break,
+    )
 
 
 def _coerce_workflow_state_value(value: object) -> str:
@@ -711,6 +823,7 @@ async def _wizard_flow(
     greenfield: bool,
     brownfield_flag: bool,
     accept_runtime_side_effects: bool = False,
+    reverse_preflight: str = "rules",
 ) -> None:
     """Guided interactive wizard: 5 steps with Rich panels, inline help, and confirmation."""
     # Step 1 - Project Scan
@@ -725,6 +838,7 @@ async def _wizard_flow(
         prompt_fn=typer.prompt,
         force_greenfield=greenfield,
         force_brownfield=brownfield_flag,
+        intent_gate_enabled=reverse_preflight == "rules",
     )
     _wizard_helpers.wizard_step_panel(
         2,
@@ -733,7 +847,12 @@ async def _wizard_flow(
         f"Request: {brief_draft.request}\nMode: {brief_draft.project_mode}",
         help_text="CES uses your brief to scope the work contract.",
     )
-    brief_draft = _validate_intent_gate_allows_runtime(brief_draft, non_interactive=False)
+    if reverse_preflight != "llm":
+        brief_draft = _validate_intent_gate_allows_runtime(
+            brief_draft,
+            non_interactive=False,
+            reverse_preflight=reverse_preflight,
+        )
 
     # Step 3 - Brownfield Review
     if brief_draft.project_mode == "brownfield":
@@ -791,6 +910,7 @@ async def _wizard_flow(
             export_prl_draft=export_prl_draft,
             project_root=project_root,
             accept_runtime_side_effects=accept_runtime_side_effects,
+            reverse_preflight=reverse_preflight,
         )
 
 
@@ -809,6 +929,7 @@ async def _run_brief_flow(
     accept_runtime_side_effects: bool = False,
     existing_brief_id: str | None = None,
     existing_session_id: str | None = None,
+    reverse_preflight: str = "rules",
 ) -> None:
     settings = services["settings"]
     manager = services["manifest_manager"]
@@ -821,7 +942,17 @@ async def _run_brief_flow(
     builder_flow = BuilderFlowOrchestrator(project_root)
     brief_id = existing_brief_id
     session_id = existing_session_id
-    brief_draft = _validate_intent_gate_allows_runtime(brief_draft, non_interactive=yes)
+    llm_preflight_payload = await _llm_preflight_payload_from_services(
+        services,
+        brief_draft,
+        reverse_preflight=reverse_preflight,
+    )
+    brief_draft = _validate_intent_gate_allows_runtime(
+        brief_draft,
+        non_interactive=yes,
+        reverse_preflight=reverse_preflight,
+        llm_preflight_payload=llm_preflight_payload,
+    )
     if brief_id is None:
         brief_id = local_store.save_builder_brief(
             request=brief_draft.request,
@@ -1627,9 +1758,15 @@ async def run_task(
         "--story",
         help="Restrict --from-spec output to a single story id.",
     ),
+    reverse_preflight: str = typer.Option(
+        "rules",
+        "--reverse-preflight",
+        help="Intent Gate mode: off, rules, llm, or strict.",
+    ),
 ) -> None:
     """Run the full local CES flow in one builder-first command."""
     try:
+        reverse_preflight_mode = _normalize_reverse_preflight_mode(reverse_preflight)
         if from_spec is not None:
             await _preview_from_spec(from_spec, story_id=story)
             return
@@ -1640,6 +1777,11 @@ async def run_task(
             greenfield = True
         requested_project_root = project_root
         project_root, project_config, bootstrapped = _ensure_builder_project(requested_project_root)
+        reverse_preflight_mode = _resolve_reverse_preflight_mode(
+            reverse_preflight,
+            settings=get_settings(project_root),
+            project_config=project_config,
+        )
         reject_server_mode(project_config)
         if greenfield and brownfield:
             raise typer.BadParameter("Choose only one of --greenfield or --brownfield.")
@@ -1681,9 +1823,15 @@ async def run_task(
                     provided_source_of_truth=source_of_truth,
                     provided_critical_flows=_normalize_option_values(critical_flows),
                     non_interactive=bool(description),
+                    intent_gate_enabled=reverse_preflight_mode == "rules",
                 )
                 if description:
-                    brief_draft = _validate_intent_gate_allows_runtime(brief_draft, non_interactive=True)
+                    if reverse_preflight_mode != "llm":
+                        brief_draft = _validate_intent_gate_allows_runtime(
+                            brief_draft,
+                            non_interactive=True,
+                            reverse_preflight=reverse_preflight_mode,
+                        )
                     _validate_noninteractive_brief(brief_draft)
                 await _run_brief_flow(
                     brief_draft=brief_draft,
@@ -1697,6 +1845,7 @@ async def run_task(
                     export_prl_draft=export_prl_draft,
                     project_root=project_root,
                     accept_runtime_side_effects=accept_runtime_side_effects,
+                    reverse_preflight=reverse_preflight_mode,
                 )
             else:
                 # Wizard path: guided step-by-step flow
@@ -1713,6 +1862,7 @@ async def run_task(
                     greenfield=greenfield,
                     brownfield_flag=brownfield,
                     accept_runtime_side_effects=accept_runtime_side_effects,
+                    reverse_preflight=reverse_preflight_mode,
                 )
     except typer.Abort:
         raise typer.Exit(code=1)
