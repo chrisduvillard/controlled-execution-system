@@ -87,6 +87,9 @@ def test_publish_workflow_keeps_strict_tests_and_cli_smoke() -> None:
     assert "uv run pytest tests/unit/ -q -W error" in workflow
     assert "uv pip install --python" in workflow
     assert '"$smoke_venv/bin/ces" --help' in workflow
+    assert "ces-intent-gate-publish-smoke" in workflow
+    assert "--reverse-preflight rules" in workflow
+    assert "Expected Intent Gate publish smoke to block before runtime launch" in workflow
     assert '"$smoke_venv/bin/ces" --json audit --limit nope' in workflow
 
 
