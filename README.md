@@ -87,7 +87,7 @@ uv tool install --python 3.13 controlled-execution-system
 Install or pin a specific release:
 
 ```bash
-uv tool install controlled-execution-system==0.1.16
+uv tool install controlled-execution-system==0.1.17
 ```
 
 Upgrade later:
@@ -332,7 +332,7 @@ uv run pytest tests/ -m integration -q
 
 Builder-created manifests expect command-backed completion evidence. When completion-gate sensors are enabled, produce matching artifacts before claiming completion: `pytest-results.json`, `ruff-report.json`, `mypy-report.txt`, and `coverage.json`. Dependency and security-sensitive changes can also be backed by `pip-audit-report.json` and SAST JSON artifacts such as `bandit-report.json`; CES parses those when present.
 
-PyPI publishing is tag-driven. Pushing to `master` runs CI only; pushing a `v*` tag such as `v0.1.16` triggers `.github/workflows/publish.yml`, which runs tests, builds distributions, smoke-tests the installed CLI, validates tag/version agreement, and publishes through trusted publishing. Follow [docs/RELEASE.md](https://github.com/chrisduvillard/controlled-execution-system/blob/master/docs/RELEASE.md) for the maintainer checklist.
+PyPI publishing is tag-driven. Pushing to `master` runs CI only; pushing a `v*` tag such as `v0.1.17` triggers `.github/workflows/publish.yml`, which runs tests, builds distributions, smoke-tests the installed CLI, validates tag/version agreement, and publishes through trusted publishing. Follow [docs/RELEASE.md](https://github.com/chrisduvillard/controlled-execution-system/blob/master/docs/RELEASE.md) for the maintainer checklist.
 
 ---
 

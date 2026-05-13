@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.17] - 2026-05-13
+
+Intent Gate and audit-hardening release following the full CES repository audit remediation sequence.
+
+### Added
+
+- Add Intent Gate pre-manifest classification with deterministic decisions: `proceed`, `assume_and_proceed`, `ask`, and `blocked`.
+- Add persisted Intent Gate preflight records and Specification Ledger report surfaces for builder sessions and explain views.
+- Add optional LLM-assisted preflight mode with schema validation, secret-scrubbed prompts, and deterministic fallback.
+- Add Intent Gate behavioral eval fixtures and operator documentation.
+
+### Security / governance hardening
+
+- Require explicit runtime side-effect consent for Codex full-host access paths.
+- Reject symlinked `.ces` state directories during project initialization.
+- Scrub and cap manual evidence text before persistence.
+- Add dirty-tree release/build guards and package artifact hygiene coverage.
+
+### Reliability
+
+- Add SQLite busy timeout, WAL setup, and cross-process local-store mutation locking.
+- Expand runtime adapter, diagnostics, recovery, and sandbox safety branch coverage.
+
 ## [0.1.16] - 2026-05-11
 
 Stable public audit-closure release. This promotes the `0.1.16rc1` package after successful TestPyPI publishing, production PyPI prerelease publishing, and fresh-project dogfood validation from the installed PyPI artifact.
