@@ -70,3 +70,23 @@ def test_preflight_rejects_mismatched_content_hash() -> None:
             safe_next_step="Inspect README.",
             content_hash="0" * 64,
         )
+
+
+def test_preflight_rejects_supplied_id_that_does_not_match_hash_prefix() -> None:
+    with pytest.raises(ValidationError, match="preflight_id does not match"):
+        IntentGatePreflight(
+            preflight_id="igp-0000000000000000",
+            decision="proceed",
+            ledger=_ledger(),
+            safe_next_step="Inspect README.",
+        )
+
+
+def test_ledger_rejects_unknown_fields() -> None:
+    with pytest.raises(ValidationError, match="Extra inputs are not permitted"):
+        SpecificationLedger(
+            goal="Update docs",
+            deliverable="Updated docs",
+            audience="Maintainers",
+            unexpected="surprise",
+        )

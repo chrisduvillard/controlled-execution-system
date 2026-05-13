@@ -76,3 +76,36 @@ def test_noninteractive_high_risk_database_delete_task_blocks() -> None:
     assert preflight.decision == "blocked"
     assert preflight.ledger.open_questions
     assert "clarification" in preflight.safe_next_step.lower()
+
+
+def test_high_risk_constraints_block_noninteractive_without_acceptance() -> None:
+    preflight = classify_intent(
+        request="Make the requested change",
+        constraints=("Touches production database",),
+        acceptance_criteria=(),
+        must_not_break=(),
+        project_mode="maintenance",
+        non_interactive=True,
+    )
+
+    assert preflight.decision == "blocked"
+    assert preflight.ledger.open_questions
+
+
+def test_password_admin_and_customer_data_are_high_risk() -> None:
+    for request in (
+        "Change password reset behavior",
+        "Change admin role access",
+        "Process customer data export",
+        "Truncate stale user rows",
+    ):
+        preflight = classify_intent(
+            request=request,
+            constraints=(),
+            acceptance_criteria=(),
+            must_not_break=(),
+            project_mode="maintenance",
+            non_interactive=False,
+        )
+
+        assert preflight.decision == "ask", request

@@ -16,14 +16,23 @@ _HIGH_RISK_TERMS = (
     "secret",
     "permission",
     "permissions",
+    "access",
+    "admin",
+    "role",
+    "password",
     "payment",
     "payments",
     "billing",
     "database",
+    "customer data",
+    "personal data",
+    "pii",
     "production",
+    "prod",
     "delete",
     "deletion",
     "drop",
+    "truncate",
     "migration",
     "migrate",
     "deploy",
@@ -56,10 +65,10 @@ def classify_intent(
     """Classify a user request into a deterministic Intent Gate preflight."""
 
     request_text = " ".join(request.split())
-    request_lower = request_text.lower()
     constraints_tuple = tuple(constraints)
     acceptance_tuple = tuple(acceptance_criteria)
     must_not_break_tuple = tuple(must_not_break)
+    risk_text = "\n".join((request_text, *constraints_tuple, *must_not_break_tuple)).lower()
 
     if _has_acceptance_criteria(acceptance_tuple):
         ledger = _base_ledger(
@@ -78,7 +87,7 @@ def classify_intent(
             safe_next_step="Inspect the relevant files, make the smallest change satisfying the acceptance criteria, then verify.",
         )
 
-    if _is_high_risk(request_lower):
+    if _is_high_risk(risk_text):
         question = IntentQuestion(
             question="What acceptance criteria and failure mode boundaries should govern this high-risk change?",
             why_it_matters="Auth, data, deletion, production, and security changes can cause material harm without explicit success and failure boundaries.",
@@ -102,7 +111,7 @@ def classify_intent(
             safe_next_step="Request clarification before making changes; non-interactive runs must stop until clarified.",
         )
 
-    if _is_low_risk_wording_task(request_lower):
+    if _is_low_risk_wording_task(request_text.lower()):
         ledger = _base_ledger(
             request=request_text,
             constraints=constraints_tuple,

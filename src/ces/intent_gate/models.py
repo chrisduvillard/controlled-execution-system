@@ -8,7 +8,7 @@ import re
 from datetime import UTC, datetime
 from typing import Any, Literal
 
-from pydantic import Field, field_validator, model_validator
+from pydantic import ConfigDict, Field, field_validator, model_validator
 
 from ces.execution.secrets import scrub_secrets_from_text
 from ces.shared.base import CESBaseModel
@@ -42,6 +42,8 @@ def _stable_sha256(payload: dict[str, Any]) -> str:
 class IntentQuestion(CESBaseModel):
     """A material clarification question for the Intent Gate."""
 
+    model_config = ConfigDict(strict=True, frozen=True, extra="forbid", hide_input_in_errors=True)
+
     question: str
     why_it_matters: str
     default_if_unanswered: str | None = None
@@ -57,6 +59,8 @@ class IntentQuestion(CESBaseModel):
 
 class SpecificationLedger(CESBaseModel):
     """Structured statement of understood user intent and execution boundaries."""
+
+    model_config = ConfigDict(strict=True, frozen=True, extra="forbid", hide_input_in_errors=True)
 
     goal: str
     deliverable: str
@@ -97,6 +101,8 @@ class SpecificationLedger(CESBaseModel):
 
 class IntentGatePreflight(CESBaseModel):
     """Deterministic Intent Gate preflight decision and ledger."""
+
+    model_config = ConfigDict(strict=True, frozen=True, extra="forbid", hide_input_in_errors=True)
 
     preflight_id: str | None = None
     decision: IntentGateDecision
@@ -140,4 +146,7 @@ class IntentGatePreflight(CESBaseModel):
         object.__setattr__(self, "content_hash", digest)
         if self.preflight_id is None:
             object.__setattr__(self, "preflight_id", f"igp-{digest[:16]}")
+        elif self.preflight_id != f"igp-{digest[:16]}":
+            msg = "preflight_id does not match content_hash prefix"
+            raise ValueError(msg)
         return self
