@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sqlite3
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
@@ -593,6 +594,33 @@ class TestLocalProjectStoreHardening:
         finally:
             store_a.close()
             store_b.close()
+
+    def test_concurrent_store_instances_serialize_writes(self, tmp_path: Path) -> None:
+        """Overlapping CLI-style store instances should complete without database-lock loss."""
+        from ces.local_store import LocalProjectStore
+
+        db_path = tmp_path / ".ces" / "state.db"
+
+        def write_setting(index: int) -> tuple[str, bool]:
+            store = LocalProjectStore(db_path=db_path, project_id="probe")
+            try:
+                key = f"writer_{index}"
+                store.save_project_settings({key: True})
+                return key, store.get_project_settings()[key]
+            finally:
+                store.close()
+
+        with ThreadPoolExecutor(max_workers=6) as executor:
+            results = list(executor.map(write_setting, range(12)))
+
+        reader = LocalProjectStore(db_path=db_path, project_id="probe")
+        try:
+            settings = reader.get_project_settings()
+        finally:
+            reader.close()
+
+        assert all(value is True for _, value in results)
+        assert all(settings[f"writer_{index}"] is True for index in range(12))
 
     def test_save_runtime_execution_scrubs_stdout_stderr(self, tmp_path: Path) -> None:
         from types import SimpleNamespace

@@ -35,11 +35,11 @@ def test_codex_profile_reflects_workspace_write_sandbox_opt_in(monkeypatch) -> N
     assert "manifest allowed_tools are not enforced" in profile.notes
 
 
-def test_codex_profile_invalid_sandbox_fails_closed_to_danger_full_access(monkeypatch) -> None:
+def test_codex_profile_invalid_sandbox_fails_closed_to_read_only(monkeypatch) -> None:
     monkeypatch.setenv("CES_CODEX_SANDBOX", "../../bin/sh")
 
     profile = safety_profile_for_runtime("codex")
 
-    assert profile.workspace_scoped is False
-    assert "danger-full-access" in profile.network_policy
+    assert profile.workspace_scoped is True
+    assert "read-only" in profile.network_policy
     assert "../../bin/sh" not in profile.notes

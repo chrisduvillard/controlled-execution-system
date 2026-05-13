@@ -39,6 +39,15 @@ _HIGH_RISK_TERMS = (
     "schema",
     "security",
     "encrypt",
+    "external action",
+    "send",
+    "email",
+    "message",
+    "merge",
+    "push",
+    "publish",
+    "release tag",
+    "pypi",
 )
 
 _LOW_RISK_WORDING_TERMS = (

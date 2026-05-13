@@ -7,6 +7,7 @@ import os
 from ces.shared.base import CESBaseModel
 
 _DEFAULT_CODEX_SANDBOX = "danger-full-access"
+_INVALID_CODEX_SANDBOX_FALLBACK = "read-only"
 _WORKSPACE_SCOPED_CODEX_SANDBOXES = {"read-only", "workspace-write"}
 _ALLOWED_CODEX_SANDBOXES = {*_WORKSPACE_SCOPED_CODEX_SANDBOXES, _DEFAULT_CODEX_SANDBOX}
 
@@ -14,14 +15,20 @@ _ALLOWED_CODEX_SANDBOXES = {*_WORKSPACE_SCOPED_CODEX_SANDBOXES, _DEFAULT_CODEX_S
 def codex_sandbox_mode() -> str:
     """Return the CES-selected Codex sandbox mode.
 
-    ``danger-full-access`` remains the default for Chris's local deployment.
-    Operators can opt into Codex's own workspace sandbox with
-    ``CES_CODEX_SANDBOX=workspace-write`` or ``read-only`` when their host can
-    support it. Invalid values fail closed to the conservative disclosed
-    default rather than passing arbitrary CLI flags through.
+    ``danger-full-access`` remains the default for Chris's local deployment
+    when no override is present. Operators can opt into Codex's own workspace
+    sandbox with ``CES_CODEX_SANDBOX=workspace-write`` or ``read-only`` when
+    their host can support it.
+
+    If an explicit override is invalid, fail closed to ``read-only`` rather
+    than silently expanding back to full-host access or passing arbitrary CLI
+    flags through.
     """
-    requested = os.environ.get("CES_CODEX_SANDBOX", _DEFAULT_CODEX_SANDBOX).strip()
-    return requested if requested in _ALLOWED_CODEX_SANDBOXES else _DEFAULT_CODEX_SANDBOX
+    raw_requested = os.environ.get("CES_CODEX_SANDBOX")
+    if raw_requested is None:
+        return _DEFAULT_CODEX_SANDBOX
+    requested = raw_requested.strip()
+    return requested if requested in _ALLOWED_CODEX_SANDBOXES else _INVALID_CODEX_SANDBOX_FALLBACK
 
 
 class RuntimeSafetyProfile(CESBaseModel):
