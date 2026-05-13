@@ -40,7 +40,20 @@ CES is a safety and evidence layer around local AI coding tools.
 
 You describe the change. CES turns that request into a governed work order, runs the work through a supported local runtime, checks what changed, asks for evidence, records the audit trail, and helps you decide whether to approve the result.
 
+CES helps builders produce better, safer, more verifiable work with AI agents — especially on complex software projects — by enforcing intent clarity, risk gating, and evidence-backed completion.
+
 It is deliberately local and operator-first: project state lives under `.ces/`; runtime credentials stay with your installed `codex` or `claude` CLI; final judgment stays with you.
+
+### The strong promise
+
+CES can credibly improve AI-assisted work by making the operating loop stricter:
+
+1. **Better task definition** — users are less likely to start from vague prompts.
+2. **Fewer unsafe or accidental actions** — high-risk actions are blocked or require explicit consent.
+3. **More reproducible work** — intent, decisions, evidence, and outputs are recorded.
+4. **Higher verification discipline** — "done" means backed by checks, not vibes.
+5. **Better operator leverage** — skilled users can delegate more safely and consistently.
+6. **Reduced hallucinated completion** — CES creates pressure to prove rather than merely assert.
 
 | CES is | CES is not |
 |---|---|
