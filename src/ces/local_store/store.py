@@ -18,6 +18,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Iterator
 
+try:  # pragma: no cover - Windows fallback is exercised by the no-op branch.
+    import fcntl
+except ImportError:  # pragma: no cover
+    fcntl = None  # type: ignore[assignment]
+
 from ces.brownfield.records import LegacyBehaviorRecord
 from ces.control.models.audit_entry_record import AuditEntryRecord
 from ces.control.services.evidence_integrity import compute_reviewed_evidence_hash
@@ -77,6 +82,7 @@ if TYPE_CHECKING:
 
 _UNSET = object()
 SQLITE_BUSY_TIMEOUT_MS = 30_000
+LOCAL_STORE_LOCK_FILENAME = "state.db.lock"
 
 
 def _configure_sqlite_connection(conn: sqlite3.Connection) -> None:
@@ -143,6 +149,7 @@ class LocalProjectStore:
 
     def __init__(self, db_path: Path, project_id: str = "default") -> None:
         self._db_path = Path(db_path)
+        self._lock_path = self._db_path.with_name(LOCAL_STORE_LOCK_FILENAME)
         self._project_id = project_id
         self._db_path.parent.mkdir(parents=True, exist_ok=True)
         # One pooled connection per store instance. CES CLI invocations are
@@ -165,6 +172,8 @@ class LocalProjectStore:
             os.chmod(self._db_path.parent, 0o700)
             if self._db_path.exists():
                 os.chmod(self._db_path, 0o600)
+            if self._lock_path.exists():
+                os.chmod(self._lock_path, 0o600)
         except OSError:
             pass
 
@@ -173,8 +182,24 @@ class LocalProjectStore:
         # ``with self._conn:`` invokes sqlite3's transaction-context-manager
         # protocol — auto-commits on clean exit, rolls back on exception. The
         # connection itself is reused across calls for cache-warmth.
-        with self._conn:
+        with self._process_lock(), self._conn:
             yield self._conn
+
+    @contextmanager
+    def _process_lock(self) -> Iterator[None]:
+        """Serialize local store transactions across concurrent CES processes."""
+        if fcntl is None:
+            yield
+            return
+        self._lock_path.parent.mkdir(parents=True, exist_ok=True)
+        with self._lock_path.open("a+b") as lock_file:
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+            try:
+                with suppress(OSError):
+                    os.chmod(self._lock_path, 0o600)
+                yield
+            finally:
+                fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
 
     def close(self) -> None:
         """Close the pooled SQLite connection. Safe to call multiple times."""
