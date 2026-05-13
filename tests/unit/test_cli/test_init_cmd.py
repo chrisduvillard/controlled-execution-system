@@ -110,6 +110,26 @@ class TestCesInit:
         assert not (tmp_path / ".ces" / "keys").exists()
         assert not (tmp_path / ".ces" / "config.yaml").exists()
 
+    def test_init_rejects_symlinked_ces_dir_even_with_profile_bootstrap(
+        self, tmp_path: Path, monkeypatch: object
+    ) -> None:
+        """Profile bootstrap must not make init follow .ces symlinks outside the project."""
+        project = tmp_path / "project"
+        project.mkdir()
+        outside = tmp_path / "outside"
+        outside.mkdir()
+        (outside / "verification-profile.json").write_text('{"version": 1, "checks": {}}', encoding="utf-8")
+        (project / ".ces").symlink_to(outside, target_is_directory=True)
+        monkeypatch.chdir(project)  # type: ignore[attr-defined]
+        app = _get_app()
+
+        result = runner.invoke(app, ["init", "myproject"])
+
+        assert result.exit_code != 0
+        assert "symlink" in result.stdout.lower() or "symlink" in str(result.exception).lower()
+        assert not (outside / "keys").exists()
+        assert not (outside / "config.yaml").exists()
+
     def test_displays_success_message(self, tmp_path: Path, monkeypatch: object) -> None:
         """ces init displays a success message mentioning the project name."""
         monkeypatch.chdir(tmp_path)  # type: ignore[attr-defined]
