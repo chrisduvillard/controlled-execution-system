@@ -19,6 +19,7 @@ def test_sdist_excludes_internal_workflow_and_test_material() -> None:
     assert "/.gitleaks.toml" in excludes
     assert "/.mcp.json" in excludes
     assert "/examples/voice-to-text-mvp" in excludes
+    assert "/examples/auralis" in excludes
     assert "/runtime-transcripts" in excludes
     assert "**/__pycache__" in excludes
     assert "**/*.pyc" in excludes

@@ -538,6 +538,11 @@ def _prompt_pack(
                 "- Include install, test, typecheck, build, and lint evidence when those scripts exist.",
                 "- For Node/Vite apps, remove generated artifacts such as node_modules, dist, and coverage before final parent-repo verification.",
                 "- Document clean-checkout validation evidence and any provider/browser caveats in the subproject README or report.",
+                "",
+                "Standalone Product Boundary:",
+                "- Do not put standalone product prototypes under packageable examples/ unless the acceptance criteria explicitly require examples/.",
+                "- If the product is intended to live independently, document that it should be extracted to a sibling workspace/repository before release packaging.",
+                "- If it must stay inside the current repo, make package inclusion/exclusion intent explicit in docs and validation evidence.",
             ]
         )
     criteria = brief.acceptance_criteria

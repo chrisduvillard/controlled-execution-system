@@ -123,6 +123,8 @@ def test_greenfield_prompt_pack_guides_subdirectory_app_artifact_hygiene() -> No
     assert "run the subproject's own validation commands from that subdirectory" in prompt
     assert "remove generated artifacts such as node_modules, dist, and coverage" in prompt
     assert "clean-checkout validation evidence" in prompt
+    assert "Standalone Product Boundary" in prompt
+    assert "Do not put standalone product prototypes under packageable examples/" in prompt
 
 
 def test_greenfield_empty_manifest_scope_derives_runtime_changed_files() -> None:
