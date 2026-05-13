@@ -342,6 +342,43 @@ class TestLocalProjectStoreHardening:
         assert synchronous == 1  # NORMAL
         assert foreign_keys == 1
 
+    def test_store_uses_process_lock_file_for_transactions(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Transactions should take a process-wide advisory lock beside state.db."""
+        import os
+        import stat
+        import sys
+
+        if sys.platform == "win32":
+            pytest.skip("POSIX file locks")
+
+        import ces.local_store.store as store_module
+        from ces.local_store import LocalProjectStore
+
+        lock_calls: list[int] = []
+
+        class FakeFcntl:
+            LOCK_EX = 2
+            LOCK_UN = 8
+
+            @staticmethod
+            def flock(_fd: int, operation: int) -> None:
+                lock_calls.append(operation)
+
+        monkeypatch.setattr(store_module, "fcntl", FakeFcntl)
+        db_path = tmp_path / ".ces" / "state.db"
+        store = LocalProjectStore(db_path=db_path, project_id="probe")
+        try:
+            store.save_project_settings({"locked": True})
+        finally:
+            store.close()
+
+        assert lock_calls == [FakeFcntl.LOCK_EX, FakeFcntl.LOCK_UN, FakeFcntl.LOCK_EX, FakeFcntl.LOCK_UN]
+        lock_path = db_path.with_name("state.db.lock")
+        assert lock_path.exists()
+        assert stat.S_IMODE(os.stat(lock_path).st_mode) == 0o600
+
     def test_two_store_instances_can_write_same_database(self, tmp_path: Path) -> None:
         """Separate CES commands should be able to share state.db without immediate lock failures."""
         from ces.local_store import LocalProjectStore
