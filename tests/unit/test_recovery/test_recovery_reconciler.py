@@ -175,3 +175,65 @@ def test_reconcile_can_report_stale_without_mutating(tmp_path: Path) -> None:
     session = store.get_builder_session(session_id)
     assert session is not None
     assert session.stage == "running"
+
+
+def test_reconcile_ignores_store_without_required_methods(tmp_path: Path) -> None:
+    result = reconcile_stale_builder_session(project_root=tmp_path, local_store=object())
+
+    assert result.changed is False
+    assert result.session_id is None
+    assert result.reason is None
+
+
+def test_reconcile_ignores_lock_for_different_session_when_session_is_fresh(tmp_path: Path) -> None:
+    store, project_root, session_id = _seed_session(tmp_path, stage="running", updated_at=datetime.now(timezone.utc))
+    (project_root / ".ces" / "builder-runtime.lock").write_text(
+        f'{{"pid": {os.getpid() + 10_000_000}, "session_id": "other", "manifest_id": "M-123"}}',
+        encoding="utf-8",
+    )
+
+    result = reconcile_stale_builder_session(project_root=project_root, local_store=store, stale_after_seconds=3600)
+
+    assert result.changed is False
+    assert result.stale is False
+    session = store.get_builder_session(session_id)
+    assert session is not None
+    assert session.stage == "running"
+
+
+def test_reconcile_treats_corrupt_matching_runtime_lock_as_dead(tmp_path: Path) -> None:
+    store, project_root, session_id = _seed_session(tmp_path, stage="running", updated_at=datetime.now(timezone.utc))
+    (project_root / ".ces" / "builder-runtime.lock").write_text("not-json", encoding="utf-8")
+
+    result = reconcile_stale_builder_session(project_root=project_root, local_store=store, stale_after_seconds=3600)
+
+    assert result.changed is True
+    assert result.stale is True
+    session = store.get_builder_session(session_id)
+    assert session is not None
+    assert session.stage == "blocked"
+
+
+def test_clear_runtime_lock_keeps_different_session_lock(tmp_path: Path) -> None:
+    project_root = tmp_path
+    lock_path = project_root / ".ces" / "builder-runtime.lock"
+    lock_path.parent.mkdir(exist_ok=True)
+    lock_path.write_text(
+        f'{{"pid": {os.getpid() + 10_000_000}, "session_id": "other", "manifest_id": "M-123"}}',
+        encoding="utf-8",
+    )
+
+    clear_builder_runtime_lock(project_root=project_root, session_id="BS-123", manifest_id="M-123")
+
+    assert lock_path.exists()
+
+
+def test_clear_runtime_lock_removes_unowned_or_dead_lock(tmp_path: Path) -> None:
+    project_root = tmp_path
+    lock_path = project_root / ".ces" / "builder-runtime.lock"
+    lock_path.parent.mkdir(exist_ok=True)
+    lock_path.write_text("not-json", encoding="utf-8")
+
+    clear_builder_runtime_lock(project_root=project_root, session_id="BS-123", manifest_id="M-123")
+
+    assert not lock_path.exists()
