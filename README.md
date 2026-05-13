@@ -230,6 +230,8 @@ Use expert workflow commands when you need direct artifact control:
 | `ces execute` | Run a manifest-bound local agent task. |
 | `ces review` / `ces triage` / `ces approve` | Inspect evidence and make approval decisions directly. |
 | `ces audit` | Inspect the local audit ledger, for example `ces audit --limit 20`. |
+| `ces evidence attach` | Attach scrubbed manual evidence and command provenance to a manifest. |
+| `ces diff --since-approval` | Show changed files since the latest evidence/approval git baseline. |
 | `ces status --expert` | Show the full expert status view; use `ces status --expert --watch` for live monitoring. |
 | `ces emergency declare` | Record an expert operations emergency declaration, for example `ces emergency declare "Security incident detected"`. |
 | `ces scan` / `ces mri` / `ces baseline` | Inventory the repo, diagnose project maturity/readiness risks, and capture day-0 sensor snapshots. |
@@ -297,6 +299,8 @@ Unattended `--yes` runs remain evidence-gated. CES should block auto-approval wh
 | `ces invariants` / `ces slop-scan` | Mine conservative project constraints and AI-native failure findings. |
 | `ces launch rehearsal` | Plan non-destructive launch-readiness checks. |
 | `ces complete` | Reconcile externally completed work. |
+| `ces evidence attach` | Attach scrubbed evidence files and recorded verification commands to a manifest. |
+| `ces diff --since-approval` | Review changed files since the latest evidence packet's captured git HEAD. |
 | `ces report builder` | Export the latest builder handoff report. |
 | `ces manifest "<request>"` | Create a task manifest directly. |
 | `ces classify M-<manifest-id>` | Classify manifest risk and routing. |

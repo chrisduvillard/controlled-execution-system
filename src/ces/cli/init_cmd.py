@@ -41,6 +41,8 @@ from ces.shared.crypto import (
 _MANIFEST_TEMPLATES: dict[str, str] = {
     "python-service": "python-service.yaml",
     "python-library": "python-library.yaml",
+    "electron-desktop-app": "electron-desktop-app.yaml",
+    "package-artifact-hygiene": "package-artifact-hygiene.yaml",
 }
 
 

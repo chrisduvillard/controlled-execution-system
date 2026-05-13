@@ -20,9 +20,11 @@ from ces.cli import (
     brownfield_cmd,
     classify_cmd,
     complete_cmd,
+    diff_cmd,
     doctor_cmd,
     dogfood_cmd,
     emergency_cmd,
+    evidence_cmd,
     execute_cmd,
     gate_cmd,
     harness_cmd,
@@ -232,6 +234,8 @@ app.add_typer(profile_cmd.profile_app, name="profile")
 app.add_typer(harness_cmd.harness_app, name="harness")
 app.add_typer(benchmark_cmd.benchmark_app, name="benchmark")
 app.command(name="audit", help="Inspect the local audit ledger.")(audit_cmd.query_audit)
+app.command(name="diff", help="Show changed files, optionally since the latest evidence baseline.")(diff_cmd.show_diff)
+app.add_typer(evidence_cmd.evidence_app, name="evidence")
 app.add_typer(report_cmd.report_app, name="report")
 app.add_typer(brownfield_cmd.brownfield_app, name="brownfield")
 app.add_typer(emergency_cmd.emergency_app, name="emergency")

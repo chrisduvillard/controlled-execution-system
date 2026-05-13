@@ -54,6 +54,31 @@ class TestCesInitTemplate:
         target = tmp_path / ".ces" / "artifacts" / "manifest-template.yaml"
         assert target.is_file()
 
+    def test_electron_desktop_app_template_is_written(self, tmp_path: Path, monkeypatch: object) -> None:
+        """Electron desktop apps should get security and CI guardrails up front."""
+        monkeypatch.chdir(tmp_path)  # type: ignore[attr-defined]
+        app = _get_app()
+        result = runner.invoke(app, ["init", "desk", "--template", "electron-desktop-app"])
+        assert result.exit_code == 0, result.stdout
+        target = tmp_path / ".ces" / "artifacts" / "manifest-template.yaml"
+        content = target.read_text(encoding="utf-8")
+        assert "contextIsolation=true" in content
+        assert "nodeIntegration=false" in content
+        assert "xvfb-run" in content
+        assert "standalone product" in content.lower()
+
+    def test_package_artifact_hygiene_template_is_written(self, tmp_path: Path, monkeypatch: object) -> None:
+        """Package-release work should have artifact-hygiene acceptance criteria."""
+        monkeypatch.chdir(tmp_path)  # type: ignore[attr-defined]
+        app = _get_app()
+        result = runner.invoke(app, ["init", "pkg", "--template", "package-artifact-hygiene"])
+        assert result.exit_code == 0, result.stdout
+        target = tmp_path / ".ces" / "artifacts" / "manifest-template.yaml"
+        content = target.read_text(encoding="utf-8")
+        assert "dirty tree" in content.lower()
+        assert "wheel" in content.lower()
+        assert "sdist" in content.lower()
+
     def test_unknown_template_rejected(self, tmp_path: Path, monkeypatch: object) -> None:
         """An unknown template name exits non-zero and does not create .ces/."""
         monkeypatch.chdir(tmp_path)  # type: ignore[attr-defined]

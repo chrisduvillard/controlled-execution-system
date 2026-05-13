@@ -12,6 +12,7 @@ import hashlib
 import json
 import os
 import sqlite3
+import time
 import uuid
 from contextlib import contextmanager, suppress
 from datetime import datetime, timezone
@@ -90,7 +91,22 @@ LOCAL_STORE_LOCK_FILENAME = "state.db.lock"
 def _configure_sqlite_connection(conn: sqlite3.Connection) -> None:
     """Apply local-first concurrency settings to every store connection."""
     conn.execute(f"PRAGMA busy_timeout = {SQLITE_BUSY_TIMEOUT_MS}")
-    conn.execute("PRAGMA journal_mode = WAL")
+    # journal_mode=WAL can transiently need an exclusive lock while several
+    # CLI-style processes open the same fresh DB at once. Retry explicitly so
+    # latest dependency/SQLite builds do not fail before busy_timeout applies.
+    last_error: sqlite3.OperationalError | None = None
+    for _attempt in range(20):
+        try:
+            conn.execute("PRAGMA journal_mode = WAL")
+            last_error = None
+            break
+        except sqlite3.OperationalError as exc:
+            if "locked" not in str(exc).lower():
+                raise
+            last_error = exc
+            time.sleep(0.05)
+    if last_error is not None:
+        raise last_error
     conn.execute("PRAGMA synchronous = NORMAL")
     conn.execute("PRAGMA foreign_keys = ON")
 

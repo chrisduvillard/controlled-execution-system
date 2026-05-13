@@ -1,0 +1,21 @@
+description: Harden package build and release artifact hygiene.
+risk_tier: A
+behavior_confidence: BC3
+change_class: CLASS_3
+token_budget: 100000
+acceptance_criteria:
+  - Dirty tree release/build commands fail or warn clearly when uncommitted or untracked files are present.
+  - Wheel and sdist contents are inspected separately and compared against an explicit allowlist or denylist.
+  - Artifacts exclude .env*, .ces/, private keys, local agent state, caches, node_modules/, dist scratch state, and unrelated examples/ or standalone product prototypes.
+  - Package contract tests cover both clean builds and dirty-tree/untracked-file contamination scenarios.
+  - Build evidence records command, cwd, exit code, tool versions, git branch/head, and dirty-tree status.
+verification_sensors:
+  - lint
+  - typecheck
+  - test_pass
+  - build
+  - twine_check
+  - package_artifact_hygiene
+notes:
+  - Prefer explicit include lists for publishable packages over broad implicit sdist inclusion.
+  - Treat untracked local apps under packageable directories as release blockers until moved outside the parent repo or explicitly excluded.

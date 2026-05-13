@@ -1,0 +1,20 @@
+description: Build or harden an Electron desktop application with secure renderer isolation.
+risk_tier: B
+behavior_confidence: BC2
+change_class: CLASS_2
+token_budget: 100000
+acceptance_criteria:
+  - Electron windows run with contextIsolation=true and nodeIntegration=false.
+  - Renderer code receives only a narrow preload/contextBridge API; no direct Node access.
+  - Desktop smoke tests run in CI with xvfb-run on Linux/headless runners.
+  - Global shortcuts, native menus, and IPC handlers are covered by config or unit tests.
+  - Package artifacts exclude .env*, .ces/, secrets, private keys, node_modules/, dist scratch state, and unrelated standalone product prototypes.
+  - Standalone product work is kept outside parent/package repos unless the manifest explicitly requires examples/.
+verification_sensors:
+  - lint
+  - typecheck
+  - test_pass
+  - package_artifact_hygiene
+notes:
+  - Treat browser-only functionality as an interim provider, not as proof of system-wide dictation.
+  - Add explicit OS permission notes for microphone, accessibility, and autostart behavior.
