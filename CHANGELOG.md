@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.18] - 2026-05-13
+
+Release workflow hardening patch after the 0.1.17 Intent Gate release.
+
+### Security / governance hardening
+
+- Add a tag-publish installed-wheel smoke that verifies Intent Gate blocks a high-risk non-interactive database-deletion request before runtime launch.
+- Add a public workflow contract test so the publish-time Intent Gate smoke remains part of future release gates.
+
 ## [0.1.17] - 2026-05-13
 
 Intent Gate and audit-hardening release following the full CES repository audit remediation sequence.
