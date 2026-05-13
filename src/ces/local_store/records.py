@@ -16,6 +16,7 @@ from typing import Any
 
 from ces.harness_evolution.memory import HarnessMemoryLesson
 from ces.harness_evolution.models import HarnessChangeManifest, HarnessChangeVerdict
+from ces.intent_gate.models import IntentGatePreflight
 
 
 @dataclass(frozen=True)
@@ -138,6 +139,39 @@ class LocalApprovalRecord:
 
 
 @dataclass(frozen=True)
+class LocalIntentGatePreflightRecord:
+    record_id: str
+    preflight: IntentGatePreflight
+    request: str | None
+    brief_id: str | None
+    session_id: str | None
+
+    @property
+    def preflight_id(self) -> str | None:
+        return self.preflight.preflight_id
+
+    @property
+    def decision(self) -> str:
+        return self.preflight.decision
+
+    @property
+    def safe_next_step(self) -> str:
+        return self.preflight.safe_next_step
+
+    @property
+    def content_hash(self) -> str | None:
+        return self.preflight.content_hash
+
+    @property
+    def created_at(self) -> datetime:
+        return self.preflight.created_at
+
+    @property
+    def ledger(self) -> Any:
+        return self.preflight.ledger
+
+
+@dataclass(frozen=True)
 class LocalBrownfieldSessionSummary:
     entry_ids: list[str]
     reviewed_count: int
@@ -163,3 +197,4 @@ class LocalBuilderSessionSnapshot:
     evidence: dict[str, Any] | None
     approval: LocalApprovalRecord | None
     brownfield: LocalBrownfieldSessionSummary | None
+    intent_gate_preflight: LocalIntentGatePreflightRecord | None = None

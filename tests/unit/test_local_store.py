@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 import sqlite3
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 
 from ces.brownfield.services.legacy_register import LegacyBehaviorService
+from ces.intent_gate.models import IntentGatePreflight, SpecificationLedger
 from ces.local_store import LocalLegacyBehaviorRepository, LocalProjectStore
 from ces.shared.enums import (
     ArtifactStatus,
@@ -81,6 +82,204 @@ class TestLocalBuilderBriefs:
         assert latest_a.request == "Project A request"
         store_a.close()
         store_b.close()
+
+
+class TestLocalIntentGatePreflights:
+    def test_intent_gate_preflight_round_trips_and_links_to_brief_and_session(self, tmp_path: Path) -> None:
+        store = LocalProjectStore(tmp_path / ".ces" / "state.db", project_id="proj-local")
+        brief_id = store.save_builder_brief(
+            request="Fix login redirect",
+            project_mode="greenfield",
+            constraints=["Keep OAuth callback stable"],
+            acceptance_criteria=["Users return to original page after login"],
+            must_not_break=[],
+            open_questions={},
+        )
+        session_id = store.save_builder_session(
+            brief_id=brief_id,
+            request="Fix login redirect",
+            project_mode="greenfield",
+            stage="ready_to_run",
+            next_action="run_continue",
+            last_action="brief_captured",
+        )
+        preflight = IntentGatePreflight(
+            decision="assume_and_proceed",
+            safe_next_step="Proceed with existing acceptance criteria.",
+            ledger=SpecificationLedger(
+                goal="Fix login redirect",
+                deliverable="Code change and regression test",
+                audience="Authenticated users",
+                assumptions=("OAuth provider configuration remains unchanged",),
+                acceptance_criteria=("Users return to original page after login",),
+            ),
+        )
+
+        saved = store.save_intent_gate_preflight(
+            preflight,
+            brief_id=brief_id,
+            session_id=session_id,
+            request="Fix login redirect",
+        )
+
+        assert saved.preflight_id == preflight.preflight_id
+        assert saved.decision == "assume_and_proceed"
+        assert saved.ledger.goal == "Fix login redirect"
+        assert saved.content_hash == preflight.content_hash
+        assert saved.brief_id == brief_id
+        assert saved.session_id == session_id
+        by_id = store.get_intent_gate_preflight(preflight.preflight_id or "")
+        assert by_id is not None
+        assert by_id.ledger == preflight.ledger
+        by_brief = store.get_intent_gate_preflight_for_brief(brief_id)
+        assert by_brief is not None
+        assert by_brief.preflight_id == preflight.preflight_id
+        by_session = store.get_intent_gate_preflight_for_session(session_id)
+        assert by_session is not None
+        assert by_session.preflight_id == preflight.preflight_id
+        latest = store.get_latest_intent_gate_preflight()
+        assert latest is not None
+        assert latest.preflight_id == preflight.preflight_id
+
+    def test_identical_preflights_keep_distinct_brief_and_session_links(self, tmp_path: Path) -> None:
+        store = LocalProjectStore(tmp_path / ".ces" / "state.db", project_id="proj-local")
+        preflight = IntentGatePreflight(
+            decision="proceed",
+            safe_next_step="Run the builder flow.",
+            ledger=SpecificationLedger(
+                goal="Add audit export",
+                deliverable="CSV export",
+                audience="Project maintainers",
+                acceptance_criteria=("CSV contains actor and decision",),
+            ),
+        )
+        brief_one = store.save_builder_brief(
+            request="Add audit export",
+            project_mode="greenfield",
+            constraints=[],
+            acceptance_criteria=["CSV contains actor and decision"],
+            must_not_break=[],
+            open_questions={},
+        )
+        session_one = store.save_builder_session(
+            brief_id=brief_one,
+            request="Add audit export",
+            project_mode="greenfield",
+            stage="ready_to_run",
+            next_action="run_continue",
+            last_action="brief_captured",
+        )
+        brief_two = store.save_builder_brief(
+            request="Add audit export",
+            project_mode="greenfield",
+            constraints=[],
+            acceptance_criteria=["CSV contains actor and decision"],
+            must_not_break=[],
+            open_questions={},
+        )
+        session_two = store.save_builder_session(
+            brief_id=brief_two,
+            request="Add audit export",
+            project_mode="greenfield",
+            stage="ready_to_run",
+            next_action="run_continue",
+            last_action="brief_captured",
+        )
+
+        first_saved = store.save_intent_gate_preflight(preflight, brief_id=brief_one, session_id=session_one)
+        second_saved = store.save_intent_gate_preflight(preflight, brief_id=brief_two, session_id=session_two)
+
+        assert first_saved.preflight_id == second_saved.preflight_id
+        assert first_saved.record_id != second_saved.record_id
+        assert store.get_intent_gate_preflight_for_session(session_one).brief_id == brief_one  # type: ignore[union-attr]
+        assert store.get_intent_gate_preflight_for_session(session_two).brief_id == brief_two  # type: ignore[union-attr]
+        assert store.get_intent_gate_preflight_for_brief(brief_one).session_id == session_one  # type: ignore[union-attr]
+        assert store.get_intent_gate_preflight_for_brief(brief_two).session_id == session_two  # type: ignore[union-attr]
+
+    def test_save_intent_gate_preflight_returns_inserted_record_for_same_session(self, tmp_path: Path) -> None:
+        store = LocalProjectStore(tmp_path / ".ces" / "state.db", project_id="proj-local")
+        brief_id = store.save_builder_brief(
+            request="Add audit export",
+            project_mode="greenfield",
+            constraints=[],
+            acceptance_criteria=["CSV contains actor and decision"],
+            must_not_break=[],
+            open_questions={},
+        )
+        session_id = store.save_builder_session(
+            brief_id=brief_id,
+            request="Add audit export",
+            project_mode="greenfield",
+            stage="ready_to_run",
+            next_action="run_continue",
+            last_action="brief_captured",
+        )
+        first = IntentGatePreflight(
+            decision="proceed",
+            safe_next_step="Run the builder flow.",
+            created_at=datetime(2026, 5, 13, 12, 0, tzinfo=UTC),
+            ledger=SpecificationLedger(
+                goal="Add audit export",
+                deliverable="CSV export",
+                audience="Project maintainers",
+                acceptance_criteria=("CSV contains actor and decision",),
+            ),
+        )
+        second = IntentGatePreflight(
+            decision="assume_and_proceed",
+            safe_next_step="Proceed with recorded assumptions.",
+            created_at=datetime(2026, 5, 13, 11, 0, tzinfo=UTC),
+            ledger=SpecificationLedger(
+                goal="Add audit export",
+                deliverable="CSV export with assumption ledger",
+                audience="Project maintainers",
+                assumptions=("Existing audit schema stays stable",),
+                acceptance_criteria=("CSV contains actor and decision",),
+            ),
+        )
+
+        first_saved = store.save_intent_gate_preflight(first, brief_id=brief_id, session_id=session_id)
+        second_saved = store.save_intent_gate_preflight(second, brief_id=brief_id, session_id=session_id)
+
+        assert second_saved.record_id != first_saved.record_id
+        assert second_saved.preflight_id == second.preflight_id
+        assert second_saved.safe_next_step == "Proceed with recorded assumptions."
+
+    def test_latest_builder_session_snapshot_includes_linked_intent_gate_preflight(self, tmp_path: Path) -> None:
+        store = LocalProjectStore(tmp_path / ".ces" / "state.db", project_id="proj-local")
+        brief_id = store.save_builder_brief(
+            request="Add audit export",
+            project_mode="greenfield",
+            constraints=[],
+            acceptance_criteria=["CSV contains actor and decision"],
+            must_not_break=[],
+            open_questions={},
+        )
+        session_id = store.save_builder_session(
+            brief_id=brief_id,
+            request="Add audit export",
+            project_mode="greenfield",
+            stage="ready_to_run",
+            next_action="run_continue",
+            last_action="brief_captured",
+        )
+        preflight = IntentGatePreflight(
+            decision="proceed",
+            safe_next_step="Run the builder flow.",
+            ledger=SpecificationLedger(
+                goal="Add audit export",
+                deliverable="CSV export",
+                audience="Project maintainers",
+                acceptance_criteria=("CSV contains actor and decision",),
+            ),
+        )
+        store.save_intent_gate_preflight(preflight, brief_id=brief_id, session_id=session_id)
+
+        snapshot = store.get_latest_builder_session_snapshot()
+
+        assert snapshot is not None
+        assert snapshot.intent_gate_preflight is not None
+        assert snapshot.intent_gate_preflight.preflight_id == preflight.preflight_id
 
 
 class TestLocalBuilderSessions:

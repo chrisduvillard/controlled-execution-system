@@ -205,6 +205,7 @@ def build_overview_explanation_lines(
     brief_only_fallback: bool,
     latest_activity: str | None = None,
     next_step: str | None = None,
+    intent_gate_preflight: Any | None = None,
 ) -> list[str]:
     lines = [
         f"CES thinks you're building: {record.request}",
@@ -218,6 +219,7 @@ def build_overview_explanation_lines(
     if reasons:
         lines.append("Why CES asked follow-up questions:")
         lines.extend(f"- CES asked {reason}." for reason in reasons)
+    lines.extend(_intent_gate_summary_lines(intent_gate_preflight))
     lines.append(f"Current stage: {format_stage_label(getattr(session, 'stage', None))}")
     lines.append(f"Blocking/pending: {describe_blocker(session, pending_count)}")
     lines.append(f"Latest activity: {latest_activity or describe_latest_activity(session, evidence)}")
@@ -233,6 +235,7 @@ def build_decisioning_explanation_lines(
     evidence: dict[str, Any] | None,
     pending_count: int,
     governance: bool,
+    intent_gate_preflight: Any | None = None,
 ) -> list[str]:
     planned_change = getattr(manifest, "description", None) or record.request
     lines = [
@@ -248,6 +251,7 @@ def build_decisioning_explanation_lines(
     challenge = evidence.get("challenge") if evidence is not None else None
     if challenge:
         lines.append(f"Main challenge: {challenge}")
+    lines.extend(_intent_gate_summary_lines(intent_gate_preflight))
     if governance:
         if manifest is not None:
             lines.append(f"Manifest ID: {manifest.manifest_id}")
@@ -272,6 +276,31 @@ def build_decisioning_explanation_lines(
             lines.append(f"Session next action: {getattr(session, 'next_action', 'unknown')}")
             if getattr(session, "recovery_reason", None):
                 lines.append(f"Recovery reason: {session.recovery_reason}")
+    return lines
+
+
+def _intent_gate_summary_lines(value: Any | None) -> list[str]:
+    if value is None:
+        return []
+    preflight = getattr(value, "preflight", value)
+    decision = getattr(preflight, "decision", None)
+    safe_next_step = getattr(preflight, "safe_next_step", None)
+    preflight_id = getattr(preflight, "preflight_id", None)
+    ledger = getattr(preflight, "ledger", None)
+    if not decision:
+        return []
+    lines = [f"Intent Gate decision: {decision}"]
+    if preflight_id:
+        lines.append(f"Intent Gate preflight: {preflight_id}")
+    if safe_next_step:
+        lines.append(f"Intent Gate safe next step: {safe_next_step}")
+    if ledger is not None:
+        lines.append(
+            "Intent Gate ledger: "
+            f"{len(tuple(getattr(ledger, 'open_questions', ()) or ()))} open questions, "
+            f"{len(tuple(getattr(ledger, 'assumptions', ()) or ()))} assumptions, "
+            f"{len(tuple(getattr(ledger, 'acceptance_criteria', ()) or ()))} acceptance criteria"
+        )
     return lines
 
 

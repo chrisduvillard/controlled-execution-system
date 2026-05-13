@@ -844,6 +844,14 @@ async def _run_brief_flow(
             source_of_truth=brief_draft.source_of_truth,
             critical_flows=brief_draft.critical_flows or [],
         )
+    save_intent_gate_preflight = getattr(local_store, "save_intent_gate_preflight", None)
+    if callable(save_intent_gate_preflight) and brief_draft.intent_preflight is not None:
+        save_intent_gate_preflight(
+            brief_draft.intent_preflight,
+            brief_id=brief_id,
+            session_id=session_id,
+            request=brief_draft.request,
+        )
     current_session = None
     if existing_session_id is not None and hasattr(local_store, "get_builder_session"):
         current_session = local_store.get_builder_session(existing_session_id)
@@ -1864,6 +1872,15 @@ async def explain_task(
                 else _explain_views.load_explain_evidence(local_store, session, record)
             )
             approval = getattr(snapshot, "approval", None) if snapshot is not None else None
+            intent_gate_preflight = getattr(snapshot, "intent_gate_preflight", None) if snapshot is not None else None
+            if intent_gate_preflight is None and hasattr(local_store, "get_intent_gate_preflight_for_session"):
+                session_id = getattr(session, "session_id", None)
+                if session_id:
+                    intent_gate_preflight = local_store.get_intent_gate_preflight_for_session(session_id)
+            if intent_gate_preflight is None and hasattr(local_store, "get_intent_gate_preflight_for_brief"):
+                brief_id = getattr(record, "brief_id", None) or getattr(session, "brief_id", None)
+                if brief_id:
+                    intent_gate_preflight = local_store.get_intent_gate_preflight_for_brief(brief_id)
             pending_count = 0
             if snapshot is not None and getattr(snapshot, "brownfield", None) is not None:
                 pending_count = getattr(snapshot.brownfield, "remaining_count", 0)
@@ -1881,6 +1898,7 @@ async def explain_task(
                     brief_only_fallback=brief_only_fallback,
                     latest_activity=getattr(snapshot, "latest_activity", None),
                     next_step=getattr(snapshot, "next_step", None),
+                    intent_gate_preflight=intent_gate_preflight,
                 )
             elif selected_view == "decisioning":
                 lines = _explain_views.build_decisioning_explanation_lines(
@@ -1890,6 +1908,7 @@ async def explain_task(
                     evidence=evidence,
                     pending_count=pending_count,
                     governance=governance,
+                    intent_gate_preflight=intent_gate_preflight,
                 )
                 if approval is not None:
                     lines.append(f"Recorded decision: {approval.decision}")

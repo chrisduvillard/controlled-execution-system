@@ -645,6 +645,11 @@ class TestRunCommand:
         assert brief_kwargs["constraints"] == ["Expose an HTTP endpoint"]
         assert brief_kwargs["acceptance_criteria"] == ["User can create and complete habits"]
         assert brief_kwargs["must_not_break"] == ["Existing CLI commands"]
+        mock_store.save_intent_gate_preflight.assert_called_once()
+        intent_args, intent_kwargs = mock_store.save_intent_gate_preflight.call_args
+        assert intent_args[0].decision in {"proceed", "assume_and_proceed"}
+        assert intent_kwargs["brief_id"] == "BB-123"
+        assert intent_kwargs["request"] == "Build a habit tracker"
 
     def test_build_alias_runs_guided_flow(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.chdir(tmp_path)

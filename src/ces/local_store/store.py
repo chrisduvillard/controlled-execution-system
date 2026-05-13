@@ -30,6 +30,7 @@ from ces.execution.secrets import scrub_secrets_from_text
 from ces.harness_evolution.manifest_io import manifest_to_stable_json
 from ces.harness_evolution.memory import HarnessMemoryLesson
 from ces.harness_evolution.models import HarnessChangeManifest, HarnessChangeVerdict
+from ces.intent_gate.models import IntentGatePreflight, SpecificationLedger
 from ces.local_store.codecs import (
     row_to_approval,
     row_to_audit_entry,
@@ -67,6 +68,7 @@ from ces.local_store.records import (
     LocalHarnessChangeRecord,
     LocalHarnessChangeVerdictRecord,
     LocalHarnessMemoryLessonRecord,
+    LocalIntentGatePreflightRecord,
     LocalManifestRow,
     LocalRuntimeExecutionRecord,
 )
@@ -129,6 +131,26 @@ def _row_to_harness_memory_lesson(row: sqlite3.Row) -> LocalHarnessMemoryLessonR
         content_hash=row["content_hash"],
         created_at=row["created_at"],
         updated_at=row["updated_at"],
+    )
+
+
+def _row_to_intent_gate_preflight(row: sqlite3.Row) -> LocalIntentGatePreflightRecord:
+    ledger = SpecificationLedger.model_validate_json(row["ledger_json"])
+    created_at = datetime.fromisoformat(row["created_at"])
+    preflight = IntentGatePreflight(
+        preflight_id=row["preflight_id"],
+        decision=row["decision"],
+        safe_next_step=row["safe_next_step"],
+        created_at=created_at,
+        content_hash=row["content_hash"],
+        ledger=ledger,
+    )
+    return LocalIntentGatePreflightRecord(
+        record_id=row["id"],
+        preflight=preflight,
+        request=row["request"],
+        brief_id=row["brief_id"],
+        session_id=row["session_id"],
     )
 
 
@@ -236,6 +258,116 @@ class LocalProjectStore:
         with self._connect() as conn:
             rows = conn.execute("SELECT key, value FROM project_settings").fetchall()
         return {row["key"]: json.loads(row["value"]) for row in rows}
+
+    def save_intent_gate_preflight(
+        self,
+        preflight: IntentGatePreflight,
+        *,
+        brief_id: str | None = None,
+        session_id: str | None = None,
+        request: str | None = None,
+    ) -> LocalIntentGatePreflightRecord:
+        ledger_json = json.dumps(preflight.ledger.model_dump(mode="json"), sort_keys=True)
+        record_id = uuid.uuid4().hex
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO intent_gate_preflights(
+                    id, preflight_id, project_id, decision, safe_next_step, content_hash,
+                    created_at, ledger_json, request, brief_id, session_id
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    record_id,
+                    preflight.preflight_id,
+                    self._project_id,
+                    preflight.decision,
+                    preflight.safe_next_step,
+                    preflight.content_hash,
+                    preflight.created_at.isoformat(),
+                    ledger_json,
+                    request,
+                    brief_id,
+                    session_id,
+                ),
+            )
+        record = self._get_intent_gate_preflight_record(record_id)
+        if record is None:
+            raise RuntimeError("failed to persist Intent Gate preflight")
+        return record
+
+    def _get_intent_gate_preflight_record(self, record_id: str) -> LocalIntentGatePreflightRecord | None:
+        with self._connect() as conn:
+            row = conn.execute(
+                """
+                SELECT id, preflight_id, decision, safe_next_step, content_hash, created_at,
+                       ledger_json, request, brief_id, session_id
+                FROM intent_gate_preflights
+                WHERE project_id = ? AND id = ?
+                """,
+                (self._project_id, record_id),
+            ).fetchone()
+        return _row_to_intent_gate_preflight(row) if row else None
+
+    def get_intent_gate_preflight(self, preflight_id: str) -> LocalIntentGatePreflightRecord | None:
+        with self._connect() as conn:
+            row = conn.execute(
+                """
+                SELECT id, preflight_id, decision, safe_next_step, content_hash, created_at,
+                       ledger_json, request, brief_id, session_id
+                FROM intent_gate_preflights
+                WHERE project_id = ? AND preflight_id = ?
+                ORDER BY created_at DESC, id DESC
+                LIMIT 1
+                """,
+                (self._project_id, preflight_id),
+            ).fetchone()
+        return _row_to_intent_gate_preflight(row) if row else None
+
+    def get_latest_intent_gate_preflight(self) -> LocalIntentGatePreflightRecord | None:
+        with self._connect() as conn:
+            row = conn.execute(
+                """
+                SELECT id, preflight_id, decision, safe_next_step, content_hash, created_at,
+                       ledger_json, request, brief_id, session_id
+                FROM intent_gate_preflights
+                WHERE project_id = ?
+                ORDER BY created_at DESC, id DESC
+                LIMIT 1
+                """,
+                (self._project_id,),
+            ).fetchone()
+        return _row_to_intent_gate_preflight(row) if row else None
+
+    def get_intent_gate_preflight_for_brief(self, brief_id: str) -> LocalIntentGatePreflightRecord | None:
+        with self._connect() as conn:
+            row = conn.execute(
+                """
+                SELECT id, preflight_id, decision, safe_next_step, content_hash, created_at,
+                       ledger_json, request, brief_id, session_id
+                FROM intent_gate_preflights
+                WHERE project_id = ? AND brief_id = ?
+                ORDER BY created_at DESC, id DESC
+                LIMIT 1
+                """,
+                (self._project_id, brief_id),
+            ).fetchone()
+        return _row_to_intent_gate_preflight(row) if row else None
+
+    def get_intent_gate_preflight_for_session(self, session_id: str) -> LocalIntentGatePreflightRecord | None:
+        with self._connect() as conn:
+            row = conn.execute(
+                """
+                SELECT id, preflight_id, decision, safe_next_step, content_hash, created_at,
+                       ledger_json, request, brief_id, session_id
+                FROM intent_gate_preflights
+                WHERE project_id = ? AND session_id = ?
+                ORDER BY created_at DESC, id DESC
+                LIMIT 1
+                """,
+                (self._project_id, session_id),
+            ).fetchone()
+        return _row_to_intent_gate_preflight(row) if row else None
 
     def save_harness_change(self, manifest: HarnessChangeManifest) -> LocalHarnessChangeRecord:
         """Persist or update a local harness change manifest."""
@@ -1077,6 +1209,11 @@ class LocalProjectStore:
                 remaining_count=session.brownfield_remaining_count or 0,
                 checkpoint=session.brownfield_review_state,
             )
+        intent_gate_preflight = None
+        if session.session_id:
+            intent_gate_preflight = self.get_intent_gate_preflight_for_session(session.session_id)
+        if intent_gate_preflight is None and session.brief_id:
+            intent_gate_preflight = self.get_intent_gate_preflight_for_brief(session.brief_id)
         return LocalBuilderSessionSnapshot(
             request=request,
             project_mode=project_mode,
@@ -1102,6 +1239,7 @@ class LocalProjectStore:
             evidence=evidence,
             approval=approval,
             brownfield=brownfield,
+            intent_gate_preflight=intent_gate_preflight,
         )
 
     @staticmethod
