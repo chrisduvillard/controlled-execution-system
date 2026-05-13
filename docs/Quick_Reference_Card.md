@@ -22,6 +22,8 @@ For the fuller workflow boundary, use the [Operator Playbook](Operator_Playbook.
 
 Use the [Operator Playbook](Operator_Playbook.md) when you need the fuller builder-first versus expert workflow boundary for a single request.
 
+Before manifest creation, CES Intent Gate may ask, assume, proceed, or block depending on task ambiguity and risk; see [Intent Gate](Intent_Gate.md).
+
 ---
 
 ## 2. Runtime preflight

@@ -1,0 +1,46 @@
+[
+  {
+    "id": "clear_ci_task_proceeds",
+    "description": "Clear CI task with explicit acceptance criteria proceeds.",
+    "request": "Fix the CI lint failure in the Python package.",
+    "constraints": ["Keep behavior unchanged"],
+    "acceptance_criteria": ["uv run ruff check src/ tests/ passes"],
+    "must_not_break": ["Existing tests"],
+    "project_mode": "maintenance",
+    "non_interactive": false,
+    "expected_decision": "proceed"
+  },
+  {
+    "id": "low_risk_readme_wording_assumes",
+    "description": "Low-risk README wording cleanup can proceed under a narrow assumption.",
+    "request": "Tighten the README wording in the installation section.",
+    "constraints": [],
+    "acceptance_criteria": [],
+    "must_not_break": [],
+    "project_mode": "maintenance",
+    "non_interactive": false,
+    "expected_decision": "assume_and_proceed"
+  },
+  {
+    "id": "high_risk_auth_without_acceptance_asks",
+    "description": "High-risk auth work without acceptance criteria asks in interactive mode.",
+    "request": "Fix login token refresh behavior.",
+    "constraints": [],
+    "acceptance_criteria": [],
+    "must_not_break": [],
+    "project_mode": "maintenance",
+    "non_interactive": false,
+    "expected_decision": "ask"
+  },
+  {
+    "id": "high_risk_database_delete_noninteractive_blocks",
+    "description": "High-risk deletion/database work blocks in non-interactive mode without acceptance criteria.",
+    "request": "Delete stale rows from the production database.",
+    "constraints": [],
+    "acceptance_criteria": [],
+    "must_not_break": [],
+    "project_mode": "maintenance",
+    "non_interactive": true,
+    "expected_decision": "blocked"
+  }
+]

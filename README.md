@@ -118,6 +118,8 @@ ces build "Add a healthcheck endpoint that returns JSON status"
 
 On first use, CES creates `.ces/` in that project, gathers missing context, drafts the manifest, executes through the selected local runtime, checks the workspace delta, records evidence, and shows the next operator action.
 
+Before manifest creation, CES Intent Gate may ask, assume, proceed, or block depending on task ambiguity and risk; see [Intent Gate](https://github.com/chrisduvillard/controlled-execution-system/blob/master/docs/Intent_Gate.md).
+
 If you prefer to initialize state manually first:
 
 ```bash
