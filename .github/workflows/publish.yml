@@ -138,6 +138,25 @@ jobs:
           "$smoke_venv/bin/ces" baseline
           "$smoke_venv/bin/ces" setup-ci --provider github
 
+          intent_smoke_dir="$(mktemp -d)"
+          cat > "$intent_smoke_dir/pyproject.toml" <<'EOF'
+          [project]
+          name = "ces-intent-gate-publish-smoke"
+          version = "0.1.0"
+          EOF
+          if "$smoke_venv/bin/ces" build "Delete stale rows from the production database" \
+              --project-root "$intent_smoke_dir" \
+              --yes \
+              --reverse-preflight rules \
+              > "$intent_smoke_dir/intent-gate.stdout" \
+              2> "$intent_smoke_dir/intent-gate.stderr"; then
+              echo "Expected Intent Gate publish smoke to block before runtime launch" >&2
+              exit 1
+          fi
+          grep -Ei "Intent Gate|blocked|acceptance|non-interactive|clarification" \
+              "$intent_smoke_dir/intent-gate.stdout" \
+              "$intent_smoke_dir/intent-gate.stderr"
+
           if "$smoke_venv/bin/ces" --json scan --project-root "$smoke_dir" > "$smoke_dir/usage-error.stdout" 2> "$smoke_dir/usage-error.stderr"; then
               echo "Expected JSON usage error smoke to fail" >&2
               exit 1
