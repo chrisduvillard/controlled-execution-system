@@ -30,7 +30,7 @@ def test_local_project_store_initializes_schema_meta_for_new_databases(tmp_path:
         row = conn.execute("SELECT value FROM schema_meta WHERE key = 'schema_version'").fetchone()
 
     assert row is not None
-    assert row["value"] == "1"
+    assert row["value"] == str(CURRENT_SCHEMA_VERSION)
     store.close()
 
 

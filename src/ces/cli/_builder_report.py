@@ -50,6 +50,12 @@ class BuilderRunReport:
     runtime_duration_seconds: float | None = None
     token_usage_summary: str = field(default="unavailable")
     cost_summary: str = field(default="unavailable")
+    intent_gate_preflight_id: str | None = None
+    intent_gate_decision: str | None = None
+    intent_gate_safe_next_step: str | None = None
+    intent_gate_open_question_count: int = 0
+    intent_gate_assumption_count: int = 0
+    intent_gate_acceptance_criteria_count: int = 0
 
 
 @dataclass(frozen=True)
@@ -128,6 +134,8 @@ def build_builder_run_report(snapshot: Any) -> BuilderRunReport | None:
         else None
     )
     brownfield_counts = _brownfield_counts(brownfield)
+    intent_gate_preflight = _intent_gate_preflight(getattr(snapshot, "intent_gate_preflight", None))
+    intent_gate_ledger = getattr(intent_gate_preflight, "ledger", None)
     return BuilderRunReport(
         session_id=_text(getattr(session, "session_id", None)),
         request=request,
@@ -177,6 +185,12 @@ def build_builder_run_report(snapshot: Any) -> BuilderRunReport | None:
         runtime_duration_seconds=_optional_float(getattr(runtime_execution, "duration_seconds", None)),
         token_usage_summary=_token_usage_summary(accounting),
         cost_summary=_cost_summary(accounting),
+        intent_gate_preflight_id=_text(getattr(intent_gate_preflight, "preflight_id", None)),
+        intent_gate_decision=_text(getattr(intent_gate_preflight, "decision", None)),
+        intent_gate_safe_next_step=_text(getattr(intent_gate_preflight, "safe_next_step", None)),
+        intent_gate_open_question_count=len(tuple(getattr(intent_gate_ledger, "open_questions", ()) or ())),
+        intent_gate_assumption_count=len(tuple(getattr(intent_gate_ledger, "assumptions", ()) or ())),
+        intent_gate_acceptance_criteria_count=len(tuple(getattr(intent_gate_ledger, "acceptance_criteria", ()) or ())),
     )
 
 
@@ -230,6 +244,18 @@ def summarize_builder_run(report: BuilderRunReport) -> list[str]:
         lines.append(f"Runtime side-effect waiver accepted: {report.runtime_side_effect_waived}")
     if report.mcp_grounding_supported is not None:
         lines.append(f"MCP grounding supported: {report.mcp_grounding_supported}")
+    if report.intent_gate_decision:
+        lines.append(f"Intent Gate decision: {report.intent_gate_decision}")
+        if report.intent_gate_preflight_id:
+            lines.append(f"Intent Gate preflight: {report.intent_gate_preflight_id}")
+        if report.intent_gate_safe_next_step:
+            lines.append(f"Intent Gate safe next step: {report.intent_gate_safe_next_step}")
+        lines.append(
+            "Intent Gate ledger: "
+            f"{report.intent_gate_open_question_count} open questions, "
+            f"{report.intent_gate_assumption_count} assumptions, "
+            f"{report.intent_gate_acceptance_criteria_count} acceptance criteria"
+        )
     if report.runtime_transcript_path:
         lines.append(f"Runtime transcript: {report.runtime_transcript_path}")
     if report.runtime_duration_seconds is not None:
@@ -295,6 +321,13 @@ def render_builder_run_report_markdown(report: BuilderRunReport) -> str:
         f"- Runtime tool allowlist enforced: {_render_optional_bool(report.runtime_tool_allowlist_enforced)}",
         f"- Runtime side-effect waiver accepted: {report.runtime_side_effect_waived}",
         f"- MCP grounding supported: {_render_optional_bool(report.mcp_grounding_supported)}",
+        f"- Intent Gate decision: {report.intent_gate_decision or 'none'}",
+        f"- Intent Gate preflight: {report.intent_gate_preflight_id or 'none'}",
+        f"- Intent Gate safe next step: {report.intent_gate_safe_next_step or 'none'}",
+        "- Intent Gate ledger: "
+        f"{report.intent_gate_open_question_count} open questions, "
+        f"{report.intent_gate_assumption_count} assumptions, "
+        f"{report.intent_gate_acceptance_criteria_count} acceptance criteria",
         f"- Reported model: {report.reported_model or 'unknown'}",
         f"- Runtime transcript: {report.runtime_transcript_path or 'none'}",
         f"- Runtime duration: {_render_duration(report.runtime_duration_seconds)}",
@@ -548,6 +581,12 @@ def _text(value: Any) -> str | None:
         stripped = primitive.strip()
         return stripped or None
     return str(primitive)
+
+
+def _intent_gate_preflight(value: Any) -> Any:
+    if value is None:
+        return None
+    return getattr(value, "preflight", value)
 
 
 def _runtime_safety_content(evidence: dict[str, Any] | None) -> dict[str, Any]:

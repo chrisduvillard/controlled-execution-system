@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import sqlite3
 
-CURRENT_SCHEMA_VERSION = 1
+CURRENT_SCHEMA_VERSION = 2
 
 
 def initialize_schema(conn: sqlite3.Connection) -> None:
@@ -133,6 +133,27 @@ def initialize_schema(conn: sqlite3.Connection) -> None:
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL
         );
+        CREATE TABLE IF NOT EXISTS intent_gate_preflights (
+            id TEXT PRIMARY KEY,
+            preflight_id TEXT NOT NULL,
+            project_id TEXT NOT NULL,
+            decision TEXT NOT NULL,
+            safe_next_step TEXT NOT NULL,
+            content_hash TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            ledger_json TEXT NOT NULL,
+            request TEXT,
+            brief_id TEXT,
+            session_id TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_intent_gate_preflights_project_created
+            ON intent_gate_preflights (project_id, created_at);
+        CREATE INDEX IF NOT EXISTS idx_intent_gate_preflights_preflight
+            ON intent_gate_preflights (project_id, preflight_id, created_at);
+        CREATE INDEX IF NOT EXISTS idx_intent_gate_preflights_brief
+            ON intent_gate_preflights (project_id, brief_id, created_at);
+        CREATE INDEX IF NOT EXISTS idx_intent_gate_preflights_session
+            ON intent_gate_preflights (project_id, session_id, created_at);
         CREATE TABLE IF NOT EXISTS legacy_behaviors (
             entry_id TEXT PRIMARY KEY,
             project_id TEXT NOT NULL,
@@ -227,7 +248,7 @@ def initialize_schema(conn: sqlite3.Connection) -> None:
     _migrate_review_findings_to_synthetic_pk(conn)
     _migrate_builder_sessions_brownfield_columns(conn)
     conn.execute(
-        "INSERT OR IGNORE INTO schema_meta(key, value) VALUES('schema_version', ?)",
+        "INSERT OR REPLACE INTO schema_meta(key, value) VALUES('schema_version', ?)",
         (str(CURRENT_SCHEMA_VERSION),),
     )
 

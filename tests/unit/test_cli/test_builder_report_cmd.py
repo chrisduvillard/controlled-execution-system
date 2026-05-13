@@ -637,3 +637,49 @@ def test_builder_report_soft_merge_not_applied_is_approved_unblocked() -> None:
     assert report.review_state == "approved"
     assert report.latest_outcome == "approved_unmerged"
     assert report.next_step == "Run `ces report builder` to inspect the approved builder run."
+
+
+def test_builder_report_includes_intent_gate_summary() -> None:
+    from ces.cli._builder_report import build_builder_run_report, render_builder_run_report_markdown
+    from ces.intent_gate.models import IntentGatePreflight, SpecificationLedger
+
+    preflight = IntentGatePreflight(
+        decision="assume_and_proceed",
+        safe_next_step="Proceed with regression tests.",
+        ledger=SpecificationLedger(
+            goal="Fix login redirect",
+            deliverable="Code change and regression test",
+            audience="Authenticated users",
+            assumptions=("OAuth configuration remains unchanged",),
+            acceptance_criteria=("Users return to original page",),
+        ),
+    )
+    snapshot = SimpleNamespace(
+        request="Fix login redirect",
+        project_mode="greenfield",
+        stage="ready_to_run",
+        next_action="run_continue",
+        next_step="Run `ces continue`.",
+        latest_activity="CES captured the builder brief.",
+        latest_artifact="brief",
+        brief=SimpleNamespace(prl_draft_path=None),
+        manifest=None,
+        runtime_execution=None,
+        evidence=None,
+        approval=None,
+        session=SimpleNamespace(session_id="BS-ig"),
+        brownfield=None,
+        intent_gate_preflight=preflight,
+    )
+
+    report = build_builder_run_report(snapshot)
+
+    assert report is not None
+    assert report.intent_gate_decision == "assume_and_proceed"
+    assert report.intent_gate_preflight_id == preflight.preflight_id
+    assert report.intent_gate_safe_next_step == "Proceed with regression tests."
+    assert report.intent_gate_assumption_count == 1
+    assert report.intent_gate_acceptance_criteria_count == 1
+    markdown = render_builder_run_report_markdown(report)
+    assert "Intent Gate decision: assume_and_proceed" in markdown
+    assert "Intent Gate safe next step: Proceed with regression tests." in markdown
