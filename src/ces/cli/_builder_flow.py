@@ -74,6 +74,7 @@ class BuilderFlowOrchestrator:
         provided_source_of_truth: str | None = None,
         provided_critical_flows: list[str] | None = None,
         non_interactive: bool = False,
+        intent_gate_enabled: bool = True,
     ) -> BuilderBriefDraft:
         request = description.strip() if description else ""
         if not request:
@@ -136,16 +137,23 @@ class BuilderFlowOrchestrator:
         constraints = _split_list(constraints_raw)
         acceptance_criteria = _split_list(acceptance_raw)
         must_not_break = _split_list(must_not_break_raw)
-        intent_preflight = classify_intent(
-            request,
-            constraints,
-            acceptance_criteria,
-            must_not_break,
-            project_mode,
-            non_interactive,
-        )
+        intent_preflight = None
+        if intent_gate_enabled:
+            intent_preflight = classify_intent(
+                request,
+                constraints,
+                acceptance_criteria,
+                must_not_break,
+                project_mode,
+                non_interactive,
+            )
 
-        if not non_interactive and intent_preflight.decision == "ask":
+        if (
+            intent_gate_enabled
+            and intent_preflight is not None
+            and not non_interactive
+            and intent_preflight.decision == "ask"
+        ):
             answers: list[str] = []
             for question in intent_preflight.ledger.open_questions:
                 answer = prompt_fn(question.question, default="").strip()
