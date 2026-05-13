@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security / governance hardening
+
+- Fail closed to Codex `read-only` sandbox mode when an explicit `CES_CODEX_SANDBOX` override is invalid instead of silently reverting to `danger-full-access`.
+- Treat release, publish, merge, deploy, and customer-message requests as high-risk Intent Gate terms when acceptance criteria are missing.
+
 ## [0.1.18] - 2026-05-13
 
 Release workflow hardening patch after the 0.1.17 Intent Gate release.

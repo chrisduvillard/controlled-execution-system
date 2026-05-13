@@ -28,7 +28,8 @@ def test_security_docs_distinguish_codex_and_claude_runtime_boundaries() -> None
     security = (ROOT / "SECURITY.md").read_text(encoding="utf-8")
 
     assert "Claude runs with `--allowedTools`" in security
-    assert "Codex runs under `--sandbox danger-full-access`" in security
+    assert "Codex defaults to `--sandbox danger-full-access`" in security
+    assert "invalid explicit values fail closed to `read-only`" in security
     assert "not manifest-tool-allowlist-enforced" in security
 
 

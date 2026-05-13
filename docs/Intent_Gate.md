@@ -17,7 +17,7 @@ Intent Gate returns one of four decisions:
 
 In interactive builder sessions, Intent Gate can ask for missing acceptance criteria, failure boundaries, or scope constraints. In non-interactive sessions, CES cannot rely on a human answer, so high-risk ambiguous requests become `blocked` instead of `ask`.
 
-Use `--acceptance` to provide explicit success criteria up front when launching a request that touches risky areas such as authentication, authorization, data deletion, database changes, billing, production behavior, credentials, or security-sensitive paths.
+Use `--acceptance` to provide explicit success criteria up front when launching a request that touches risky areas such as authentication, authorization, data deletion, database changes, billing, production behavior, credentials, security-sensitive paths, releases, publishes, merges, deploys, or customer-facing messages.
 
 ## Modes
 
@@ -63,6 +63,14 @@ ces build "Delete stale rows from the production database" --yes
 ```
 
 Database deletion is high risk. In non-interactive mode, missing acceptance criteria or failure boundaries should return `blocked`. Provide explicit acceptance criteria, constraints, and verification before attempting this kind of work.
+
+### External release or messaging action
+
+```bash
+ces build "Push the release tag and publish to PyPI" --yes
+```
+
+Release, merge, publish, deploy, and customer-message requests cross an external side-effect boundary. In non-interactive mode, missing acceptance criteria should return `blocked`; interactive mode should ask for explicit scope, rollback, and verification boundaries first.
 
 ## Safety model
 

@@ -109,3 +109,23 @@ def test_password_admin_and_customer_data_are_high_risk() -> None:
         )
 
         assert preflight.decision == "ask", request
+
+
+def test_external_release_and_messaging_actions_are_high_risk_without_acceptance() -> None:
+    for request in (
+        "Push the release tag and publish to PyPI",
+        "Merge the PR and deploy to production",
+        "Send the customer email announcement",
+    ):
+        preflight = classify_intent(
+            request=request,
+            constraints=(),
+            acceptance_criteria=(),
+            must_not_break=(),
+            project_mode="maintenance",
+            non_interactive=True,
+        )
+
+        assert preflight.decision == "blocked", request
+        assert preflight.ledger.open_questions
+        assert preflight.ledger.risks
