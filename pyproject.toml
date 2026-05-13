@@ -115,6 +115,7 @@ exclude = [
     "/.venv",
     "/dogfood-output",
     "/examples/voice-to-text-mvp",
+    "/examples/auralis",
     "/runtime-transcripts",
     "/tasks",
     "**/__pycache__",
