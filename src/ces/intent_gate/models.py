@@ -5,7 +5,6 @@ from __future__ import annotations
 import hashlib
 import json
 import re
-import secrets
 from datetime import UTC, datetime
 from typing import Any, Literal
 
@@ -38,10 +37,6 @@ def _clean_text(value: str, *, field_name: str) -> str:
 def _stable_sha256(payload: dict[str, Any]) -> str:
     encoded = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()
     return hashlib.sha256(encoded).hexdigest()
-
-
-def _new_preflight_id() -> str:
-    return f"igp-{secrets.token_hex(8)}"
 
 
 class IntentQuestion(CESBaseModel):
@@ -103,7 +98,7 @@ class SpecificationLedger(CESBaseModel):
 class IntentGatePreflight(CESBaseModel):
     """Deterministic Intent Gate preflight decision and ledger."""
 
-    preflight_id: str = Field(default_factory=_new_preflight_id)
+    preflight_id: str | None = None
     decision: IntentGateDecision
     ledger: SpecificationLedger
     safe_next_step: str
@@ -112,7 +107,9 @@ class IntentGatePreflight(CESBaseModel):
 
     @field_validator("preflight_id")
     @classmethod
-    def validate_preflight_id(cls, value: str) -> str:
+    def validate_preflight_id(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
         if not re.fullmatch(r"igp-[0-9a-f]{16}", value):
             msg = "preflight_id must match igp-<16 hex>"
             raise ValueError(msg)
@@ -135,8 +132,12 @@ class IntentGatePreflight(CESBaseModel):
 
     @model_validator(mode="after")
     def populate_content_hash(self) -> IntentGatePreflight:
-        if self.content_hash is not None:
-            return self
         payload = self.model_dump(mode="json", exclude={"preflight_id", "created_at", "content_hash"})
-        object.__setattr__(self, "content_hash", _stable_sha256(payload))
+        digest = _stable_sha256(payload)
+        if self.content_hash is not None and self.content_hash != digest:
+            msg = "content_hash does not match preflight content"
+            raise ValueError(msg)
+        object.__setattr__(self, "content_hash", digest)
+        if self.preflight_id is None:
+            object.__setattr__(self, "preflight_id", f"igp-{digest[:16]}")
         return self

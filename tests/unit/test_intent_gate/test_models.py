@@ -57,5 +57,16 @@ def test_preflight_content_hash_is_stable_excluding_generated_fields() -> None:
     first = IntentGatePreflight(decision="proceed", ledger=ledger, safe_next_step="Inspect README.")
     second = IntentGatePreflight(decision="proceed", ledger=ledger, safe_next_step="Inspect README.")
 
-    assert first.preflight_id != second.preflight_id
+    assert first.preflight_id == f"igp-{first.content_hash[:16]}"
+    assert second.preflight_id == first.preflight_id
     assert first.content_hash == second.content_hash
+
+
+def test_preflight_rejects_mismatched_content_hash() -> None:
+    with pytest.raises(ValidationError, match="content_hash does not match"):
+        IntentGatePreflight(
+            decision="proceed",
+            ledger=_ledger(),
+            safe_next_step="Inspect README.",
+            content_hash="0" * 64,
+        )

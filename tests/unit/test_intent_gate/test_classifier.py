@@ -49,6 +49,20 @@ def test_auth_task_asks_when_failure_mode_missing() -> None:
     assert preflight.ledger.risks
 
 
+def test_login_task_asks_when_acceptance_missing() -> None:
+    preflight = classify_intent(
+        request="Fix login",
+        constraints=(),
+        acceptance_criteria=(),
+        must_not_break=(),
+        project_mode="maintenance",
+        non_interactive=False,
+    )
+
+    assert preflight.decision == "ask"
+    assert preflight.ledger.open_questions
+
+
 def test_noninteractive_high_risk_database_delete_task_blocks() -> None:
     preflight = classify_intent(
         request="Delete old database rows from production users table.",
