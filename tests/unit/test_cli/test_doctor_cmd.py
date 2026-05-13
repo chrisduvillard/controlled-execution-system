@@ -197,6 +197,28 @@ class TestCesDoctor:
         assert payload["runtime_auth"]["codex"]["auth_ok"] is True
         assert "auth probe succeeded" in payload["runtime_auth"]["codex"]["detail"]
 
+    def test_doctor_codex_auth_probe_uses_configured_sandbox(self, tmp_path: Path, monkeypatch: object) -> None:
+        """Codex auth probes should mirror the runtime adapter sandbox selection."""
+        import shutil
+
+        monkeypatch.chdir(tmp_path)  # type: ignore[attr-defined]
+        monkeypatch.setenv("CES_CODEX_SANDBOX", "read-only")  # type: ignore[attr-defined]
+        monkeypatch.setattr(shutil, "which", lambda name: "/usr/bin/codex" if name == "codex" else None)  # type: ignore[attr-defined]
+        seen_command: list[str] = []
+
+        def fake_run(command, **kwargs):
+            del kwargs
+            seen_command.extend(command)
+            return subprocess.CompletedProcess(args=command, returncode=0, stdout="READY", stderr="")
+
+        monkeypatch.setattr("ces.cli.doctor_cmd.subprocess.run", fake_run)
+        app = _get_app()
+        result = runner.invoke(app, ["doctor", "--verify-runtime", "--runtime", "codex", "--json"])
+
+        assert result.exit_code == 0, result.stdout
+        sandbox_index = seen_command.index("--sandbox")
+        assert seen_command[sandbox_index + 1] == "read-only"
+
     def test_doctor_verify_runtime_redacts_probe_output_detail(self, tmp_path: Path, monkeypatch: object) -> None:
         """Runtime auth probes must not echo secret or private stdout/stderr into doctor JSON."""
         import json
