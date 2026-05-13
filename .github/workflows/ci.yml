@@ -57,6 +57,17 @@ jobs:
       - run: uv sync --frozen --group ci
       - name: Run local-first tests with coverage
         run: uv run pytest tests/ -m "not integration" --cov=ces --cov-fail-under=90 --cov-report=term-missing -q -W error
+      - name: Verify clean release tree before build
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --exit-code
+          git diff --cached --exit-code
+          if [[ -n "$(git status --porcelain)" ]]; then
+            git status --short
+            echo "Refusing to build distributions from a dirty checkout." >&2
+            exit 1
+          fi
       - name: Build distributions
         run: uv build
       - name: Check distribution metadata

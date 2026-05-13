@@ -38,6 +38,23 @@ def test_ci_builds_distribution_and_checks_package_metadata() -> None:
     assert "uvx twine check dist/*" in workflow_text
 
 
+def test_distribution_workflows_refuse_dirty_trees_before_building() -> None:
+    """Every distribution build should fail before packaging a dirty checkout."""
+    workflow_names = ["ci.yml", "publish.yml", "publish-testpypi.yml"]
+
+    for workflow_name in workflow_names:
+        workflow_text = (ROOT / ".github" / "workflows" / workflow_name).read_text(encoding="utf-8")
+
+        assert "Verify clean release tree before build" in workflow_text, workflow_name
+        guard_index = workflow_text.index("Verify clean release tree before build")
+        build_index = workflow_text.index("Build distributions")
+        assert guard_index < build_index, workflow_name
+        guard_block = workflow_text[guard_index:build_index]
+        assert "git diff --exit-code" in guard_block, workflow_name
+        assert "git diff --cached --exit-code" in guard_block, workflow_name
+        assert "git status --porcelain" in guard_block, workflow_name
+
+
 def test_ci_smokes_installed_wheel_public_contract() -> None:
     """CI should catch broken entrypoints and machine-readable JSON before release."""
     workflow_text = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
