@@ -25,6 +25,8 @@ This playbook explains when to stay in the builder-first CES flow, when to switc
 
 Use the builder-first flow when you want CES to keep the operator context together around one active request.
 
+Before manifest creation, CES Intent Gate may ask, assume, proceed, or block depending on task ambiguity and risk; see [Intent Gate](Intent_Gate.md).
+
 ```bash
 # First run in a repo is enough; CES bootstraps local state if `.ces/` is missing
 ces build "Add invoice notes to billing exports"
