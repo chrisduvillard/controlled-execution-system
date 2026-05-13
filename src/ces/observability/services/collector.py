@@ -108,6 +108,7 @@ def telemetry_processor(logger: Any, method_name: str, event_dict: dict[str, Any
     Returns:
         The event_dict unchanged (pass-through for downstream processors).
     """
+    del logger, method_name
     if event_dict.get("telemetry") is True:
         level = event_dict.get("level", "unknown")
         # Extract metric data: everything except structlog internal keys

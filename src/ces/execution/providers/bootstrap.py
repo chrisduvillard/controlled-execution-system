@@ -32,7 +32,7 @@ class _NullLLMProvider:
             "Run 'ces doctor' for a full pre-flight check."
         )
 
-    async def stream(
+    def stream(
         self,
         model_id: str,
         messages: list[dict[str, str]],
@@ -41,7 +41,6 @@ class _NullLLMProvider:
     ) -> AsyncIterator[str]:
         del model_id, messages, max_tokens, temperature
         raise RuntimeError("No LLM provider configured.")
-        yield ""
 
 
 def register_cli_fallback(provider_registry: ProviderRegistry, settings: Any) -> LLMProviderProtocol:

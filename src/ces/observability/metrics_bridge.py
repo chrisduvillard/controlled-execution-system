@@ -72,6 +72,7 @@ def observe_telemetry_counters(options: object) -> list[object]:
     backend can distinguish individual counters within the single
     ``ces.telemetry_counter`` gauge.
     """
+    del options
     current = get_counters().get_current()
     return [_make_observation(value, {"ces.metric_name": metric_name}) for metric_name, value in current.items()]
 
@@ -83,6 +84,7 @@ def observe_queue_depths(options: object) -> list[object]:
     The ``ces.queue_name`` attribute contains the queue name (suffix
     after the ``queue_depth_`` prefix).
     """
+    del options
     current = get_counters().get_current()
     observations: list[object] = []
     for key, value in current.items():
@@ -98,6 +100,7 @@ def observe_active_agents(options: object) -> list[object]:
     Looks for the ``active_agent_count`` key in TelemetryCounters.
     Yields nothing if the key does not exist.
     """
+    del options
     current = get_counters().get_current()
     count = current.get("active_agent_count")
     if count is not None:
