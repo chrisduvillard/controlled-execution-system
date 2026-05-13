@@ -88,6 +88,122 @@ def test_complete_marks_latest_blocked_session_completed_with_manual_evidence(
     )
 
 
+def test_complete_scrubs_secret_like_manual_evidence_before_persistence(tmp_path: Path, monkeypatch: object) -> None:
+    """Manual completion evidence should not persist raw token-looking values."""
+    monkeypatch.chdir(tmp_path)  # type: ignore[attr-defined]
+    ces_dir = tmp_path / ".ces"
+    ces_dir.mkdir()
+    (ces_dir / "config.yaml").write_text("project_id: local-proj\n", encoding="utf-8")
+    secret = "sk" + "-" + "syntheticManualEvidenceSecret123"
+    evidence = tmp_path / "verification.txt"
+    evidence.write_text(f"pytest passed\nOPENAI_API_KEY={secret}\nraw={secret}\n", encoding="utf-8")
+    session = SimpleNamespace(
+        session_id="BS-secret",
+        runtime_manifest_id="M-secret",
+        manifest_id="M-secret",
+        evidence_packet_id=None,
+        stage="blocked",
+    )
+    mock_store = MagicMock()
+    mock_store.get_latest_builder_session.return_value = session
+    mock_services = {"local_store": mock_store, "audit_ledger": AsyncMock()}
+
+    with _patch_services(mock_services):
+        result = runner.invoke(_get_app(), ["complete", "--evidence", str(evidence), "--yes"])
+
+    assert result.exit_code == 0, result.stdout
+    saved_content = mock_store.save_evidence.call_args.kwargs["content"]
+    assert secret not in saved_content["evidence_text"]
+    assert "<REDACTED>" in saved_content["evidence_text"]
+
+
+def test_complete_caps_large_manual_evidence_before_persistence(tmp_path: Path, monkeypatch: object) -> None:
+    """Manual completion evidence should be bounded before writing to state.db."""
+    monkeypatch.chdir(tmp_path)  # type: ignore[attr-defined]
+    ces_dir = tmp_path / ".ces"
+    ces_dir.mkdir()
+    (ces_dir / "config.yaml").write_text("project_id: local-proj\n", encoding="utf-8")
+    evidence = tmp_path / "large-verification.txt"
+    evidence.write_text("A" * (1_048_576 + 128), encoding="utf-8")
+    session = SimpleNamespace(
+        session_id="BS-large",
+        runtime_manifest_id="M-large",
+        manifest_id="M-large",
+        evidence_packet_id=None,
+        stage="blocked",
+    )
+    mock_store = MagicMock()
+    mock_store.get_latest_builder_session.return_value = session
+    mock_services = {"local_store": mock_store, "audit_ledger": AsyncMock()}
+
+    with _patch_services(mock_services):
+        result = runner.invoke(_get_app(), ["complete", "--evidence", str(evidence), "--yes"])
+
+    assert result.exit_code == 0, result.stdout
+    saved_text = mock_store.save_evidence.call_args.kwargs["content"]["evidence_text"]
+    assert len(saved_text) < 1_049_000
+    assert "[truncated manual evidence]" in saved_text
+
+
+def test_complete_blocks_external_manual_evidence_without_explicit_consent(tmp_path: Path, monkeypatch: object) -> None:
+    """Evidence outside the project root should require explicit operator consent."""
+    project = tmp_path / "project"
+    project.mkdir()
+    ces_dir = project / ".ces"
+    ces_dir.mkdir()
+    (ces_dir / "config.yaml").write_text("project_id: local-proj\n", encoding="utf-8")
+    evidence = tmp_path / "external-verification.txt"
+    evidence.write_text("pytest passed\n", encoding="utf-8")
+    monkeypatch.chdir(project)  # type: ignore[attr-defined]
+    session = SimpleNamespace(
+        session_id="BS-external",
+        runtime_manifest_id="M-external",
+        manifest_id="M-external",
+        evidence_packet_id=None,
+        stage="blocked",
+    )
+    mock_store = MagicMock()
+    mock_store.get_latest_builder_session.return_value = session
+    mock_services = {"local_store": mock_store, "audit_ledger": AsyncMock()}
+
+    with _patch_services(mock_services):
+        result = runner.invoke(_get_app(), ["complete", "--evidence", str(evidence), "--yes"])
+
+    assert result.exit_code != 0
+    mock_store.save_evidence.assert_not_called()
+
+
+def test_complete_allows_external_manual_evidence_with_explicit_consent(tmp_path: Path, monkeypatch: object) -> None:
+    """Explicit consent keeps external evidence available for recovery workflows."""
+    project = tmp_path / "project"
+    project.mkdir()
+    ces_dir = project / ".ces"
+    ces_dir.mkdir()
+    (ces_dir / "config.yaml").write_text("project_id: local-proj\n", encoding="utf-8")
+    evidence = tmp_path / "external-verification.txt"
+    evidence.write_text("pytest passed\n", encoding="utf-8")
+    monkeypatch.chdir(project)  # type: ignore[attr-defined]
+    session = SimpleNamespace(
+        session_id="BS-external-ok",
+        runtime_manifest_id="M-external-ok",
+        manifest_id="M-external-ok",
+        evidence_packet_id=None,
+        stage="blocked",
+    )
+    mock_store = MagicMock()
+    mock_store.get_latest_builder_session.return_value = session
+    mock_services = {"local_store": mock_store, "audit_ledger": AsyncMock()}
+
+    with _patch_services(mock_services):
+        result = runner.invoke(
+            _get_app(),
+            ["complete", "--evidence", str(evidence), "--allow-external-evidence", "--yes"],
+        )
+
+    assert result.exit_code == 0, result.stdout
+    mock_store.save_evidence.assert_called_once()
+
+
 def test_complete_with_real_local_store_saves_manual_evidence_without_crashing(
     tmp_path: Path, monkeypatch: object
 ) -> None:
