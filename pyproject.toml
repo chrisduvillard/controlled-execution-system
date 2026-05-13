@@ -114,7 +114,13 @@ exclude = [
     "/.uv-cache",
     "/.venv",
     "/dogfood-output",
+    "/examples/voice-to-text-mvp",
+    "/runtime-transcripts",
     "/tasks",
+    "**/__pycache__",
+    "**/*.pyc",
+    "**/env.sh",
+    "**/state.db",
 ]
 
 [tool.hatch.build.targets.wheel]
