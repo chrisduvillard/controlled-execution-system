@@ -91,6 +91,27 @@ class TestRuntimeAdapterEnvScrubbing:
             assert stat.S_IMODE(transcript_path.stat().st_mode) == 0o600
             assert stat.S_IMODE(transcript_path.parent.stat().st_mode) == 0o700
 
+    @patch.dict("os.environ", {"PATH": "/usr/bin", "CES_CODEX_SANDBOX": "workspace-write"}, clear=True)
+    def test_codex_runtime_can_opt_into_configured_sandbox(self, tmp_path: Path) -> None:
+        adapter = CodexRuntimeAdapter()
+        adapter.version = MagicMock(return_value="1.0.0")
+
+        def _popen(*args, **kwargs):
+            kwargs["stdout"].write(b"ok")
+            return _completed_process()
+
+        with patch("ces.execution.runtimes.adapters.subprocess.Popen", side_effect=_popen) as mock_popen:
+            adapter.run_task(
+                manifest_description="Implement feature",
+                prompt_pack="Prompt pack",
+                working_dir=tmp_path,
+            )
+
+        command = mock_popen.call_args.args[0]
+        sandbox_index = command.index("--sandbox")
+        assert command[sandbox_index + 1] == "workspace-write"
+        assert "CES_CODEX_SANDBOX" not in mock_popen.call_args.kwargs["env"]
+
     @patch.dict(
         "os.environ",
         {

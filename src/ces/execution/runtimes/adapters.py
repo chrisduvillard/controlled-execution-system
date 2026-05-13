@@ -17,6 +17,7 @@ from types import FrameType
 from typing import Any
 
 from ces.execution._subprocess_env import build_subprocess_env
+from ces.execution.runtime_safety import codex_sandbox_mode
 from ces.execution.runtimes.protocol import AgentRuntimeResult
 from ces.execution.secrets import scrub_secrets_from_text
 
@@ -449,10 +450,11 @@ class CodexRuntimeAdapter(_BaseRuntimeAdapter):
         transcript_file = self._prepare_project_transcript_path(working_dir, invocation_ref)
         last_message_file = self._prepare_project_transcript_path(working_dir, f"{invocation_ref}-last-message")
         self._initialize_runtime_transcript(transcript_file, invocation_ref)
-        # Chris's CES/Codex deployment always runs Codex with full host access.
-        # Codex workspace-write uses bubblewrap, which cannot execute shell tools
-        # on the target Ubuntu host (`bwrap: loopback: Failed RTM_NEWADDR`).
-        # Runtime side-effect risk is disclosed and gated by the builder flow.
+        # Full host access remains the default for Chris's deployment because
+        # Codex workspace-write has failed on the target Ubuntu host in the
+        # past (`bwrap: loopback: Failed RTM_NEWADDR`). Operators can opt into
+        # Codex's own sandbox with CES_CODEX_SANDBOX when their host supports it.
+        sandbox = codex_sandbox_mode()
         command = [
             self._resolved_binary(),
             "exec",
@@ -460,7 +462,7 @@ class CodexRuntimeAdapter(_BaseRuntimeAdapter):
             "-C",
             str(working_dir),
             "--sandbox",
-            "danger-full-access",
+            sandbox,
             "--skip-git-repo-check",
             "--output-last-message",
             str(last_message_file),

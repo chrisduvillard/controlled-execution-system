@@ -2,7 +2,26 @@
 
 from __future__ import annotations
 
+import os
+
 from ces.shared.base import CESBaseModel
+
+_DEFAULT_CODEX_SANDBOX = "danger-full-access"
+_WORKSPACE_SCOPED_CODEX_SANDBOXES = {"read-only", "workspace-write"}
+_ALLOWED_CODEX_SANDBOXES = {*_WORKSPACE_SCOPED_CODEX_SANDBOXES, _DEFAULT_CODEX_SANDBOX}
+
+
+def codex_sandbox_mode() -> str:
+    """Return the CES-selected Codex sandbox mode.
+
+    ``danger-full-access`` remains the default for Chris's local deployment.
+    Operators can opt into Codex's own workspace sandbox with
+    ``CES_CODEX_SANDBOX=workspace-write`` or ``read-only`` when their host can
+    support it. Invalid values fail closed to the conservative disclosed
+    default rather than passing arbitrary CLI flags through.
+    """
+    requested = os.environ.get("CES_CODEX_SANDBOX", _DEFAULT_CODEX_SANDBOX).strip()
+    return requested if requested in _ALLOWED_CODEX_SANDBOXES else _DEFAULT_CODEX_SANDBOX
 
 
 class RuntimeSafetyProfile(CESBaseModel):
@@ -44,15 +63,18 @@ def safety_profile_for_runtime(
             notes="Claude receives an explicit --allowedTools list from CES.",
         )
     if normalized == "codex":
-        # Codex runs with full host access in Chris's CES deployment because
-        # Codex's bubblewrap-backed workspace-write sandbox cannot execute shell
-        # tools on this host. This is intentionally disclosed as not workspace
-        # scoped so unattended builds still require explicit side-effect consent.
+        sandbox = codex_sandbox_mode()
+        workspace_scoped = sandbox in _WORKSPACE_SCOPED_CODEX_SANDBOXES
+        # Codex defaults to full host access in Chris's CES deployment because
+        # Codex's bubblewrap-backed workspace-write sandbox historically could
+        # not execute shell tools on this host. Operators can opt into Codex's
+        # own workspace sandbox via CES_CODEX_SANDBOX when their host supports
+        # it. CES still cannot enforce manifest allowed_tools inside Codex.
         return RuntimeSafetyProfile(
             runtime_name="codex",
             tool_allowlist_enforced=False,
-            workspace_scoped=False,
-            network_policy="Codex CLI danger-full-access policy",
+            workspace_scoped=workspace_scoped,
+            network_policy=f"Codex CLI --sandbox {sandbox} policy",
             effective_allowed_tools=(),
             mcp_servers_requested=tuple(mcp_servers),
             mcp_grounding_supported=False,
@@ -68,8 +90,9 @@ def safety_profile_for_runtime(
                 "OPENAI_PROJECT",
             ),
             notes=(
-                "Codex is intentionally disclosed as full-access for CES purposes: invoked with "
-                "--sandbox danger-full-access; CES manifest allowed_tools are not enforced by the Codex adapter."
+                f"Codex sandbox risk is intentionally disclosed: invoked with --sandbox {sandbox}; CES manifest "
+                "allowed_tools are not enforced by the Codex adapter. Use CES_CODEX_SANDBOX to opt into read-only "
+                "or workspace-write when the local host supports Codex sandboxing."
             ),
         )
     return RuntimeSafetyProfile(

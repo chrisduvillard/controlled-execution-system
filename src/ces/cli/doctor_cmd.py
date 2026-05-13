@@ -43,7 +43,7 @@ from rich.table import Table
 from ces.cli._context import find_project_root
 from ces.cli._errors import handle_error
 from ces.cli._output import console, is_json_mode, set_json_mode
-from ces.execution.runtime_safety import safety_profile_for_runtime
+from ces.execution.runtime_safety import codex_sandbox_mode, safety_profile_for_runtime
 from ces.shared.crypto import AUDIT_HMAC_FILENAME, DEV_DEFAULT_HMAC_MARKER
 
 _MIN_PYTHON = (3, 12)
@@ -113,6 +113,7 @@ def _probe_runtime_auth(runtime: str, executable: str, cwd: Path) -> tuple[bool,
     """Run a minimal runtime probe when explicitly requested by --verify-runtime."""
     try:
         if runtime == "codex":
+            sandbox = codex_sandbox_mode()
             command = [
                 executable,
                 "exec",
@@ -120,7 +121,7 @@ def _probe_runtime_auth(runtime: str, executable: str, cwd: Path) -> tuple[bool,
                 "-C",
                 str(cwd),
                 "--sandbox",
-                "danger-full-access",
+                sandbox,
                 "--skip-git-repo-check",
             ]
         elif runtime == "claude":
