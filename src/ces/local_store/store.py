@@ -956,11 +956,16 @@ class LocalProjectStore:
         triage_color: str,
         content: dict[str, Any],
     ) -> None:
-        persisted_content = dict(content)
+        scrubbed_summary = scrub_secrets_from_text(summary)
+        scrubbed_challenge = scrub_secrets_from_text(challenge)
+        # Serialize then scrub the whole packet so nested evidence strings are
+        # redacted before durable storage while retaining JSON-compatible shape.
+        scrubbed_content_json = scrub_secrets_from_text(json.dumps(content, default=_json_default))
+        persisted_content = json.loads(scrubbed_content_json)
         persisted_content.setdefault("manifest_id", manifest_id)
         persisted_content.setdefault("packet_id", packet_id)
-        persisted_content.setdefault("summary", summary)
-        persisted_content.setdefault("challenge", challenge)
+        persisted_content.setdefault("summary", scrubbed_summary)
+        persisted_content.setdefault("challenge", scrubbed_challenge)
         persisted_content.setdefault("triage_color", triage_color)
         # Hash the exact JSON-compatible payload we persist. This keeps merge-time
         # evidence integrity stable after SQLite JSON round-trips convert enums,
@@ -979,8 +984,8 @@ class LocalProjectStore:
                     manifest_id,
                     self._project_id,
                     packet_id,
-                    summary,
-                    challenge,
+                    scrubbed_summary,
+                    scrubbed_challenge,
                     triage_color,
                     json.dumps(persisted_content, default=_json_default),
                     datetime.now(timezone.utc).isoformat(),

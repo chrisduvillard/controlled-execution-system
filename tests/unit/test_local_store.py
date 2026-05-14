@@ -1104,6 +1104,38 @@ def test_save_evidence_hash_matches_json_round_trip_payload(tmp_path: Path) -> N
         store.close()
 
 
+def test_save_evidence_recursively_scrubs_secret_like_values_before_persisting(tmp_path: Path) -> None:
+    token = "ghp" + "_" + "syntheticsecretvalue"
+    api_key = "sk" + "-" + "synthetic-secret"
+    store = LocalProjectStore(tmp_path / ".ces" / "state.db", project_id="proj-local")
+    try:
+        store.save_evidence(
+            "M-scrub-evidence",
+            packet_id="EP-scrub-evidence",
+            summary=f"summary saw {token}",
+            challenge=f"challenge saw OPENAI_API_KEY={api_key}",
+            triage_color="green",
+            content={
+                "notes": [f"runtime printed {token}", {"env": f"OPENAI_API_KEY={api_key}"}],
+                "safe": "keep me",
+            },
+        )
+
+        packet = store.get_evidence_by_packet_id("EP-scrub-evidence")
+
+        assert packet is not None
+        rendered = str(packet)
+        assert token not in rendered
+        assert api_key not in rendered
+        assert packet["summary"] == "summary saw <REDACTED>"
+        assert packet["challenge"] == "challenge saw OPENAI_API_KEY=<REDACTED>"
+        assert packet["notes"][0] == "runtime printed <REDACTED>"
+        assert packet["notes"][1]["env"] == "OPENAI_API_KEY=<REDACTED>"
+        assert packet["safe"] == "keep me"
+    finally:
+        store.close()
+
+
 def test_get_latest_evidence_packet_uses_stable_packet_id_tiebreaker(tmp_path: Path) -> None:
     store = LocalProjectStore(tmp_path / ".ces" / "state.db", project_id="proj-local")
     try:

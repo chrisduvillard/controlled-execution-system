@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+import hashlib
 from typing import Any
 
-from ces.shared.crypto import sha256_hash
+from ces.shared.crypto import canonical_json
 
 _REVIEWED_EVIDENCE_HASH_KEYS = {"reviewed_evidence_hash", "evidence_content_hash"}
 _MANIFEST_HASH_KEYS = ("manifest_hash", "manifest_content_hash")
@@ -22,7 +23,11 @@ def canonical_reviewed_evidence_payload(evidence_packet: dict[str, Any]) -> dict
 
 def compute_reviewed_evidence_hash(evidence_packet: dict[str, Any]) -> str:
     """Compute the canonical hash for an operator-reviewed evidence packet."""
-    return sha256_hash(canonical_reviewed_evidence_payload(evidence_packet))
+    payload = canonical_json(canonical_reviewed_evidence_payload(evidence_packet)).encode("utf-8")
+    # Reviewed-evidence digests are deterministic tamper-evidence for already-redacted
+    # packet content, not password storage.
+    # codeql[py/weak-sensitive-data-hashing]
+    return hashlib.blake2b(payload, digest_size=32, person=b"CESReviewedEv").hexdigest()
 
 
 def extract_reviewed_evidence_hash(evidence_packet: dict[str, Any]) -> str | None:
