@@ -7,6 +7,7 @@ from pathlib import Path
 
 import typer
 
+from ces.cli import _output as _output_mod
 from ces.verification.mri import (
     build_launch_rehearsal,
     build_next_action,
@@ -17,6 +18,7 @@ from ces.verification.mri import (
     build_slop_scan,
     mine_project_invariants,
 )
+from ces.verification.proof_card import build_proof_card
 
 launch_app = typer.Typer(help="Production launch-readiness planning commands.")
 
@@ -74,6 +76,23 @@ def passport(
 
     report = build_production_passport(project_root or Path.cwd())
     if _format_option(output_format) == "json":
+        typer.echo(report.to_json(), nl=False)
+        return
+    typer.echo(report.to_markdown(), nl=False)
+
+
+def proof(
+    project_root: Path | None = typer.Option(
+        None,
+        "--project-root",
+        help="Repo/CES project root to inspect; defaults to the current working directory.",
+    ),
+    output_format: str = typer.Option("markdown", "--format", help="Output format: markdown or json."),
+) -> None:
+    """Produce a compact shareable proof card from local CES evidence."""
+
+    report = build_proof_card(project_root or Path.cwd())
+    if _output_mod._json_mode or _format_option(output_format) == "json":
         typer.echo(report.to_json(), nl=False)
         return
     typer.echo(report.to_markdown(), nl=False)
