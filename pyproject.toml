@@ -103,6 +103,7 @@ exclude = [
     "/.hermes",
     "/.hypothesis",
     "/.github",
+    "/.git",
     "/.gitleaks.toml",
     "/.mcp.json",
     "/tests",

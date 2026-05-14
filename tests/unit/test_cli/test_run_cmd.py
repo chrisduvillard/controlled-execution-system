@@ -101,6 +101,71 @@ def test_builder_prompt_pack_attaches_engineering_charter() -> None:
     assert "Discounts apply at checkout" in prompt
 
 
+def test_greenfield_prompt_pack_requires_beginner_deliverables() -> None:
+    from ces.cli._builder_flow import BuilderBriefDraft
+    from ces.cli.run_cmd import _prompt_pack
+
+    prompt = _prompt_pack(
+        BuilderBriefDraft(
+            request="Create a meal planner app",
+            project_mode="greenfield",
+            constraints=[],
+            acceptance_criteria=["User can add meals and view a weekly plan"],
+            must_not_break=[],
+            open_questions={},
+            source_of_truth=None,
+            critical_flows=[],
+        ),
+        manifest=SimpleNamespace(manifest_id="M-meals", affected_files=()),
+    )
+
+    assert "Greenfield Acceptance Contract" in prompt
+    assert "README.md" in prompt
+    assert "how to run" in prompt.casefold()
+    assert "how to test" in prompt.casefold()
+    assert "unproven" in prompt.casefold()
+    assert "ces:completion" in prompt
+    assert "ces verify --json" in prompt
+
+
+def test_greenfield_completion_summary_includes_beginner_handoff() -> None:
+    from ces.cli._builder_flow import BuilderBriefDraft
+    from ces.cli.run_cmd import _build_completion_summary
+    from ces.verification.completion_contract import CompletionContract, VerificationCommand
+
+    summary = _build_completion_summary(
+        BuilderBriefDraft(
+            request="Create a meal planner app",
+            project_mode="greenfield",
+            constraints=[],
+            acceptance_criteria=["User can add meals and view a weekly plan"],
+            must_not_break=[],
+            open_questions={},
+        ),
+        runtime_name="fake-runtime",
+        decision="approve",
+        merge_allowed=True,
+        triage_color="green",
+        governance=True,
+        manifest_id="M-meals",
+        completion_contract=CompletionContract(
+            request="Create a meal planner app",
+            project_type="python-cli",
+            inferred_commands=(
+                VerificationCommand(id="VC-001", kind="test", command="uv run pytest -q"),
+                VerificationCommand(id="VC-002", kind="smoke", command="uv run meals --help"),
+            ),
+        ),
+    )
+
+    assert "How to run:" in summary
+    assert "How to test:" in summary
+    assert "uv run pytest -q" in summary
+    assert "uv run meals --help" in summary
+    assert "Unproven / remaining risks:" in summary
+    assert "Next CES command: ces verify --json" in summary
+
+
 def test_greenfield_prompt_pack_guides_subdirectory_app_artifact_hygiene() -> None:
     from ces.cli._builder_flow import BuilderBriefDraft
     from ces.cli.run_cmd import _prompt_pack

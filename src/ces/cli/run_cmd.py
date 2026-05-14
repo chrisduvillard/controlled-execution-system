@@ -84,7 +84,11 @@ from ces.shared.enums import (
     TrustStatus,
     WorkflowState,
 )
-from ces.verification.build_contract import write_completion_contract
+from ces.verification.build_contract import (
+    GREENFIELD_PROOF_REQUIREMENTS,
+    GREENFIELD_REQUIRED_ARTIFACTS,
+    write_completion_contract,
+)
 from ces.verification.completion_contract import CompletionContract
 from ces.verification.runner import run_verification_commands
 
@@ -523,6 +527,8 @@ def _prompt_pack(
         )
         if observability_template:
             lines.extend(["", observability_template])
+    if brief.project_mode == "greenfield":
+        lines.extend(_greenfield_acceptance_prompt_lines())
     if brief.project_mode == "brownfield":
         lines.extend(["", "Project Mode: brownfield"])
         if brief.source_of_truth:
@@ -563,6 +569,21 @@ def _prompt_pack(
     if completion_fragment:
         lines.append(completion_fragment)
     return attach_engineering_charter("\n".join(lines))
+
+
+def _greenfield_acceptance_prompt_lines() -> list[str]:
+    return [
+        "",
+        "Greenfield Acceptance Contract:",
+        "- Create a project a beginner can run from a fresh checkout.",
+        "- Required artifacts: " + ", ".join(GREENFIELD_REQUIRED_ARTIFACTS) + ".",
+        "- README.md must include how to run the app and how to test or verify it.",
+        "- Run the strongest available local verification before claiming completion.",
+        "- In the final ces:completion block, include commands run, evidence for each acceptance criterion, and unproven / remaining risks.",
+        "- Proof requirements: " + "; ".join(GREENFIELD_PROOF_REQUIREMENTS) + ".",
+        "- If you cannot verify something, say so clearly and leave it in open_questions or scope_deviations.",
+        "- Next CES command after runtime exits: ces verify --json.",
+    ]
 
 
 def _looks_like_subproject_build(brief: BuilderBriefDraft, manifest: Any | None) -> bool:
@@ -748,6 +769,7 @@ def _build_completion_summary(
     prl_draft_path: str | None = None,
     merge_not_applied: bool = False,
     control_status: ControlPlaneStatus | None = None,
+    completion_contract: CompletionContract | None = None,
 ) -> str:
     blockers = list(auto_blockers or [])
     if control_status is None:
@@ -780,6 +802,8 @@ def _build_completion_summary(
         )
     else:
         lines.append("Need deeper CES details? Re-run with `--governance` or use `ces review`.")
+    if brief.project_mode == "greenfield":
+        lines.extend(_greenfield_handoff_lines(completion_contract))
     if auto_blockers:
         lines.append("Blocking reasons:")
         lines.extend(f"- {item}" for item in auto_blockers)
@@ -795,6 +819,28 @@ def _build_completion_summary(
     if prl_draft_path:
         lines.append(f"PRL draft: {prl_draft_path}")
     return "\n".join(lines)
+
+
+def _greenfield_handoff_lines(completion_contract: CompletionContract | None) -> list[str]:
+    commands = list(completion_contract.inferred_commands if completion_contract is not None else ())
+    test_commands = [
+        command.command for command in commands if command.kind in {"test", "typecheck", "lint", "build", "compile"}
+    ]
+    run_commands = [command.command for command in commands if command.kind in {"smoke", "serve", "run"}]
+    next_command = completion_contract.next_ces_command if completion_contract is not None else "ces verify --json"
+    lines = [
+        "How to run: see README.md and run the app's documented local command.",
+        "How to test: " + ("; ".join(test_commands) if test_commands else "run the README's documented test command"),
+    ]
+    if run_commands:
+        lines.append("Runnable smoke: " + "; ".join(run_commands))
+    lines.extend(
+        [
+            "Unproven / remaining risks: review open_questions, scope_deviations, skipped verification, and any manual-only evidence before shipping.",
+            f"Next CES command: {next_command}",
+        ]
+    )
+    return lines
 
 
 def _brief_from_record(record: Any) -> BuilderBriefDraft:
@@ -1288,10 +1334,10 @@ async def _run_brief_flow(
         runtime_adapter=runtime_adapter,
     )
     independent_verification = None
-    if execution["exit_code"] == 0 and contract_path.is_file():
-        independent_contract = CompletionContract.read(contract_path)
-        if independent_contract.inferred_commands:
-            independent_verification = run_verification_commands(project_root, independent_contract.inferred_commands)
+    completion_contract = CompletionContract.read(contract_path) if contract_path.is_file() else None
+    if execution["exit_code"] == 0 and completion_contract is not None:
+        if completion_contract.inferred_commands:
+            independent_verification = run_verification_commands(project_root, completion_contract.inferred_commands)
     local_store.save_runtime_execution(manifest.manifest_id, execution)
 
     # When manifest has no affected_files, discover Python files from project root
@@ -1635,6 +1681,7 @@ async def _run_brief_flow(
                 manifest_id=manifest.manifest_id,
                 auto_blockers=list(auto_blockers),
                 control_status=control_status,
+                completion_contract=completion_contract,
                 prl_draft_path=prl_draft_path,
             ),
             title="[green]Build Review Complete[/green]",

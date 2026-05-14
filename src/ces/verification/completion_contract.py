@@ -32,10 +32,15 @@ class CompletionContract:
     acceptance_criteria: tuple[AcceptanceCriterion, ...] = ()
     inferred_commands: tuple[VerificationCommand, ...] = ()
     runtime: dict[str, Any] = field(default_factory=dict)
+    required_artifacts: tuple[str, ...] = ()
+    proof_requirements: tuple[str, ...] = ()
+    next_ces_command: str = "ces verify --json"
     version: int = 1
 
     def to_dict(self) -> dict[str, Any]:
-        return asdict(self)
+        """Return a JSON-native dictionary for durable CLI evidence."""
+
+        return json.loads(json.dumps(asdict(self)))
 
     @classmethod
     def from_dict(cls, payload: dict[str, Any]) -> CompletionContract:
@@ -60,6 +65,9 @@ class CompletionContract:
                 for item in payload.get("inferred_commands", [])
             ),
             runtime=dict(payload.get("runtime", {}) or {}),
+            required_artifacts=tuple(str(item) for item in payload.get("required_artifacts", []) or []),
+            proof_requirements=tuple(str(item) for item in payload.get("proof_requirements", []) or []),
+            next_ces_command=str(payload.get("next_ces_command", "ces verify --json") or "ces verify --json"),
         )
 
     def write(self, path: Path) -> None:

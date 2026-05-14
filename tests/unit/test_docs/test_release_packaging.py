@@ -82,12 +82,15 @@ def test_sdist_excludes_internal_workspace_artifacts(tmp_path: Path) -> None:
             "/runtime-transcripts/",
             "/state.db",
             "/keys/",
+            "/.git/",
             "/.hypothesis/",
             "/__pycache__/",
             ".pyc",
             "env.sh",
         )
-        leaked = [name for name in names if any(fragment in name for fragment in blocked_fragments)]
+        leaked = [
+            name for name in names if name.endswith("/.git") or any(fragment in name for fragment in blocked_fragments)
+        ]
         assert leaked == []
 
         local_path_markers = ("/home/", "/Users/")
