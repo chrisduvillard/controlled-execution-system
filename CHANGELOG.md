@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.20] - 2026-05-14
+
+Vibe-coder workflow release focused on getting from a new idea to evidence-backed proof with less cognitive load.
+
+### Added
+
+- Add `ces ship` as a read-only front door from idea or current repo to proof-backed delivery.
+- Add greenfield acceptance handoff requirements for `ces build --gsd`, including beginner artifacts, run instructions, verification steps, and unproven claims.
+- Add `ces verify` evidence persistence and `ces proof` proof cards that separate planned checks from executed evidence and fail closed on missing proof.
+- Add the greenfield gauntlet benchmark that models the `ship → build --gsd → verify → proof` loop and rejects zero-check or timed-out success claims.
+- Add `ces start` as a read-only guided beginner flow that prompts for an objective and routes greenfield projects to build while routing existing repos to diagnostic next steps.
+
+### Changed
+
+- Update README, Quickstart, and Getting Started docs around the beginner `ces start` / `ces ship` workflow.
+- Expand installed CLI/package smoke coverage for vibe-coder front-door commands.
+
 ## [0.1.19] - 2026-05-14
 
 Audit hardening release after the 0.1.18 publish-workflow patch.

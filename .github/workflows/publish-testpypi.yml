@@ -102,6 +102,19 @@ jobs:
           uv pip install --python "$smoke_venv/bin/python" "$wheel_path"
           "$smoke_venv/bin/ces" --help
           "$smoke_venv/bin/ces" --version
+          start_smoke_dir="$(mktemp -d)"
+          "$smoke_venv/bin/ces" --json start "Create a tiny notes app" --project-root "$start_smoke_dir" > "$start_smoke_dir/start.json"
+          python - "$start_smoke_dir/start.json" "$start_smoke_dir" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          payload = json.loads(open(sys.argv[1], encoding="utf-8").read())
+          assert payload["execution_mode"] == "interactive-read-only-guide"
+          assert [stage["name"] for stage in payload["stages"]] == ["Plan", "Build", "Verify", "Prove"]
+          assert "--gsd" in payload["stages"][1]["command"]
+          assert not (Path(sys.argv[2]) / ".ces").exists()
+          PY
           smoke_dir="$(mktemp -d)"
           fake_runtime_dir="$(mktemp -d)"
           cat > "$fake_runtime_dir/codex" <<'EOF'
