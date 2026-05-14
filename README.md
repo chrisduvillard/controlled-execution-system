@@ -69,7 +69,7 @@ CES can credibly improve AI-assisted work by making the operating loop stricter:
 
 CES is built and shipped through its own public control surfaces: CI runs the local-first test suite, package build, metadata checks, dependency audit, lint, formatting, and typecheck gates; release publishing adds installed-CLI smoke coverage before PyPI publication. The repository also carries a CES dogfood gauntlet so the project can review its own changes instead of treating governance as a brochure claim.
 
-The boundary is intentionally narrow. CES is not a hosted control plane, not a substitute for source control or CI, and not a substitute for the runtime's own credentials, authentication, or sandboxing. It gives operators a local evidence trail: `ces:completion` claims, verification artifacts, audit entries, and workspace delta inspection before approval.
+The boundary is intentionally narrow. CES is not a hosted control plane, not a substitute for source control or CI, and not a substitute for the runtime's own credentials, authentication, or sandboxing. It gives operators a local evidence trail: `ces:completion` claims, verification artifacts, audit entries, workspace delta inspection before approval, and a Simplicity Guard that pushes agents toward the smallest boring solution instead of unnecessary frameworks, services, dependencies, or rewrites.
 
 ---
 
@@ -133,7 +133,7 @@ uv tool install --python 3.13 controlled-execution-system
 Install or pin a specific release:
 
 ```bash
-uv tool install controlled-execution-system==0.1.23
+uv tool install controlled-execution-system==0.1.24
 ```
 
 Upgrade later:
@@ -382,7 +382,7 @@ uv run pytest tests/ -m integration -q
 
 Builder-created manifests expect command-backed completion evidence. When completion-gate sensors are enabled, produce matching artifacts before claiming completion: `pytest-results.json`, `ruff-report.json`, `mypy-report.txt`, and `coverage.json`. Dependency and security-sensitive changes can also be backed by `pip-audit-report.json` and SAST JSON artifacts such as `bandit-report.json`; CES parses those when present.
 
-PyPI publishing is tag-driven. Pushing to `master` runs CI only; pushing a `v*` tag such as `v0.1.23` triggers `.github/workflows/publish.yml`, which runs tests, builds distributions, smoke-tests the installed CLI, validates tag/version agreement, and publishes through trusted publishing. Follow [docs/RELEASE.md](https://github.com/chrisduvillard/controlled-execution-system/blob/master/docs/RELEASE.md) for the maintainer checklist.
+PyPI publishing is tag-driven. Pushing to `master` runs CI only; pushing a `v*` tag such as `v0.1.24` triggers `.github/workflows/publish.yml`, which runs tests, builds distributions, smoke-tests the installed CLI, validates tag/version agreement, and publishes through trusted publishing. Follow [docs/RELEASE.md](https://github.com/chrisduvillard/controlled-execution-system/blob/master/docs/RELEASE.md) for the maintainer checklist.
 
 ---
 

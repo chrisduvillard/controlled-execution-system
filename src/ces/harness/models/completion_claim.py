@@ -59,6 +59,15 @@ class DependencyChangeEvidence(CESBaseModel):
     audit_evidence: str = Field(min_length=1)
 
 
+class ComplexityNotes(CESBaseModel):
+    """Explicit agent disclosure for complexity added during a task."""
+
+    new_abstractions: tuple[str, ...] = ()
+    new_dependencies: tuple[str, ...] = ()
+    simpler_alternative_considered: str = ""
+    why_not_simpler: str = "No extra complexity added."
+
+
 class ExplorationEvidence(CESBaseModel):
     """One concrete repo/context item inspected before editing."""
 
@@ -93,6 +102,7 @@ class CompletionClaim(CESBaseModel):
     open_questions: tuple[str, ...] = ()
     scope_deviations: tuple[str, ...] = ()
     dependency_changes: tuple[DependencyChangeEvidence, ...] = ()
+    complexity_notes: ComplexityNotes = Field(default_factory=ComplexityNotes)
     exploration_evidence: tuple[ExplorationEvidence, ...] = ()
     verification_commands: tuple[VerificationCommandEvidence, ...] = ()
 

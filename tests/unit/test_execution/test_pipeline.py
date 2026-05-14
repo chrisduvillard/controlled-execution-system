@@ -6,6 +6,7 @@ from types import SimpleNamespace
 
 from ces.execution.pipeline import (
     COMPLETION_CLAIM_INSTRUCTIONS,
+    SIMPLICITY_GUARD_INSTRUCTIONS,
     build_completion_gate_prompt_fragment,
     build_completion_gate_prompt_fragment_from_values,
     build_manifest_execution_prompt,
@@ -31,6 +32,9 @@ def test_build_manifest_execution_prompt_matches_completion_gate_contract() -> N
     assert "Acceptance criteria you must address" in prompt
     assert "Discounts apply at checkout" in prompt
     assert COMPLETION_CLAIM_INSTRUCTIONS in prompt
+    assert SIMPLICITY_GUARD_INSTRUCTIONS in prompt
+    assert "Prefer the smallest boring solution" in prompt
+    assert "complexity_notes" in prompt
     assert "ces:completion" in prompt
 
 
@@ -51,6 +55,19 @@ def test_completion_gate_fragment_from_values_matches_manifest_fragment() -> Non
         acceptance_criteria=["Criterion one"],
         verification_sensors=["test_pass", "lint"],
     ) == build_completion_gate_prompt_fragment(manifest)
+
+
+def test_completion_gate_requires_complexity_notes() -> None:
+    prompt = build_completion_gate_prompt_fragment_from_values(
+        acceptance_criteria=["A tiny CLI works"],
+        verification_sensors=["test_pass"],
+    )
+
+    assert '"complexity_notes"' in prompt
+    assert "new_abstractions" in prompt
+    assert "new_dependencies" in prompt
+    assert "simpler_alternative_considered" in prompt
+    assert "unnecessary complexity" in prompt
 
 
 def test_normalize_runtime_execution_accepts_wrapped_model_dump() -> None:

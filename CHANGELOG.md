@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.24] - 2026-05-14
+
+### Added
+- Added a CES Simplicity Guard to runtime prompts so agents prefer the smallest boring solution and avoid new frameworks, services, layers, dependencies, background jobs, or rewrites unless required.
+- Added `complexity_notes` to completion claims so agents disclose new abstractions/dependencies and justify why the simpler alternative was insufficient.
+
 ## [0.1.23] - 2026-05-14
 
 ### Added

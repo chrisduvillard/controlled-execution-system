@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 import pytest
 
 from ces.control.models.manifest import TaskManifest
-from ces.harness.models.completion_claim import CompletionClaim, CriterionEvidence, EvidenceKind
+from ces.harness.models.completion_claim import CompletionClaim, ComplexityNotes, CriterionEvidence, EvidenceKind
 from ces.harness.services.completion_verifier import CompletionVerifier
 from ces.shared.enums import ArtifactStatus, BehaviorConfidence, ChangeClass, RiskTier, WorkflowState
 
@@ -77,6 +77,11 @@ async def test_dependency_evidence_allows_dependency_file_change(tmp_path) -> No
                 "lockfile_evidence": "uv.lock updated",
                 "audit_evidence": "pip-audit passed",
             },
+        ),
+        complexity_notes=ComplexityNotes(
+            new_dependencies=("rich",),
+            simpler_alternative_considered="stdlib output",
+            why_not_simpler="This preserves the existing Rich UI behavior already used by the CLI output layer.",
         ),
     )
 
