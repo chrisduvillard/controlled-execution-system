@@ -124,6 +124,8 @@ def test_greenfield_prompt_pack_requires_beginner_deliverables() -> None:
     assert "how to run" in prompt.casefold()
     assert "how to test" in prompt.casefold()
     assert "unproven" in prompt.casefold()
+    assert "smallest boring solution" in prompt
+    assert "complexity_notes" in prompt
     assert "ces:completion" in prompt
     assert "ces verify --json" in prompt
 

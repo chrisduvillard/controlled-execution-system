@@ -9,6 +9,7 @@ import pytest
 from ces.control.models.manifest import TaskManifest
 from ces.harness.models.completion_claim import (
     CompletionClaim,
+    ComplexityNotes,
     CriterionEvidence,
     EvidenceKind,
 )
@@ -118,6 +119,7 @@ async def test_required_evidence_allows_completion_when_present(tmp_path) -> Non
                 "summary": "1 passed",
             },
         ),
+        complexity_notes=ComplexityNotes(),
     )
 
     result = await CompletionVerifier(sensors={}).verify(_manifest(), claim, tmp_path)

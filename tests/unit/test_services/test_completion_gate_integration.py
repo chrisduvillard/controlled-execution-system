@@ -117,7 +117,7 @@ async def test_failing_run_produces_repair_prompt_seen_by_next_run(tmp_path: Pat
     round2_stdout = (
         "Fixed lint.\n\n"
         "```ces:completion\n"
-        '{"task_id": "MANIF-INT-001", "summary": "fixed lint", "files_changed": ["src/auth/login.py"]}\n'
+        '{"task_id": "MANIF-INT-001", "summary": "fixed lint", "files_changed": ["src/auth/login.py"], "complexity_notes": {"new_abstractions": [], "new_dependencies": [], "simpler_alternative_considered": "kept existing file structure", "why_not_simpler": "No extra complexity added."}}\n'
         "```\n"
     )
 

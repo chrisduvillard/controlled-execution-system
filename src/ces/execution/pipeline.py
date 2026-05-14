@@ -12,6 +12,18 @@ from typing import Any
 from ces.harness.prompts.engineering_charter import attach_engineering_charter
 from ces.harness.services.change_impact import build_observability_acceptance_template
 
+SIMPLICITY_GUARD_INSTRUCTIONS = """\
+
+## Simplicity Guard
+
+Prefer the smallest boring solution that satisfies the acceptance criteria.
+Do not add frameworks, services, layers, abstractions, dependencies, background jobs,
+configuration systems, or architectural rewrites unless the task clearly requires them.
+Before editing, inspect existing patterns and reuse them. If you introduce complexity,
+state why the simpler alternative was insufficient and include proof in
+`complexity_notes`.
+"""
+
 COMPLETION_CLAIM_INSTRUCTIONS = """\
 
 ## Completion Gate
@@ -40,6 +52,12 @@ Schema (emit one such block, no markdown wrapping the JSON):
   "dependency_changes": [
     {"file_path": "<dependency file>", "package": "<dependency/package name>", "rationale": "<why it is needed>", "existing_alternative_considered": "<stdlib or existing dependency considered>", "lockfile_evidence": "<lockfile/check evidence>", "audit_evidence": "<audit/check evidence>"}
   ],
+  "complexity_notes": {
+    "new_abstractions": ["<new layer/helper/class introduced, or empty if none>"],
+    "new_dependencies": ["<new package/tool/service introduced, or empty if none>"],
+    "simpler_alternative_considered": "<simplest viable alternative considered>",
+    "why_not_simpler": "<why added complexity was necessary, or 'No extra complexity added.'>"
+  },
   "open_questions": ["<anything you are unsure about>"],
   "scope_deviations": ["<anything you changed beyond the stated scope>"]
 }
@@ -52,6 +70,8 @@ Rules:
 - `verification_commands` must list the concrete verification commands you ran when the manifest requires it.
 - Every entry in this manifest's `acceptance_criteria` MUST appear once in `criteria_satisfied` with concrete evidence (a command you ran and its output, or a file artifact you produced).
 - If you changed dependency files, include one `dependency_changes` entry per dependency file.
+- Use `complexity_notes` to justify any new abstraction, dependency, service, or layer. If you did not add complexity, say so.
+- Treat unnecessary complexity as a task failure: prefer direct edits in existing files over new architecture unless clearly required.
 - Surface uncertainty in `open_questions` rather than hide it.
 - Disclose scope deviations in `scope_deviations`.
 """
@@ -92,7 +112,7 @@ def build_completion_gate_prompt_fragment_from_values(
     sensor_block = "\nConfigured verification sensors (artifacts you must produce):\n" + "\n".join(
         f"- {sensor}" for sensor in verification_sensors
     )
-    return criteria_block + sensor_block + COMPLETION_CLAIM_INSTRUCTIONS
+    return criteria_block + sensor_block + SIMPLICITY_GUARD_INSTRUCTIONS + COMPLETION_CLAIM_INSTRUCTIONS
 
 
 def build_manifest_execution_prompt(manifest: object) -> str:

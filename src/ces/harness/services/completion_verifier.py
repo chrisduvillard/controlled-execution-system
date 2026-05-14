@@ -25,6 +25,7 @@ from typing import TYPE_CHECKING
 from ces.control.services.policy_engine import PolicyEngine
 from ces.harness.models.completion_claim import (
     CompletionClaim,
+    ComplexityNotes,
     VerificationFinding,
     VerificationFindingKind,
     VerificationResult,
@@ -77,6 +78,7 @@ class CompletionVerifier:
         findings.extend(_check_criteria(manifest, claim))
         findings.extend(_check_scope(manifest, claim))
         findings.extend(_check_dependency_evidence(claim))
+        findings.extend(_check_complexity_evidence(claim))
         findings.extend(_check_required_evidence(manifest, claim, project_root))
         findings.extend(_check_profile_governance(claim))
         findings.extend(_check_open_questions(claim))
@@ -286,6 +288,61 @@ def _check_dependency_evidence(claim: CompletionClaim) -> list[VerificationFindi
             ),
         )
     ]
+
+
+def _check_complexity_evidence(claim: CompletionClaim) -> list[VerificationFinding]:
+    findings: list[VerificationFinding] = []
+    notes = claim.complexity_notes
+    explicit_notes = "complexity_notes" in claim.model_fields_set
+    changed_files = tuple(path for path in claim.files_changed if path)
+
+    if changed_files and not explicit_notes:
+        findings.append(
+            VerificationFinding(
+                kind=VerificationFindingKind.EVIDENCE_MISMATCH,
+                severity="medium",
+                message="Changed files require explicit complexity_notes in the completion claim.",
+                hint=(
+                    "Add complexity_notes. If no extra abstraction, dependency, service, or layer was added, "
+                    "state that explicitly with the default no-extra-complexity rationale."
+                ),
+            )
+        )
+
+    if notes.new_abstractions or notes.new_dependencies:
+        if not notes.simpler_alternative_considered.strip():
+            findings.append(
+                VerificationFinding(
+                    kind=VerificationFindingKind.EVIDENCE_MISMATCH,
+                    severity="medium",
+                    message="Complexity disclosure lists new abstractions/dependencies without a simpler alternative.",
+                    hint="Fill complexity_notes.simpler_alternative_considered with the boring option evaluated first.",
+                )
+            )
+        if _is_default_complexity_rationale(notes):
+            findings.append(
+                VerificationFinding(
+                    kind=VerificationFindingKind.EVIDENCE_MISMATCH,
+                    severity="medium",
+                    message="Complexity disclosure lists new abstractions/dependencies without a specific rationale.",
+                    hint="Fill complexity_notes.why_not_simpler with the concrete reason the simpler option was insufficient.",
+                )
+            )
+
+    if claim.dependency_changes and not notes.new_dependencies:
+        findings.append(
+            VerificationFinding(
+                kind=VerificationFindingKind.EVIDENCE_MISMATCH,
+                severity="medium",
+                message="Dependency changes require complexity_notes.new_dependencies disclosure.",
+                hint="List the changed dependency package names in complexity_notes.new_dependencies and justify why no existing/stdlib option was enough.",
+            )
+        )
+    return findings
+
+
+def _is_default_complexity_rationale(notes: ComplexityNotes) -> bool:
+    return notes.why_not_simpler.strip().casefold() == "no extra complexity added."
 
 
 def _check_required_evidence(

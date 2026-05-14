@@ -21,7 +21,9 @@ import pytest
 from ces.control.models.manifest import TaskManifest
 from ces.harness.models.completion_claim import (
     CompletionClaim,
+    ComplexityNotes,
     CriterionEvidence,
+    DependencyChangeEvidence,
     EvidenceKind,
     VerificationCommandEvidence,
     VerificationFindingKind,
@@ -85,6 +87,7 @@ def _make_claim(**overrides: Any) -> CompletionClaim:
         "criteria_satisfied": (),
         "open_questions": (),
         "scope_deviations": (),
+        "complexity_notes": ComplexityNotes(),
     }
     base.update(overrides)
     return CompletionClaim(**base)
@@ -102,6 +105,117 @@ class TestVerifierHappyPath:
         result = await verifier.verify(_make_manifest(), _make_claim(), tmp_path)
         assert result.passed is True
         assert result.findings == ()
+
+    @pytest.mark.asyncio
+    async def test_complexity_notes_are_preserved_on_claim(self, tmp_path: Path) -> None:
+        claim = _make_claim(
+            complexity_notes=ComplexityNotes(
+                new_abstractions=("src/shared/cache.py",),
+                new_dependencies=(),
+                simpler_alternative_considered="Inline direct lookup",
+                why_not_simpler="Two existing call sites need the same tiny helper.",
+            )
+        )
+        verifier = CompletionVerifier(sensors={})
+
+        result = await verifier.verify(_make_manifest(), claim, tmp_path)
+
+        assert result.passed is True
+        assert claim.complexity_notes.new_abstractions == ("src/shared/cache.py",)
+        assert "Inline direct lookup" in claim.complexity_notes.simpler_alternative_considered
+
+    @pytest.mark.asyncio
+    async def test_missing_complexity_notes_blocks_changed_files(self, tmp_path: Path) -> None:
+        verifier = CompletionVerifier(sensors={})
+        claim = CompletionClaim(
+            task_id="MANIF-001",
+            summary="Did the work",
+            files_changed=("src/auth/login.py",),
+            criteria_satisfied=(),
+            open_questions=(),
+            scope_deviations=(),
+        )
+
+        result = await verifier.verify(_make_manifest(), claim, tmp_path)
+
+        assert result.passed is False
+        assert any("complexity_notes" in finding.message for finding in result.findings)
+
+    @pytest.mark.asyncio
+    async def test_complexity_notes_require_boring_alternative_when_abstractions_added(self, tmp_path: Path) -> None:
+        verifier = CompletionVerifier(sensors={})
+        result = await verifier.verify(
+            _make_manifest(),
+            _make_claim(
+                complexity_notes=ComplexityNotes(
+                    new_abstractions=("src/auth/service.py",),
+                    simpler_alternative_considered="",
+                    why_not_simpler="No extra complexity added.",
+                )
+            ),
+            tmp_path,
+        )
+
+        assert result.passed is False
+        messages = "\n".join(finding.message for finding in result.findings)
+        assert "simpler alternative" in messages
+        assert "specific rationale" in messages
+
+    @pytest.mark.asyncio
+    async def test_dependency_change_requires_complexity_dependency_disclosure(self, tmp_path: Path) -> None:
+        verifier = CompletionVerifier(sensors={})
+        result = await verifier.verify(
+            _make_manifest(affected_files=("pyproject.toml",)),
+            _make_claim(
+                files_changed=("pyproject.toml",),
+                dependency_changes=(
+                    DependencyChangeEvidence(
+                        file_path="pyproject.toml",
+                        package="requests",
+                        rationale="Needed for HTTP API calls",
+                        existing_alternative_considered="urllib.request",
+                        lockfile_evidence="uv lock updated",
+                        audit_evidence="pip-audit passed",
+                    ),
+                ),
+                complexity_notes=ComplexityNotes(
+                    simpler_alternative_considered="urllib.request",
+                    why_not_simpler="The API requires retry/session behavior already covered by requests.",
+                ),
+            ),
+            tmp_path,
+        )
+
+        assert result.passed is False
+        assert any("new_dependencies" in finding.message for finding in result.findings)
+
+    @pytest.mark.asyncio
+    async def test_dependency_change_passes_with_complexity_rationale(self, tmp_path: Path) -> None:
+        verifier = CompletionVerifier(sensors={})
+        result = await verifier.verify(
+            _make_manifest(affected_files=("pyproject.toml",)),
+            _make_claim(
+                files_changed=("pyproject.toml",),
+                dependency_changes=(
+                    DependencyChangeEvidence(
+                        file_path="pyproject.toml",
+                        package="requests",
+                        rationale="Needed for HTTP API calls",
+                        existing_alternative_considered="urllib.request",
+                        lockfile_evidence="uv lock updated",
+                        audit_evidence="pip-audit passed",
+                    ),
+                ),
+                complexity_notes=ComplexityNotes(
+                    new_dependencies=("requests",),
+                    simpler_alternative_considered="urllib.request",
+                    why_not_simpler="The API requires retry/session behavior already covered by requests.",
+                ),
+            ),
+            tmp_path,
+        )
+
+        assert result.passed is True
 
     @pytest.mark.asyncio
     async def test_sensors_all_pass_yields_pass(self, tmp_path: Path) -> None:
