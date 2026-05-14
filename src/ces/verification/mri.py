@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import re
+import shlex
 import tomllib
 from dataclasses import dataclass
 from pathlib import Path
@@ -775,6 +776,80 @@ class NextPromptReport:
 
 
 @dataclass(frozen=True)
+class ShipPlanReport:
+    """Read-only beginner front-door plan from idea to proof-backed project."""
+
+    project_root: Path
+    objective: str | None
+    execution_mode: str
+    current_maturity: str
+    target_maturity: str
+    readiness_score: dict[str, Any]
+    blockers: tuple[str, ...]
+    recommended_command: str
+    recommended_commands: tuple[str, ...]
+    next_prompt: str
+    safety_notes: tuple[str, ...]
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema_version": _SCHEMA_VERSION,
+            "project_root": str(self.project_root),
+            "objective": self.objective,
+            "execution_mode": self.execution_mode,
+            "current_maturity": self.current_maturity,
+            "target_maturity": self.target_maturity,
+            "readiness_score": self.readiness_score,
+            "blockers": list(self.blockers),
+            "recommended_command": self.recommended_command,
+            "recommended_commands": list(self.recommended_commands),
+            "next_prompt": self.next_prompt,
+            "safety_notes": list(self.safety_notes),
+        }
+
+    def to_json(self) -> str:
+        return json.dumps(self.to_dict(), indent=2) + "\n"
+
+    def to_markdown(self) -> str:
+        objective = self.objective or "No objective supplied yet."
+        return (
+            "\n".join(
+                [
+                    "# CES Ship Plan",
+                    "",
+                    f"Project root: `{self.project_root}`",
+                    f"Objective: {objective}",
+                    f"Execution mode: **{self.execution_mode}**",
+                    f"Current maturity: **{self.current_maturity}**",
+                    f"Target maturity: **{self.target_maturity}**",
+                    f"Recommended command: `{self.recommended_command}`",
+                    "",
+                    "## What this command does",
+                    "",
+                    "This is a read-only plan. It does not launch Codex or Claude Code, does not create `.ces/`, and does not edit project files.",
+                    "",
+                    "## Highest-priority blockers",
+                    "",
+                    *_bullet(self.blockers),
+                    "",
+                    "## Recommended command sequence",
+                    "",
+                    *_bullet(f"`{command}`" for command in self.recommended_commands),
+                    "",
+                    "## Safety notes",
+                    "",
+                    *_bullet(self.safety_notes),
+                    "",
+                    "## Guardrailed next prompt",
+                    "",
+                    self.next_prompt,
+                ]
+            ).rstrip()
+            + "\n"
+        )
+
+
+@dataclass(frozen=True)
 class ProductionPassportReport:
     report: ProjectMriReport
     evidence_sources: tuple[str, ...]
@@ -808,6 +883,16 @@ class ProductionPassportReport:
 
     def to_markdown(self) -> str:
         payload = self.to_dict()
+        blockers = payload["blockers"]
+        if blockers:
+            blocker_lines = _bullet(f"{item['severity']}: {item['title']} — {item['evidence']}" for item in blockers)
+        elif payload["missing_production_readiness_signals"]:
+            blocker_lines = [
+                "- No critical/high blockers detected.",
+                "- Readiness is incomplete; see missing production-readiness signals below.",
+            ]
+        else:
+            blocker_lines = ["- No critical/high blockers detected."]
         return (
             "\n".join(
                 [
@@ -821,9 +906,7 @@ class ProductionPassportReport:
                     "",
                     "## Blockers",
                     "",
-                    *_bullet(
-                        f"{item['severity']}: {item['title']} — {item['evidence']}" for item in payload["blockers"]
-                    ),
+                    *blocker_lines,
                     "",
                     "## Missing production-readiness signals",
                     "",
@@ -1070,6 +1153,49 @@ def build_production_passport(project_root: str | Path) -> ProductionPassportRep
     return ProductionPassportReport(report, tuple(sources))
 
 
+def build_ship_plan(project_root: str | Path, objective: str | None = None) -> ShipPlanReport:
+    """Build a read-only beginner plan for getting from idea to proof-backed delivery."""
+
+    action = build_next_action(project_root)
+    prompt = build_next_prompt(project_root)
+    objective_text = objective.strip() if objective and objective.strip() else None
+    report = scan_project_mri(project_root)
+    gsd_command = _greenfield_command(objective_text)
+    is_greenfield = _is_greenfield_report(report)
+    recommended = gsd_command if is_greenfield else action.recommended_command
+    commands = ["ces doctor"]
+    if is_greenfield:
+        if objective_text:
+            commands.append(gsd_command)
+        else:
+            commands.append(
+                'ces build --gsd "Describe the app you want to create, including tests and run instructions"'
+            )
+    else:
+        commands.extend(["ces mri", "ces next", "ces next-prompt"])
+        if recommended != "ces verify":
+            commands.append(recommended)
+    commands.extend(["ces passport", "ces launch rehearsal"])
+    safety_notes = (
+        "`ces ship` is read-only; it plans the path and explains the next command before any runtime launch.",
+        "`ces build --gsd` may ask for explicit runtime side-effect consent before launching Codex or Claude Code.",
+        "Keep secrets out of prompts and commits; report only secret names, files, or categories.",
+    )
+    return ShipPlanReport(
+        project_root=action.project_root,
+        objective=objective_text,
+        execution_mode="read-only-plan",
+        current_maturity=action.current_maturity,
+        target_maturity=action.target_maturity,
+        readiness_score=action.readiness_score,
+        blockers=action.highest_priority_blockers,
+        recommended_command=recommended,
+        recommended_commands=tuple(commands),
+        next_prompt=prompt.prompt,
+        safety_notes=safety_notes,
+    )
+
+
 def build_promotion_plan(project_root: str | Path, target_level: str) -> PromotionPlanReport:
     if target_level not in {"shareable-app", "production-candidate", "production-ready"}:
         raise ValueError("target level must be shareable-app, production-candidate, or production-ready")
@@ -1177,9 +1303,21 @@ def _highest_priority_blockers(report: ProjectMriReport) -> tuple[str, ...]:
 def _command_for_missing(report: ProjectMriReport) -> str:
     if any(finding.category == "secret-hygiene" for finding in report.risk_findings):
         return 'ces build "Harden secret hygiene without committing secret values"'
+    if _is_greenfield_report(report):
+        return _greenfield_command(None)
     if report.missing_readiness_signals:
         return 'ces build "Add the next missing production-readiness signal reported by ces next"'
     return "ces verify"
+
+
+def _is_greenfield_report(report: ProjectMriReport) -> bool:
+    signal_names = {signal.name for signal in report.signals}
+    return report.project_type == "unknown" and signal_names <= {"project-type"}
+
+
+def _greenfield_command(objective: str | None) -> str:
+    request = objective or "Create a small runnable app with README, tests, and run instructions"
+    return f"ces build --gsd {shlex.quote(request)}"
 
 
 def _validation_commands_for(report: ProjectMriReport) -> tuple[str, ...]:
