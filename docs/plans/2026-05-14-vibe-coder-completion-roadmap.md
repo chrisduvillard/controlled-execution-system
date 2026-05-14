@@ -74,6 +74,11 @@ Scope:
 - Add `ces benchmark` or harness fixture that runs a fresh-project A-to-Z gauntlet from installed wheel.
 - Emit a friction scorecard: setup blockers, command confusion, runtime consent, evidence quality, final app verification.
 
+Implemented so far in PR D:
+- `ces benchmark greenfield` records the beginner loop explicitly as `ship → build → verify → proof`.
+- The scorecard separates CES loop events from independent project verification commands.
+- Built-wheel smoke now runs the greenfield gauntlet from the packaged CLI surface, not only in-process unit code.
+
 Verification:
 - CI-friendly fake-runtime path plus optional live-runtime dogfood evidence.
 - Artifact hygiene confirms gauntlet outputs do not ship in sdist/wheel.
