@@ -107,6 +107,7 @@ exclude = [
     "/.mcp.json",
     "/tests",
     "/scripts",
+    "/docs/assets",
     "/docs/plans",
     "/.pytest_cache",
     "/.ruff_cache",
