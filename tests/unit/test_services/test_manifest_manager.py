@@ -543,6 +543,41 @@ class TestSignAndVerifyManifest:
         assert signed.content_hash is not None
         assert len(signed.content_hash) == 64  # SHA-256 hex string
 
+    async def test_verify_manifest_rejects_tampered_content_hash(self, manager: ManifestManager) -> None:
+        """verify_manifest binds the stored content_hash to the signed payload."""
+        manifest = await manager.create_manifest(
+            description="A task",
+            risk_tier=RiskTier.C,
+            behavior_confidence=BehaviorConfidence.BC1,
+            change_class=ChangeClass.CLASS_1,
+            affected_files=("src/foo.py",),
+            token_budget=5000,
+            owner="dev",
+        )
+        signed = await manager.sign_manifest(manifest)
+
+        tampered_hash = "0" * 64 if signed.content_hash != "0" * 64 else "1" * 64
+        tampered = signed.model_copy(update={"content_hash": tampered_hash})
+
+        assert await manager.verify_manifest(tampered) is False
+
+    async def test_verify_manifest_rejects_missing_content_hash(self, manager: ManifestManager) -> None:
+        """Signed manifests without a persisted content hash are incomplete."""
+        manifest = await manager.create_manifest(
+            description="A task",
+            risk_tier=RiskTier.C,
+            behavior_confidence=BehaviorConfidence.BC1,
+            change_class=ChangeClass.CLASS_1,
+            affected_files=("src/foo.py",),
+            token_budget=5000,
+            owner="dev",
+        )
+        signed = await manager.sign_manifest(manifest)
+
+        missing_hash = signed.model_copy(update={"content_hash": None})
+
+        assert await manager.verify_manifest(missing_hash) is False
+
     async def test_sign_manifest_logs_to_audit_ledger(
         self, manager: ManifestManager, audit_service: AuditLedgerService
     ) -> None:

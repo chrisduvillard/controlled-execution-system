@@ -23,6 +23,8 @@ from datetime import datetime, timezone
 # TYPE_CHECKING import to avoid circular dependency
 from typing import TYPE_CHECKING
 
+from cryptography.hazmat.primitives import hashes
+
 from ces.control.models.audit_entry import AuditScope
 from ces.control.models.manifest import ManifestDependency, TaskManifest
 from ces.control.services.classification import ClassificationEngine
@@ -513,13 +515,23 @@ class ManifestManager:
 
         return (len(issues) == 0, issues)
 
-    async def sign_manifest(
-        self,
-        manifest: TaskManifest,
-    ) -> TaskManifest:
+    @staticmethod
+    def _signing_payload(manifest: TaskManifest) -> dict[str, object]:
+        """Return canonical manifest fields covered by content hash and signature."""
+        return manifest.model_dump(mode="json", exclude={"signature", "content_hash", "status"})
+
+    @staticmethod
+    def _manifest_content_hash(manifest_data: dict[str, object]) -> str:
+        """Return SHA-256 digest for canonical manifest content bytes."""
+        digest = hashes.Hash(hashes.SHA256())
+        digest.update(canonical_json(manifest_data).encode("utf-8"))
+        return digest.finalize().hex()
+
+    async def sign_manifest(self, manifest: TaskManifest) -> TaskManifest:
         """Sign a manifest with Ed25519 (MANIF-04, D-13).
 
-        Computes content_hash and Ed25519 signature. Changes status to APPROVED.
+        Computes content_hash and Ed25519 signature over the same canonical payload.
+        Changes status to APPROVED.
 
         Args:
             manifest: The manifest to sign.
@@ -535,8 +547,8 @@ class ManifestManager:
             raise ValueError(msg)
 
         # Compute content hash
-        manifest_data = manifest.model_dump(mode="json", exclude={"signature", "content_hash", "status"})
-        content_hash = sha256_hash(manifest_data)
+        manifest_data = self._signing_payload(manifest)
+        content_hash = self._manifest_content_hash(manifest_data)
 
         # Sign the canonical JSON representation
         content_bytes = canonical_json(manifest_data).encode("utf-8")
@@ -592,10 +604,14 @@ class ManifestManager:
         Returns:
             True if signature is valid against the configured public key.
         """
-        if not self._public_key or not manifest.signature:
+        if not self._public_key or not manifest.signature or not manifest.content_hash:
             return False
 
-        manifest_data = manifest.model_dump(mode="json", exclude={"signature", "content_hash", "status"})
+        manifest_data = self._signing_payload(manifest)
+        expected_hash = self._manifest_content_hash(manifest_data)
+        if manifest.content_hash != expected_hash:
+            return False
+
         content_bytes = canonical_json(manifest_data).encode("utf-8")
         signature_bytes = b64decode(manifest.signature)
 

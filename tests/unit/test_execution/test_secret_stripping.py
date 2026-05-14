@@ -12,7 +12,7 @@ from unittest.mock import patch
 
 import pytest
 
-from ces.execution.secrets import build_allowed_env, scrub_secrets_from_text, strip_secret_env
+from ces.execution.secrets import build_allowed_env, scrub_secrets_from_text, scrub_secrets_recursive, strip_secret_env
 
 
 class TestStripSecretsKeyPatterns:
@@ -149,3 +149,19 @@ class TestScrubSecretsFromText:
 
         assert token not in scrubbed
         assert "<REDACTED>" in scrubbed
+
+    def test_recursive_scrub_redacts_nested_evidence_payloads(self) -> None:
+        token = "ghp" + "_" + "syntheticsecretvalue"
+        payload = {
+            "summary": f"runtime printed {token}",
+            "nested": [{"env": "OPENAI_API_KEY=sk-synthetic-secret"}],
+            "safe": 42,
+        }
+
+        scrubbed = scrub_secrets_recursive(payload)
+
+        assert token not in str(scrubbed)
+        assert "sk-synthetic-secret" not in str(scrubbed)
+        assert scrubbed["summary"] == "runtime printed <REDACTED>"
+        assert scrubbed["nested"][0]["env"] == "OPENAI_API_KEY=<REDACTED>"
+        assert scrubbed["safe"] == 42
