@@ -115,6 +115,7 @@ class JsonAwareTyperGroup(typer.core.TyperGroup):
 _ROOT_HELP = """Production Autopilot for local AI-built projects.
 
 Start Here:
+  `ces start`     Guided read-only path: plan → build → verify → prove
   `ces ship`      Read-only plan from idea/current repo to proof-backed delivery
   `ces build --gsd "Create a task tracker app"`
                   Create a new project from an empty folder
@@ -225,6 +226,7 @@ app.command(name="mri", help="Read-only repository diagnostic with project-healt
     mri_cmd.mri
 )
 app.command(name="ship", help="Read-only plan from idea/current repo to proof-backed delivery.")(autopilot_cmd.ship)
+app.command(name="start", help="Interactive read-only guide from idea to proof-backed delivery.")(autopilot_cmd.start)
 app.command(name="next", help="Show the next safest production-readiness action.")(autopilot_cmd.next_action)
 app.command(name="next-prompt", help="Generate a guardrailed prompt for the next readiness step.")(
     autopilot_cmd.next_prompt

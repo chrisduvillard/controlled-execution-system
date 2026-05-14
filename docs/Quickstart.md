@@ -72,14 +72,22 @@ enforcement before the agent starts.
 
 ## 3. Plan or start your project
 
-For a brand-new app, start with the read-only front door:
+For a brand-new app, start with the read-only guided front door:
 
 ```bash
 mkdir my-task-app && cd my-task-app
+ces start
+# prompts: What do you want to build?
+```
+
+For copy/paste or automation, pass the objective directly:
+
+```bash
+ces start "Create a small task tracker app with add/list/complete tasks, tests, and a README"
 ces ship "Create a small task tracker app with add/list/complete tasks, tests, and a README"
 ```
 
-`ces ship` does not create `.ces/`, edit files, or launch Codex/Claude. It explains the safest command sequence. When you are ready to launch the local runtime, run the recommended greenfield command:
+`ces start` and `ces ship` do not create `.ces/`, edit files, or launch Codex/Claude. `ces start` gives the beginner sequence: plan, build, verify, prove. `ces ship` explains the safest command sequence for the current project state. When you are ready to launch the local runtime, run the recommended greenfield command:
 
 ```bash
 ces build --gsd "Create a small task tracker app with add/list/complete tasks, tests, and a README"
