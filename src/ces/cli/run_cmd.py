@@ -357,6 +357,16 @@ def _candidate_scope_paths(text: str) -> list[str]:
     return candidates
 
 
+def _runtime_product_scope_files(delta: WorkspaceDelta) -> tuple[str, ...]:
+    """Runtime-changed product files eligible for inferred manifest scope.
+
+    CES governance files under `.ces/` must remain visible to workspace-delta
+    enforcement, but they must not be laundered into a task manifest's product
+    scope during builder-flow reconciliation.
+    """
+    return tuple(path for path in delta.changed_files if path != ".ces" and not path.startswith(".ces/"))
+
+
 def _manifest_with_effective_brownfield_scope(
     manifest: object,
     brief: BuilderBriefDraft,
@@ -379,7 +389,7 @@ def _manifest_with_effective_brownfield_scope(
             if candidate not in paths:
                 paths.append(candidate)
     if delta is not None:
-        for changed in delta.changed_files:
+        for changed in _runtime_product_scope_files(delta):
             if changed not in paths:
                 paths.append(changed)
     if tuple(paths) == existing:
@@ -406,7 +416,7 @@ def _manifest_with_effective_greenfield_scope(
     """
     if getattr(brief, "project_mode", "") != "greenfield" or getattr(manifest, "affected_files", ()):
         return manifest
-    changed_files = tuple(delta.changed_files)
+    changed_files = _runtime_product_scope_files(delta)
     if not changed_files:
         return manifest
     if isinstance(manifest, TaskManifest):

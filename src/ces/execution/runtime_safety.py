@@ -6,19 +6,23 @@ import os
 
 from ces.shared.base import CESBaseModel
 
-_DEFAULT_CODEX_SANDBOX = "danger-full-access"
+_DEFAULT_CODEX_SANDBOX = "workspace-write"
+_FULL_HOST_CODEX_SANDBOX = "danger-full-access"
 _INVALID_CODEX_SANDBOX_FALLBACK = "read-only"
 _WORKSPACE_SCOPED_CODEX_SANDBOXES = {"read-only", "workspace-write"}
-_ALLOWED_CODEX_SANDBOXES = {*_WORKSPACE_SCOPED_CODEX_SANDBOXES, _DEFAULT_CODEX_SANDBOX}
+_ALLOWED_CODEX_SANDBOXES = {*_WORKSPACE_SCOPED_CODEX_SANDBOXES, _FULL_HOST_CODEX_SANDBOX}
 
 
 def codex_sandbox_mode() -> str:
     """Return the CES-selected Codex sandbox mode.
 
-    ``danger-full-access`` remains the default for Chris's local deployment
-    when no override is present. Operators can opt into Codex's own workspace
-    sandbox with ``CES_CODEX_SANDBOX=workspace-write`` or ``read-only`` when
-    their host can support it.
+    CES defaults Codex to Codex's own workspace sandbox. Operators can opt
+    further down to ``read-only`` with ``CES_CODEX_SANDBOX=read-only``.
+
+    Full-host ``danger-full-access`` is intentionally a two-key override:
+    ``CES_CODEX_SANDBOX=danger-full-access`` plus
+    ``CES_ALLOW_CODEX_DANGER_FULL_ACCESS=1``. A typo or stale env var must not
+    silently expand runtime authority.
 
     If an explicit override is invalid, fail closed to ``read-only`` rather
     than silently expanding back to full-host access or passing arbitrary CLI
@@ -28,7 +32,13 @@ def codex_sandbox_mode() -> str:
     if raw_requested is None:
         return _DEFAULT_CODEX_SANDBOX
     requested = raw_requested.strip()
+    if requested == _FULL_HOST_CODEX_SANDBOX and not _danger_full_access_allowed():
+        return _INVALID_CODEX_SANDBOX_FALLBACK
     return requested if requested in _ALLOWED_CODEX_SANDBOXES else _INVALID_CODEX_SANDBOX_FALLBACK
+
+
+def _danger_full_access_allowed() -> bool:
+    return os.environ.get("CES_ALLOW_CODEX_DANGER_FULL_ACCESS", "").strip().lower() in {"1", "true", "yes"}
 
 
 class RuntimeSafetyProfile(CESBaseModel):
@@ -72,11 +82,9 @@ def safety_profile_for_runtime(
     if normalized == "codex":
         sandbox = codex_sandbox_mode()
         workspace_scoped = sandbox in _WORKSPACE_SCOPED_CODEX_SANDBOXES
-        # Codex defaults to full host access in Chris's CES deployment because
-        # Codex's bubblewrap-backed workspace-write sandbox historically could
-        # not execute shell tools on this host. Operators can opt into Codex's
-        # own workspace sandbox via CES_CODEX_SANDBOX when their host supports
-        # it. CES still cannot enforce manifest allowed_tools inside Codex.
+        # CES defaults Codex to workspace-scoped execution. CES still cannot
+        # enforce manifest allowed_tools inside Codex, so operator consent and
+        # post-run scope checks remain mandatory runtime boundaries.
         return RuntimeSafetyProfile(
             runtime_name="codex",
             tool_allowlist_enforced=False,
@@ -98,8 +106,8 @@ def safety_profile_for_runtime(
             ),
             notes=(
                 f"Codex sandbox risk is intentionally disclosed: invoked with --sandbox {sandbox}; CES manifest "
-                "allowed_tools are not enforced by the Codex adapter. Use CES_CODEX_SANDBOX to opt into read-only "
-                "or workspace-write when the local host supports Codex sandboxing."
+                "allowed_tools are not enforced by the Codex adapter. Use CES_CODEX_SANDBOX=read-only for the "
+                "narrowest Codex sandbox; full-host danger-full-access requires CES_ALLOW_CODEX_DANGER_FULL_ACCESS=1."
             ),
         )
     return RuntimeSafetyProfile(

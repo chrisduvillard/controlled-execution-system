@@ -8,7 +8,6 @@ from pathlib import Path
 from ces.shared.base import CESBaseModel
 
 _EXCLUDED_DIRS = {
-    ".ces",
     ".git",
     ".mypy_cache",
     ".pytest_cache",
@@ -17,6 +16,12 @@ _EXCLUDED_DIRS = {
     "__pycache__",
     "dist",
     "build",
+}
+_EXCLUDED_PATH_PREFIXES = {
+    ".ces/runtime-transcripts/",
+}
+_EXCLUDED_PATHS = {
+    ".ces/state.db-shm",
 }
 
 
@@ -46,9 +51,14 @@ class WorkspaceSnapshot(CESBaseModel):
             if not path.is_file():
                 continue
             rel = path.relative_to(resolved)
-            if any(part in _EXCLUDED_DIRS for part in rel.parts):
+            rel_posix = rel.as_posix()
+            if (
+                any(part in _EXCLUDED_DIRS for part in rel.parts)
+                or any(rel_posix.startswith(prefix) for prefix in _EXCLUDED_PATH_PREFIXES)
+                or rel_posix in _EXCLUDED_PATHS
+            ):
                 continue
-            files[rel.as_posix()] = _hash_file(path)
+            files[rel_posix] = _hash_file(path)
         return cls(root=str(resolved), files=files)
 
     def diff(self, after: WorkspaceSnapshot) -> WorkspaceDelta:

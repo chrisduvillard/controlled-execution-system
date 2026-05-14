@@ -13,8 +13,9 @@ from ces.cli._context import find_project_root
 from ces.cli._errors import handle_error
 from ces.cli._factory import get_services
 from ces.cli._output import console
+from ces.control.services.workflow_engine import WorkflowEngine
 from ces.execution.secrets import scrub_secrets_from_text
-from ces.shared.enums import WorkflowState
+from ces.shared.enums import ActorType, WorkflowState
 
 MAX_MANUAL_EVIDENCE_BYTES = 1_048_576
 TRUNCATED_MANUAL_EVIDENCE_MARKER = "\n...[truncated manual evidence]"
@@ -143,7 +144,19 @@ async def complete_builder_session(
             if manifest_manager is not None and hasattr(manifest_manager, "get_manifest"):
                 manifest = await manifest_manager.get_manifest(resolved_manifest_id)
                 if manifest is not None:
-                    updated_manifest = manifest.model_copy(update={"workflow_state": WorkflowState.APPROVED})
+                    current_state = getattr(manifest, "workflow_state", WorkflowState.UNDER_REVIEW.value)
+                    current_state_value = getattr(current_state, "value", current_state)
+                    engine = WorkflowEngine(
+                        manifest_id=resolved_manifest_id,
+                        audit_ledger=services.get("audit_ledger"),
+                        initial_state=current_state_value,
+                    )
+                    approved_state = await engine.reconcile_manual_completion(
+                        actor="operator",
+                        actor_type=ActorType.HUMAN,
+                        rationale=rationale,
+                    )
+                    updated_manifest = manifest.model_copy(update={"workflow_state": approved_state})
                     await manifest_manager.save_manifest(updated_manifest)
             audit_ledger = services.get("audit_ledger")
             if audit_ledger is not None and hasattr(audit_ledger, "record_approval"):

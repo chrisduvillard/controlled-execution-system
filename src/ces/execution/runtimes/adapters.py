@@ -442,18 +442,18 @@ class CodexRuntimeAdapter(_BaseRuntimeAdapter):
         working_dir: Path,
         allowed_tools: tuple[str, ...] = (),
     ) -> AgentRuntimeResult:
-        # Codex receives full host access instead of an explicit tool allowlist;
-        # side-effect risk is disclosed and gated by the builder flow.
+        # Codex does not enforce CES manifest tool allowlists. CES constrains
+        # it with the selected Codex sandbox plus pre-run consent and post-run
+        # workspace delta checks.
         del allowed_tools
         started = time.monotonic()
         invocation_ref = f"codex-{uuid.uuid4().hex[:12]}"
         transcript_file = self._prepare_project_transcript_path(working_dir, invocation_ref)
         last_message_file = self._prepare_project_transcript_path(working_dir, f"{invocation_ref}-last-message")
         self._initialize_runtime_transcript(transcript_file, invocation_ref)
-        # Full host access remains the default for Chris's deployment because
-        # Codex workspace-write has failed on the target Ubuntu host in the
-        # past (`bwrap: loopback: Failed RTM_NEWADDR`). Operators can opt into
-        # Codex's own sandbox with CES_CODEX_SANDBOX when their host supports it.
+        # The default comes from codex_sandbox_mode(): workspace-write unless
+        # an operator explicitly enables danger-full-access with the two-key
+        # override documented there.
         sandbox = codex_sandbox_mode()
         command = [
             self._resolved_binary(),

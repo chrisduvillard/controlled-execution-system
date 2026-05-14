@@ -14,14 +14,29 @@ def test_claude_profile_discloses_tool_allowlist() -> None:
     assert profile.effective_allowed_tools == ("Read", "Grep")
 
 
-def test_codex_profile_discloses_danger_full_access_not_tool_allowlist() -> None:
+def test_codex_profile_defaults_to_workspace_scoped_sandbox_not_tool_allowlist() -> None:
     profile = safety_profile_for_runtime("codex", allowed_tools=("Read",))
 
     assert profile.runtime_name == "codex"
     assert profile.tool_allowlist_enforced is False
+    assert profile.workspace_scoped is True
+    assert "workspace-write" in profile.network_policy
+    assert "--sandbox danger-full-access" not in profile.notes
+
+
+def test_codex_profile_requires_explicit_full_host_override(monkeypatch) -> None:
+    monkeypatch.setenv("CES_CODEX_SANDBOX", "danger-full-access")
+
+    profile = safety_profile_for_runtime("codex")
+
+    assert profile.workspace_scoped is True
+    assert "read-only" in profile.network_policy
+
+    monkeypatch.setenv("CES_ALLOW_CODEX_DANGER_FULL_ACCESS", "1")
+    profile = safety_profile_for_runtime("codex")
+
     assert profile.workspace_scoped is False
     assert "danger-full-access" in profile.network_policy
-    assert "danger-full-access" in profile.notes
 
 
 def test_codex_profile_reflects_workspace_write_sandbox_opt_in(monkeypatch) -> None:

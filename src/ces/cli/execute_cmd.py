@@ -23,6 +23,7 @@ from ces.cli._factory import get_services
 from ces.cli._legacy_config import reject_server_mode
 from ces.cli._output import console
 from ces.cli.ownership import resolve_actor
+from ces.control.services.policy_engine import PolicyEngine
 from ces.control.services.workflow_engine import WorkflowEngine
 from ces.execution.pipeline import (
     COMPLETION_CLAIM_INSTRUCTIONS,
@@ -31,6 +32,7 @@ from ces.execution.pipeline import (
     normalize_runtime_execution,
 )
 from ces.execution.runtime_safety import runtime_side_effects_require_pre_execution_consent, safety_profile_for_runtime
+from ces.execution.workspace_delta import WorkspaceSnapshot
 from ces.harness.models.completion_claim import VerificationResult
 from ces.harness.models.tool_call_signature import ToolCallSignature
 from ces.shared.base import CESBaseModel
@@ -90,6 +92,13 @@ def _render_findings(result: VerificationResult) -> str:
         parts.append(f"  - {prefix}: {f.message}")
         parts.append(f"      hint: {f.hint}")
     return "\n".join(parts)
+
+
+def _out_of_scope_workspace_changes(manifest: object, changed_files: tuple[str, ...]) -> tuple[str, ...]:
+    """Return actual changed files outside the manifest file boundary."""
+    affected = list(getattr(manifest, "affected_files", ()) or ())
+    forbidden = list(getattr(manifest, "forbidden_files", ()) or ())
+    return tuple(path for path in changed_files if not PolicyEngine.check_file_access(path, affected, forbidden))
 
 
 @run_async
@@ -188,6 +197,7 @@ async def execute_task(
             claim_signatures: list[ToolCallSignature] = []
             no_progress_detected = False
             while True:
+                workspace_before = WorkspaceSnapshot.capture(project_root)
                 try:
                     run_result = await services["agent_runner"].execute_runtime(
                         manifest=manifest,
@@ -204,8 +214,46 @@ async def execute_task(
                         actor=actor,
                     )
                     raise
+                workspace_after = WorkspaceSnapshot.capture(project_root)
+                actual_delta = workspace_before.diff(workspace_after)
+                out_of_scope_changes = _out_of_scope_workspace_changes(manifest, actual_delta.changed_files)
                 execution = _normalize_runtime_execution(run_result)
                 services["local_store"].save_runtime_execution(manifest_id, execution)
+
+                if out_of_scope_changes:
+                    await _mark_execution_failed(
+                        manager=manager,
+                        engine=engine,
+                        manifest=manifest,
+                        actor=actor,
+                    )
+                    scope_message = "Runtime changed files outside manifest scope: " + ", ".join(out_of_scope_changes)
+                    if _output_mod._json_mode:
+                        typer.echo(
+                            json.dumps(
+                                {
+                                    **execution,
+                                    "workspace_delta": {
+                                        "changed_files": list(actual_delta.changed_files),
+                                        "out_of_scope_changes": list(out_of_scope_changes),
+                                    },
+                                    "verification": {
+                                        "passed": False,
+                                        "reason": scope_message,
+                                    },
+                                },
+                                indent=2,
+                            )
+                        )
+                        sys.exit(EXIT_SERVICE_ERROR)
+                    console.print(
+                        Panel(
+                            scope_message,
+                            title="[red]Workspace Scope Violation[/red]",
+                            border_style="red",
+                        )
+                    )
+                    sys.exit(EXIT_SERVICE_ERROR)
 
                 if execution["exit_code"] != 0 or not _completion_gate_enabled(manifest):
                     break

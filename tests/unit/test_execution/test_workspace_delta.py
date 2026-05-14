@@ -20,13 +20,16 @@ def test_workspace_delta_reports_only_files_changed_after_snapshot(tmp_path) -> 
     assert delta.deleted_files == ()
 
 
-def test_workspace_delta_excludes_ces_and_git_internals(tmp_path) -> None:
+def test_workspace_delta_tracks_ces_governance_files_but_ignores_runtime_outputs(tmp_path) -> None:
     snapshot = WorkspaceSnapshot.capture(tmp_path)
     (tmp_path / ".ces" / "state.db").parent.mkdir()
     (tmp_path / ".ces" / "state.db").write_text("state", encoding="utf-8")
+    (tmp_path / ".ces" / "runtime-transcripts").mkdir()
+    (tmp_path / ".ces" / "runtime-transcripts" / "run.jsonl").write_text("transcript", encoding="utf-8")
+    (tmp_path / ".ces" / "state.db-shm").write_text("sqlite shared memory", encoding="utf-8")
     (tmp_path / ".git" / "index").parent.mkdir()
     (tmp_path / ".git" / "index").write_text("git", encoding="utf-8")
 
     delta = snapshot.diff(WorkspaceSnapshot.capture(tmp_path))
 
-    assert delta.created_files == ()
+    assert delta.created_files == (".ces/state.db",)
