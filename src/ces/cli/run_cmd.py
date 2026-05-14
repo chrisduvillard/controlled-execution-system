@@ -90,6 +90,7 @@ from ces.verification.build_contract import (
     write_completion_contract,
 )
 from ces.verification.completion_contract import CompletionContract
+from ces.verification.project_detector import detect_project_type
 from ces.verification.runner import run_verification_commands
 
 BUILDER_COMPLETION_SENSORS = ("test_pass", "lint", "typecheck", "coverage")
@@ -651,6 +652,66 @@ def _harness_memory_evidence(lessons: list[HarnessMemoryLesson]) -> list[dict[st
     """Return exact activated harness memory hashes used in this run."""
 
     return lesson_evidence_records(lessons)
+
+
+def _existing_project_type_for_from_scratch_guard(project_root: Path) -> str | None:
+    """Return a detected project type when `--from-scratch` appears risky."""
+    if not project_root.exists():
+        return None
+    for index, candidate in enumerate((project_root, *project_root.parents)):
+        project_type = _from_scratch_guard_project_type(candidate, allow_deep_scan=index == 0)
+        if project_type is not None:
+            return project_type
+        if (candidate / ".git").exists() or (candidate / ".ces").exists():
+            break
+    return None
+
+
+def _from_scratch_guard_project_type(candidate: Path, *, allow_deep_scan: bool) -> str | None:
+    if (candidate / "pyproject.toml").is_file():
+        return "python-package"
+    if (candidate / "package.json").is_file():
+        return "node-app"
+    container_markers = (
+        "D" + "ockerfile",
+        "container-compose.yml",
+        "container-compose.yaml",
+        "compose.yml",
+        "compose.yaml",
+    )
+    if any((candidate / marker).is_file() for marker in container_markers):
+        return "containerized-app"
+    if (candidate / "README.md").is_file() or (candidate / ".git").exists():
+        return "existing-project"
+    if not allow_deep_scan:
+        return None
+    try:
+        project_type = detect_project_type(candidate)
+    except OSError:
+        return None
+    return None if project_type == "unknown" else project_type
+
+
+def _guard_from_scratch_in_existing_project(
+    *,
+    requested_project_root: Path | None,
+    from_scratch_request: str | None,
+    yes: bool,
+    explicit_greenfield: bool,
+) -> None:
+    """Prevent accidental greenfield runs inside real brownfield projects."""
+    if not from_scratch_request or yes or explicit_greenfield:
+        return
+    target_root = (requested_project_root or Path.cwd()).resolve()
+    project_type = _existing_project_type_for_from_scratch_guard(target_root)
+    if project_type is None:
+        return
+    raise typer.BadParameter(
+        "This directory already looks like an existing project "
+        f"({project_type}). `--from-scratch` is for empty/new projects. "
+        'Use `ces build "Add the smallest safe improvement"` for brownfield changes, '
+        "or rerun with `--yes`/`--greenfield` if replacing this project is intentional."
+    )
 
 
 def _ensure_builder_project(project_root: Path | None = None) -> tuple[Path, dict[str, Any], bool]:
@@ -1729,7 +1790,10 @@ async def run_task(
     from_scratch: str | None = typer.Option(
         None,
         "--from-scratch",
-        help="Beginner-friendly 0-to-100 greenfield request.",
+        help=(
+            "Create a new project from an idea. For existing projects, use a positional brownfield request "
+            'like `ces build "Add password reset"`.'
+        ),
     ),
     legacy_gsd: str | None = typer.Option(
         None,
@@ -1839,6 +1903,7 @@ async def run_task(
             await _preview_from_spec(from_spec, story_id=story)
             return
         greenfield_request = from_scratch or legacy_gsd
+        explicit_greenfield = greenfield
         if from_scratch and legacy_gsd:
             raise typer.BadParameter("Choose only one of --from-scratch or its deprecated --gsd alias.")
         if greenfield_request and description:
@@ -1846,7 +1911,15 @@ async def run_task(
         if greenfield_request:
             description = greenfield_request
             greenfield = True
+        if greenfield and brownfield:
+            raise typer.BadParameter("Choose only one of --greenfield or --brownfield.")
         requested_project_root = project_root
+        _guard_from_scratch_in_existing_project(
+            requested_project_root=requested_project_root,
+            from_scratch_request=greenfield_request,
+            yes=yes,
+            explicit_greenfield=explicit_greenfield,
+        )
         project_root, project_config, bootstrapped = _ensure_builder_project(requested_project_root)
         reverse_preflight_mode = _resolve_reverse_preflight_mode(
             reverse_preflight,
@@ -1854,8 +1927,6 @@ async def run_task(
             project_config=project_config,
         )
         reject_server_mode(project_config)
-        if greenfield and brownfield:
-            raise typer.BadParameter("Choose only one of --greenfield or --brownfield.")
 
         if bootstrapped:
             project_name = project_config.get("project_name", project_root.name)

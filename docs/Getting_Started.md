@@ -62,7 +62,7 @@ ces ship "Create the project I want, including tests, README, and run instructio
 ces build --from-scratch "Create the project I want, including tests, README, and run instructions"
 ```
 
-`ces start` and `ces ship` are read-only and are the safest first commands for a new idea or an AI-built/vibe-coded repo. They do not create `.ces/`, edit files, or launch Codex/Claude. `ces start` reduces cognitive load by showing the four-command beginner path: plan, build, verify, prove. `ces ship` turns the current project state and optional objective into the next recommended command.
+`ces start` and `ces ship` are read-only and are the safest first commands for a new idea or an AI-built/vibe-coded repo. They do not create `.ces/`, edit files, or launch Codex/Claude. `ces start` reduces cognitive load by showing the right path for the current folder: greenfield projects use `ces build --from-scratch "..."`; existing brownfield repos use `ces mri`, `ces next`, plain `ces build "Add ..."`, `ces verify`, and `ces proof`. `ces ship` turns the current project state and optional objective into the next recommended command.
 
 ## 2. Verify a Local Runtime
 

@@ -197,8 +197,8 @@ def test_start_requires_objective_for_noninteractive_json(tmp_path: Path) -> Non
     assert "objective is required" in result.stderr
 
 
-def test_start_existing_repo_uses_diagnostic_next_step_instead_of_greenfield(tmp_path: Path) -> None:
-    (tmp_path / "README.md").write_text("# Existing app\n", encoding="utf-8")
+def test_start_existing_repo_uses_brownfield_path_instead_of_greenfield(tmp_path: Path) -> None:
+    _write_minimal_project(tmp_path)
 
     result = runner.invoke(
         _get_app(),
@@ -207,7 +207,24 @@ def test_start_existing_repo_uses_diagnostic_next_step_instead_of_greenfield(tmp
 
     assert result.exit_code == 0, result.stdout
     payload = json.loads(result.stdout)
-    assert [stage["name"] for stage in payload["stages"]] == ["Plan", "Inspect", "Verify", "Prove"]
-    assert payload["stages"][1]["command"] == "ces mri"
-    assert "--from-scratch" not in payload["stages"][1]["command"]
-    assert "--gsd" not in payload["stages"][1]["command"]
+    assert [stage["name"] for stage in payload["stages"]] == ["Plan", "Inspect", "Build", "Verify", "Prove"]
+    assert payload["stages"][1]["command"] == "ces mri && ces next"
+    assert payload["stages"][2]["command"].startswith("ces build ")
+    assert "--from-scratch" not in payload["stages"][2]["command"]
+    assert "--gsd" not in payload["stages"][2]["command"]
+
+
+def test_ship_existing_repo_recommends_brownfield_sequence(tmp_path: Path) -> None:
+    _write_minimal_project(tmp_path)
+
+    result = runner.invoke(
+        _get_app(), ["ship", "Improve this app", "--project-root", str(tmp_path), "--format", "json"]
+    )
+
+    assert result.exit_code == 0, result.stdout
+    payload = json.loads(result.stdout)
+    assert payload["recommended_command"].startswith("ces build ")
+    assert "--from-scratch" not in payload["recommended_command"]
+    assert payload["recommended_commands"][:4] == ["ces doctor", "ces mri", "ces next", "ces next-prompt"]
+    assert "ces verify" in payload["recommended_commands"]
+    assert "ces proof" in payload["recommended_commands"]

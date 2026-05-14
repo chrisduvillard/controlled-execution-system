@@ -87,13 +87,13 @@ ces start "Create a small task tracker app with add/list/complete tasks, tests, 
 ces ship "Create a small task tracker app with add/list/complete tasks, tests, and a README"
 ```
 
-`ces start` and `ces ship` do not create `.ces/`, edit files, or launch Codex/Claude. `ces start` gives the beginner sequence: plan, build, verify, prove. `ces ship` explains the safest command sequence for the current project state. When you are ready to launch the local runtime, run the recommended greenfield command:
+`ces start` and `ces ship` do not create `.ces/`, edit files, or launch Codex/Claude. `ces start` gives the right sequence for the current folder. New greenfield projects use the recommended `--from-scratch` command:
 
 ```bash
 ces build --from-scratch "Create a small task tracker app with add/list/complete tasks, tests, and a README"
 ```
 
-For an existing repo, use `ces mri` and `ces next` first, then run `ces build "Change ..."` for the bounded implementation step.
+For an existing brownfield repo, use `ces mri` and `ces next` first, then run plain `ces build "Change ..."` for the bounded implementation step. Do not use `--from-scratch` unless you intentionally want to replace/recreate a project.
 
 CES will:
 1. Auto-create `.ces/` with local project state

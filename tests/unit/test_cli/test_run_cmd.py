@@ -2986,7 +2986,126 @@ def test_build_from_scratch_help_hides_legacy_gsd_alias() -> None:
     assert result.exit_code == 0
     assert "from" in result.stdout
     assert "scratch" in result.stdout
+    assert "existing" in result.stdout.lower()
     assert "--gsd" not in result.stdout
+
+
+def test_build_from_scratch_in_existing_project_requires_explicit_override(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "pyproject.toml").write_text("[project]\nname = 'existing-app'\nversion = '0.1.0'\n")
+
+    result = runner.invoke(_get_app(), ["build", "--from-scratch", "Create a new app"])
+
+    assert result.exit_code != 0
+    assert "already looks like an existing project" in result.stdout
+    assert 'ces build "Add' in result.stdout
+    assert not (tmp_path / ".ces").exists()
+
+
+def test_build_from_scratch_in_existing_project_subdir_requires_override(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    (tmp_path / "pyproject.toml").write_text("[project]\nname = 'existing-app'\nversion = '0.1.0'\n")
+    subdir = tmp_path / "src" / "pkg"
+    subdir.mkdir(parents=True)
+    monkeypatch.chdir(subdir)
+
+    result = runner.invoke(_get_app(), ["build", "--from-scratch", "Create a new app"])
+
+    assert result.exit_code != 0
+    assert "already looks like an existing project" in result.stdout
+    assert not (subdir / ".ces").exists()
+    assert not (tmp_path / ".ces").exists()
+
+
+def test_build_from_scratch_in_container_project_requires_override(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / ("D" + "ockerfile")).write_text("FROM python:3.13\n")
+
+    result = runner.invoke(_get_app(), ["build", "--from-scratch", "Create a new app"])
+
+    assert result.exit_code != 0
+    assert "already looks like an existing project" in result.stdout
+    assert not (tmp_path / ".ces").exists()
+
+
+def test_build_from_scratch_greenfield_brownfield_conflict_does_not_bootstrap(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+
+    result = runner.invoke(_get_app(), ["build", "--from-scratch", "Create a new app", "--greenfield", "--brownfield"])
+
+    assert result.exit_code != 0
+    assert "Choose only one of --greenfield or --brownfield" in result.stdout
+    assert not (tmp_path / ".ces").exists()
+
+
+def test_build_from_scratch_in_readme_only_existing_project_requires_override(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "README.md").write_text("# Existing vibe-coded app\n")
+
+    result = runner.invoke(_get_app(), ["build", "--from-scratch", "Create a new app"])
+
+    assert result.exit_code != 0
+    assert "already looks like an existing project" in result.stdout
+    assert not (tmp_path / ".ces").exists()
+
+
+def test_build_from_scratch_empty_greenfield_directory_reaches_brief_without_parent_scan_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+
+    result = runner.invoke(_get_app(), ["build", "--from-scratch", "Create a new app"])
+
+    assert result.exit_code != 0
+    assert "already looks like an existing project" not in result.stdout
+    assert "Any stack or constraint I should respect?" in result.stdout
+
+
+def test_build_from_scratch_existing_project_yes_is_explicit_override(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "package.json").write_text('{"name":"existing-app","scripts":{"test":"echo ok"}}')
+
+    mock_services = {
+        "settings": MagicMock(default_runtime="codex"),
+        "manifest_manager": AsyncMock(),
+        "runtime_registry": MagicMock(resolve_runtime=MagicMock(side_effect=RuntimeError("should not run"))),
+        "agent_runner": AsyncMock(),
+        "local_store": MagicMock(),
+        "evidence_synthesizer": MagicMock(),
+        "audit_ledger": AsyncMock(),
+        "sensor_orchestrator": MagicMock(run_all=AsyncMock(return_value=[])),
+        "legacy_behavior_service": AsyncMock(),
+    }
+
+    with (
+        _patch_services(mock_services),
+        patch("ces.cli.run_cmd.BuilderFlowOrchestrator.collect_brief") as collect_brief,
+    ):
+        collect_brief.return_value = SimpleNamespace(
+            request="Create replacement app",
+            project_mode="greenfield",
+            acceptance_criteria=[],
+            source_of_truth=None,
+            critical_flows=[],
+        )
+        result = runner.invoke(_get_app(), ["build", "--from-scratch", "Create replacement app", "--yes"])
+
+    assert result.exit_code != 0
+    call = collect_brief.call_args.kwargs
+    assert call["description"] == "Create replacement app"
+    assert call["force_greenfield"] is True
+    assert call["force_brownfield"] is False
 
 
 def test_build_legacy_gsd_alias_still_sets_greenfield_defaults(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
