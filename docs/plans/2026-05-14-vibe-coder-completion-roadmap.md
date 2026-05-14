@@ -59,6 +59,11 @@ Scope:
 - Add `ces proof` or enhance `ces passport` with a compact shareable card: objective, changed files, commands run, evidence status, unproven areas, ship/no-ship recommendation.
 - Add `ces verify-claims` deterministic checks for overclaims: claimed tests absent, risky files omitted, missing proof for “done.”
 
+Implemented so far in PR C:
+- Added `ces proof` as a read-only compact proof card with JSON and markdown output.
+- The proof card reports objective, changed files, planned verification commands, executed persisted verification commands, missing beginner artifacts, unproven areas, next command, and candidate/no-ship recommendation.
+- Missing completion contract or missing handoff artifacts stays honest as no-ship/incomplete.
+
 Verification:
 - Fixture-backed tests for honest vs overclaiming completion summaries.
 - JSON + markdown smoke.

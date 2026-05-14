@@ -67,6 +67,7 @@ def verify_project(
             "project_type": contract.project_type,
             "verification": verification.to_dict(),
         }
+        _write_latest_verification(resolved_root, payload)
         if _output_mod._json_mode:
             typer.echo(json.dumps(payload, indent=2))
             if not verification.passed:
@@ -98,6 +99,13 @@ def verify_project(
         handle_error(exc)
     except Exception as exc:
         handle_error(exc)
+
+
+def _write_latest_verification(project_root: Path, payload: dict[str, object]) -> Path:
+    path = project_root / ".ces" / "latest-verification.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+    return path
 
 
 def _resolve_contract_path(project_root: Path, contract_path: Path | None) -> Path:

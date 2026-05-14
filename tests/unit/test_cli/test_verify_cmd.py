@@ -31,6 +31,8 @@ def test_verify_infers_contract_without_writing_by_default(tmp_path: Path, monke
     assert payload["project_type"] == "python-package"
     assert payload["verification"]["passed"] is True
     assert payload["contract_persisted"] is False
+    latest = json.loads((tmp_path / ".ces" / "latest-verification.json").read_text(encoding="utf-8"))
+    assert latest["verification"]["passed"] is True
     assert not (tmp_path / ".ces" / "completion-contract.json").exists()
 
 

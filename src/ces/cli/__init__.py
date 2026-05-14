@@ -120,6 +120,7 @@ Start Here:
                   Create a new project from an empty folder
   `ces build`     Change an existing local project with governed runtime execution
   `ces mri`       Read-only diagnosis of readiness gaps and risks
+  `ces proof`     Compact shareable proof card: evidence, gaps, ship/no-ship
   `ces next`      Show the next safest readiness step
   `ces status`    Show builder-first status; add `--expert` for the full expert view
 
@@ -229,6 +230,7 @@ app.command(name="next-prompt", help="Generate a guardrailed prompt for the next
     autopilot_cmd.next_prompt
 )
 app.command(name="passport", help="Produce a local Production Passport report.")(autopilot_cmd.passport)
+app.command(name="proof", help="Produce a compact proof card with ship/no-ship recommendation.")(autopilot_cmd.proof)
 app.command(name="promote", help="Plan a safe maturity promotion, one checkpoint at a time.")(autopilot_cmd.promote)
 app.command(name="invariants", help="Mine conservative evidence-backed project invariants.")(autopilot_cmd.invariants)
 app.command(name="slop-scan", help="Report deterministic AI-native slop/failure findings.")(autopilot_cmd.slop_scan)
