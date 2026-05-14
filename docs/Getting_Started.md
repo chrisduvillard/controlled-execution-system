@@ -54,15 +54,20 @@ If CES is installed as a tool instead, the normal pattern is shorter:
 
 ```bash
 uv tool install controlled-execution-system
-mkdir -p /tmp/my-new-project
-cd /tmp/my-new-project
-ces start
-# prompts: What do you want to build?
+ces create
+# prompts: Project name / What do you want it to do?
+```
+
+For copy/paste automation:
+
+```bash
+ces create "Freshcart" "Create the project I want, including tests, README, and run instructions"
+mkdir -p freshcart && cd freshcart
 ces ship "Create the project I want, including tests, README, and run instructions"
 ces build --from-scratch "Create the project I want, including tests, README, and run instructions"
 ```
 
-`ces start` and `ces ship` are read-only and are the safest first commands for a new idea or an AI-built/vibe-coded repo. They do not create `.ces/`, edit files, or launch Codex/Claude. `ces start` reduces cognitive load by showing the right path for the current folder: greenfield projects use `ces build --from-scratch "..."`; existing brownfield repos use `ces mri`, `ces next`, plain `ces build "Add ..."`, `ces verify`, and `ces proof`. `ces ship` turns the current project state and optional objective into the next recommended command.
+`ces create`, `ces start`, and `ces ship` are read-only and are the safest first commands for a new idea or an AI-built/vibe-coded repo. They do not create `.ces/`, edit files, or launch Codex/Claude. `ces create` prints the new-project folder and greenfield command sequence. `ces start` reduces cognitive load by showing the right path for the current folder: greenfield projects use `ces build --from-scratch "..."`; existing brownfield repos use `ces mri`, `ces next`, plain `ces build "Add ..."`, `ces verify`, and `ces proof`. `ces ship` turns the current project state and optional objective into the next recommended command.
 
 ## 2. Verify a Local Runtime
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import shlex
 from pathlib import Path
 
@@ -146,6 +147,104 @@ def _guided_start_markdown(payload: dict) -> str:
 
 def _bullet(items: list[str]) -> list[str]:
     return [f"- {item}" for item in items] or ["- None."]
+
+
+def _project_slug(project_name: str) -> str:
+    slug = re.sub(r"[^a-z0-9]+", "-", project_name.strip().lower()).strip("-")
+    return slug or "new-project"
+
+
+def _create_payload(project_root: Path, project_name: str, objective: str) -> dict:
+    slug = _project_slug(project_name)
+    target_directory = project_root / slug
+    quoted_target = shlex.quote(str(target_directory))
+    quoted_objective = shlex.quote(objective)
+    ship_command = f"ces ship -- {quoted_objective}"
+    build_command = (
+        f"ces build --from-scratch={quoted_objective}"
+        if objective.startswith("-")
+        else f"ces build --from-scratch {quoted_objective}"
+    )
+    return {
+        "schema_version": 1,
+        "project_root": str(project_root),
+        "project_name": project_name,
+        "project_slug": slug,
+        "target_directory": str(target_directory),
+        "objective": objective,
+        "execution_mode": "interactive-read-only-wizard",
+        "commands": [
+            f"mkdir -p {quoted_target} && cd {quoted_target}",
+            ship_command,
+            build_command,
+            "ces verify",
+            "ces proof",
+        ],
+        "safety_notes": [
+            "`ces create` is read-only; it prints a project creation plan and copy-paste commands without creating files.",
+            "Run the mkdir/cd command first so `--from-scratch` starts in a new empty directory.",
+            "Only `ces build --from-scratch` launches the governed runtime and creates project files after existing consent gates pass.",
+        ],
+    }
+
+
+def _create_markdown(payload: dict) -> str:
+    lines = [
+        "# CES Create Plan",
+        "",
+        f"Project root: `{payload['project_root']}`",
+        f"Project name: {payload['project_name']}",
+        f"Project slug: `{payload['project_slug']}`",
+        f"Target directory: `{payload['target_directory']}`",
+        f"Objective: {payload['objective']}",
+        f"Execution mode: **{payload['execution_mode']}**",
+        "",
+        "This is an interactive project creation wizard. It is read-only: it does not create folders, initialize `.ces/`, edit files, or launch Codex or Claude Code.",
+        "",
+        "## Copy-paste sequence",
+        "",
+    ]
+    for index, command in enumerate(payload["commands"], start=1):
+        lines.extend([f"{index}. `{command}`", ""])
+    lines.extend(["## Safety notes", "", *_bullet(payload["safety_notes"])])
+    return "\n".join(lines).rstrip() + "\n"
+
+
+def create(
+    project_name: str | None = typer.Argument(
+        None,
+        help="Project name, e.g. 'Calm Notes'. Prompts if omitted in markdown mode.",
+    ),
+    objective: str | None = typer.Argument(
+        None,
+        help="What the new project should do. Prompts if omitted in markdown mode.",
+    ),
+    project_root: Path | None = typer.Option(
+        None,
+        "--project-root",
+        help="Directory where the project folder should be created; defaults to the current working directory.",
+    ),
+    output_format: str = typer.Option("markdown", "--format", help="Output format: markdown or json."),
+) -> None:
+    """Interactive read-only wizard for starting a new project from scratch."""
+
+    format_name = _format_option(output_format)
+    json_requested = _output_mod._json_mode or format_name == "json"
+    project_name_text = project_name.strip() if project_name and project_name.strip() else None
+    objective_text = objective.strip() if objective and objective.strip() else None
+    if project_name_text is None and not json_requested:
+        project_name_text = typer.prompt("Project name").strip()
+    if objective_text is None and not json_requested:
+        objective_text = typer.prompt("What do you want it to do?").strip()
+    if not project_name_text:
+        raise typer.BadParameter("project name is required; pass it as an argument or run interactive markdown mode")
+    if not objective_text:
+        raise typer.BadParameter("objective is required; pass it as an argument or run interactive markdown mode")
+    payload = _create_payload((project_root or Path.cwd()).resolve(), project_name_text, objective_text)
+    if json_requested:
+        typer.echo(json.dumps(payload, indent=2) + "\n", nl=False)
+        return
+    typer.echo(_create_markdown(payload), nl=False)
 
 
 def next_action(

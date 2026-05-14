@@ -1317,7 +1317,10 @@ def _is_greenfield_report(report: ProjectMriReport) -> bool:
 
 def _greenfield_command(objective: str | None) -> str:
     request = objective or "Create a small runnable app with README, tests, and run instructions"
-    return f"ces build --from-scratch {shlex.quote(request)}"
+    quoted_request = shlex.quote(request)
+    if request.startswith("-"):
+        return f"ces build --from-scratch={quoted_request}"
+    return f"ces build --from-scratch {quoted_request}"
 
 
 def _validation_commands_for(report: ProjectMriReport) -> tuple[str, ...]:

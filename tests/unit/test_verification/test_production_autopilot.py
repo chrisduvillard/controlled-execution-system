@@ -173,6 +173,16 @@ def test_ship_plan_shell_quotes_greenfield_objective(tmp_path: Path) -> None:
     assert command in plan.to_markdown()
 
 
+def test_ship_plan_uses_option_safe_greenfield_objective(tmp_path: Path) -> None:
+    from ces.verification.mri import build_ship_plan
+
+    plan = build_ship_plan(tmp_path, objective="--help")
+    payload = plan.to_dict()
+
+    assert payload["recommended_command"] == "ces build --from-scratch=--help"
+    assert "ces build --from-scratch=--help" in payload["recommended_commands"]
+
+
 def test_ship_plan_routes_existing_repo_to_readiness_gap_work(tmp_path: Path) -> None:
     from ces.verification.mri import build_ship_plan
 

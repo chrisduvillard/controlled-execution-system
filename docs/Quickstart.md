@@ -83,11 +83,12 @@ ces start
 For copy/paste or automation, pass the objective directly:
 
 ```bash
+ces create "Task Tracker" "Create a small task tracker app with add/list/complete tasks, tests, and a README"
 ces start "Create a small task tracker app with add/list/complete tasks, tests, and a README"
 ces ship "Create a small task tracker app with add/list/complete tasks, tests, and a README"
 ```
 
-`ces start` and `ces ship` do not create `.ces/`, edit files, or launch Codex/Claude. `ces start` gives the right sequence for the current folder. New greenfield projects use the recommended `--from-scratch` command:
+`ces create`, `ces start`, and `ces ship` do not create `.ces/`, edit files, or launch Codex/Claude. `ces create` prints the new-project folder plus the greenfield command sequence. `ces start` gives the right sequence for the current folder. New greenfield projects use the recommended `--from-scratch` command:
 
 ```bash
 ces build --from-scratch "Create a small task tracker app with add/list/complete tasks, tests, and a README"
