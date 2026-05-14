@@ -47,6 +47,8 @@ def test_benchmark_greenfield_json_writes_scorecard(tmp_path: Path) -> None:
     assert payload["scenario_id"] == "python-cli"
     assert payload["passed"] is True
     assert payload["metrics"]["intervention_count"] == 0
+    assert payload["gauntlet_loop"] == ["ship", "build", "verify", "proof"]
+    assert payload["independent_project_verification"]["passed"] is True
     assert Path(payload["scorecard_path"]).is_file()
 
 

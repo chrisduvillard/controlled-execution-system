@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import shlex
 import subprocess
+import sys
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Literal
@@ -76,9 +77,10 @@ class GreenfieldBenchmarkResult:
     metrics: FrictionMetrics
     events: tuple[BenchmarkEvent, ...]
     scorecard_path: Path
+    scorecard_payload: dict
 
     def to_dict(self) -> dict:
-        payload = asdict(self)
+        payload = dict(self.scorecard_payload)
         payload["scorecard_path"] = str(self.scorecard_path)
         return payload
 
@@ -113,12 +115,12 @@ PYTHON_CLI_SCENARIO = GreenfieldBenchmarkScenario(
     verification_commands=(
         BenchmarkVerificationCommand(
             name="import-package",
-            command="python -c \"import sys; sys.path.insert(0, 'src'); import hello_cli\"",
+            command=f"{shlex.quote(sys.executable)} -c \"import sys; sys.path.insert(0, 'src'); import hello_cli\"",
             timeout_seconds=10,
         ),
         BenchmarkVerificationCommand(
             name="cli-help",
-            command="python -c \"import sys; sys.path.insert(0, 'src'); import hello_cli; hello_cli.main()\"",
+            command=f"{shlex.quote(sys.executable)} -c \"import sys; sys.path.insert(0, 'src'); import hello_cli; hello_cli.main()\"",
             timeout_seconds=10,
         ),
     ),
@@ -158,7 +160,8 @@ def run_greenfield_benchmark(
 
     project_root.mkdir(parents=True, exist_ok=True)
     events: list[BenchmarkEvent] = [
-        BenchmarkEvent(kind="command", name=f"ces build --gsd {scenario.scenario_id}", status="passed")
+        BenchmarkEvent(kind="command", name=f"ces ship {shlex.quote(scenario.request)}", status="passed"),
+        BenchmarkEvent(kind="command", name=f"ces build --gsd {shlex.quote(scenario.request)}", status="passed"),
     ]
 
     for step in scenario.runtime_steps:
@@ -189,25 +192,35 @@ def run_greenfield_benchmark(
                 )
             )
 
+    independent_verification_commands: list[str] = []
+    independent_verification_failed = False
     for command in scenario.verification_commands:
-        completed = subprocess.run(  # noqa: S603 - benchmark commands are built-in deterministic fixtures
-            shlex.split(command.command),
-            cwd=project_root,
-            capture_output=True,
-            text=True,
-            timeout=command.timeout_seconds,
-            check=False,
-        )
-        if completed.returncode == 0:
-            events.append(BenchmarkEvent(kind="command", name=command.name, status="passed"))
+        independent_verification_commands.append(command.name)
+        try:
+            completed = subprocess.run(  # noqa: S603 - benchmark commands are built-in deterministic fixtures
+                shlex.split(command.command),
+                cwd=project_root,
+                capture_output=True,
+                text=True,
+                timeout=command.timeout_seconds,
+                check=False,
+            )
+            returncode = completed.returncode
+            failure_detail = (completed.stderr or completed.stdout).strip()[:500]
+        except subprocess.TimeoutExpired as exc:
+            returncode = 124
+            failure_detail = f"Verification command timed out after {exc.timeout} seconds."
+        if returncode == 0:
+            events.append(BenchmarkEvent(kind="verification", name=command.name, status="passed"))
         else:
+            independent_verification_failed = True
             events.append(
                 BenchmarkEvent(
-                    kind="command",
+                    kind="verification",
                     name=command.name,
                     status="failed",
                     friction_points=2,
-                    detail=(completed.stderr or completed.stdout).strip()[:500],
+                    detail=failure_detail,
                 )
             )
             events.append(
@@ -219,18 +232,43 @@ def run_greenfield_benchmark(
                 )
             )
 
+    artifact_failed = any(event.kind == "artifact" and event.status == "failed" for event in events)
+    independent_verification_sufficient = (
+        bool(independent_verification_commands) and not independent_verification_failed
+    )
+    verify_passed = not artifact_failed and independent_verification_sufficient
+    events.append(
+        BenchmarkEvent(
+            kind="command",
+            name="ces verify",
+            status="passed" if verify_passed else "failed",
+            friction_points=0 if verify_passed else 2,
+            detail=None if verify_passed else "Verification found missing artifacts or failing project checks.",
+        )
+    )
+    events.append(
+        BenchmarkEvent(
+            kind="command",
+            name="ces proof",
+            status="passed" if verify_passed else "failed",
+            friction_points=0 if verify_passed else 1,
+            detail=None if verify_passed else "Proof card must recommend no-ship until evidence is green.",
+        )
+    )
     event_tuple = tuple(events)
     metrics = calculate_friction_metrics(event_tuple)
     passed = not any(event.status in {"failed", "required"} for event in event_tuple)
     score = _score(metrics=metrics, passed=passed)
-    scorecard_path = _write_scorecard(
-        project_root=project_root,
+    scorecard_payload = _scorecard_payload(
         scenario=scenario,
         passed=passed,
         score=score,
         metrics=metrics,
         events=event_tuple,
+        independent_verification_commands=tuple(independent_verification_commands),
+        independent_verification_passed=independent_verification_sufficient,
     )
+    scorecard_path = _write_scorecard(project_root=project_root, scenario=scenario, payload=scorecard_payload)
     return GreenfieldBenchmarkResult(
         scenario_id=scenario.scenario_id,
         passed=passed,
@@ -238,6 +276,7 @@ def run_greenfield_benchmark(
         metrics=metrics,
         events=event_tuple,
         scorecard_path=scorecard_path,
+        scorecard_payload=scorecard_payload,
     )
 
 
@@ -247,28 +286,42 @@ def _score(*, metrics: FrictionMetrics, passed: bool) -> int:
     return max(0, min(100, base - penalty))
 
 
-def _write_scorecard(
+def _scorecard_payload(
     *,
-    project_root: Path,
     scenario: GreenfieldBenchmarkScenario,
     passed: bool,
     score: int,
     metrics: FrictionMetrics,
     events: tuple[BenchmarkEvent, ...],
-) -> Path:
-    scorecard_dir = project_root / ".ces" / "benchmarks"
-    scorecard_dir.mkdir(parents=True, exist_ok=True)
-    scorecard_path = scorecard_dir / f"{scenario.scenario_id}-scorecard.json"
-    payload = {
+    independent_verification_commands: tuple[str, ...],
+    independent_verification_passed: bool,
+) -> dict:
+    return {
         "scenario_id": scenario.scenario_id,
         "scenario_name": scenario.name,
         "request": scenario.request,
+        "gauntlet_loop": ["ship", "build", "verify", "proof"],
         "acceptance_criteria": list(scenario.acceptance_criteria),
         "passed": passed,
         "score": score,
         "metrics": asdict(metrics),
+        "independent_project_verification": {
+            "passed": independent_verification_passed,
+            "commands": list(independent_verification_commands),
+        },
         "events": [asdict(event) for event in events],
     }
+
+
+def _write_scorecard(
+    *,
+    project_root: Path,
+    scenario: GreenfieldBenchmarkScenario,
+    payload: dict,
+) -> Path:
+    scorecard_dir = project_root / ".ces" / "benchmarks"
+    scorecard_dir.mkdir(parents=True, exist_ok=True)
+    scorecard_path = scorecard_dir / f"{scenario.scenario_id}-scorecard.json"
     scorecard_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
     latest_path = scorecard_dir / "latest.json"
     latest_path.write_text(json.dumps(payload | {"scorecard_path": str(scorecard_path)}, indent=2), encoding="utf-8")

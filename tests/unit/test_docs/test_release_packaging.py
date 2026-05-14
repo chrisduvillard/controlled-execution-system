@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import shutil
 import sys
@@ -152,6 +153,28 @@ def test_built_wheel_exposes_working_plain_cli(tmp_path: Path) -> None:
     assert root_help.returncode == 0, root_help.stderr or root_help.stdout
     assert "Production Autopilot for local AI-built projects." in root_help.stdout
     assert "ces ship" in root_help.stdout
+
+    benchmark_smoke = run(  # noqa: S603
+        [
+            sys.executable,
+            "-c",
+            smoke_cmd,
+            "--json",
+            "benchmark",
+            "greenfield",
+            "--project-root",
+            str(tmp_path / "installed-wheel-gauntlet"),
+        ],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+        env=smoke_env,
+    )
+    assert benchmark_smoke.returncode == 0, benchmark_smoke.stderr or benchmark_smoke.stdout
+    benchmark_payload = json.loads(benchmark_smoke.stdout)
+    assert benchmark_payload["gauntlet_loop"] == ["ship", "build", "verify", "proof"]
+    assert benchmark_payload["independent_project_verification"]["passed"] is True
 
     init_help = run(  # noqa: S603
         [sys.executable, "-c", smoke_cmd, "init", "--help"],
