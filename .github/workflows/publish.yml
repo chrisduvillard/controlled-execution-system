@@ -112,7 +112,8 @@ jobs:
           payload = json.loads(open(sys.argv[1], encoding="utf-8").read())
           assert payload["execution_mode"] == "interactive-read-only-guide"
           assert [stage["name"] for stage in payload["stages"]] == ["Plan", "Build", "Verify", "Prove"]
-          assert "--gsd" in payload["stages"][1]["command"]
+          assert "--from-scratch" in payload["stages"][1]["command"]
+          assert "--gsd" not in payload["stages"][1]["command"]
           assert not (Path(sys.argv[2]) / ".ces").exists()
           PY
           smoke_dir="$(mktemp -d)"

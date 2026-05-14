@@ -117,7 +117,7 @@ _ROOT_HELP = """Production Autopilot for local AI-built projects.
 Start Here:
   `ces start`     Guided read-only path: plan → build → verify → prove
   `ces ship`      Read-only plan from idea/current repo to proof-backed delivery
-  `ces build --gsd "Create a task tracker app"`
+  `ces build --from-scratch "Create a task tracker app"`
                   Create a new project from an empty folder
   `ces build`     Change an existing local project with governed runtime execution
   `ces mri`       Read-only diagnosis of readiness gaps and risks

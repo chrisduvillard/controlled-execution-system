@@ -129,7 +129,7 @@ def test_ship_json_is_read_only_and_includes_objective(tmp_path: Path) -> None:
     payload = json.loads(result.stdout)
     assert payload["execution_mode"] == "read-only-plan"
     assert payload["objective"] == "Create a recipe app"
-    assert payload["recommended_command"].startswith("ces build --gsd")
+    assert payload["recommended_command"].startswith("ces build --from-scratch")
 
 
 def test_ship_markdown_explains_safe_front_door(tmp_path: Path) -> None:
@@ -139,7 +139,7 @@ def test_ship_markdown_explains_safe_front_door(tmp_path: Path) -> None:
     assert "# CES Ship Plan" in result.stdout
     assert "read-only" in result.stdout
     assert "does not launch Codex or Claude Code" in result.stdout
-    assert "ces build --gsd" in result.stdout
+    assert "ces build --from-scratch" in result.stdout
 
 
 def test_start_interactive_prompts_for_objective_and_stays_read_only(tmp_path: Path) -> None:
@@ -160,7 +160,7 @@ def test_start_interactive_prompts_for_objective_and_stays_read_only(tmp_path: P
     assert "Step 2: Build" in result.stdout
     assert "Step 3: Verify" in result.stdout
     assert "Step 4: Prove" in result.stdout
-    assert "ces build --gsd 'Create a calm habit tracker'" in result.stdout
+    assert "ces build --from-scratch 'Create a calm habit tracker'" in result.stdout
 
 
 def test_start_json_outputs_beginner_guided_stages(tmp_path: Path) -> None:
@@ -174,7 +174,7 @@ def test_start_json_outputs_beginner_guided_stages(tmp_path: Path) -> None:
     assert payload["execution_mode"] == "interactive-read-only-guide"
     assert payload["objective"] == "Create a note app"
     assert [stage["name"] for stage in payload["stages"]] == ["Plan", "Build", "Verify", "Prove"]
-    assert payload["stages"][1]["command"] == "ces build --gsd 'Create a note app'"
+    assert payload["stages"][1]["command"] == "ces build --from-scratch 'Create a note app'"
     assert payload["safety_notes"][0].startswith("`ces start` is read-only")
 
 
@@ -209,4 +209,5 @@ def test_start_existing_repo_uses_diagnostic_next_step_instead_of_greenfield(tmp
     payload = json.loads(result.stdout)
     assert [stage["name"] for stage in payload["stages"]] == ["Plan", "Inspect", "Verify", "Prove"]
     assert payload["stages"][1]["command"] == "ces mri"
+    assert "--from-scratch" not in payload["stages"][1]["command"]
     assert "--gsd" not in payload["stages"][1]["command"]

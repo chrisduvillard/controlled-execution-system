@@ -15,7 +15,7 @@
 CES is complete enough for broad vibe-coder usage only when a fresh PyPI install can reliably handle this loop:
 
 1. `ces ship "Create <project>"` explains a safe plan from an empty folder without mutation.
-2. `ces build --gsd "Create <project>"` creates a runnable project with README, tests, and run instructions.
+2. `ces build --from-scratch "Create <project>"` creates a runnable project with README, tests, and run instructions.
 3. `ces verify`, `ces passport`, and `ces launch rehearsal` produce understandable proof and remaining-risk notes.
 4. A fresh installed-package gauntlet independently verifies the created project, not just CES self-reports.
 5. Failure states always include the next best command and never pretend a red/unknown evidence state is ready.
@@ -28,7 +28,7 @@ Status: initial implementation branch `feat/vibe-coder-ship-front-door`.
 
 Scope:
 - Add read-only `ces ship [objective]`.
-- Promote `ces build --gsd` for empty-folder creation.
+- Promote `ces build --from-scratch` for empty-folder creation.
 - Make empty-project `ces next` recommend greenfield creation instead of readiness-only work.
 - Fix Production Passport wording so incomplete readiness is not hidden as only “None detected.”
 - Update README / Quickstart / Getting Started.
@@ -42,7 +42,7 @@ Verification:
 Scope:
 - Add a deterministic `--starter` / project-kind planner or structured objective extraction for common app types.
 - Require README, run command, tests, and verification profile in greenfield completion evidence.
-- Make `ces build --gsd` final output always include: how to run, how to test, what is unproven, next CES command.
+- Make `ces build --from-scratch` final output always include: how to run, how to test, what is unproven, next CES command.
 
 Implemented in PR B:
 - Completion contracts now persist required artifacts (`README.md`, run command, test command, verification evidence), proof requirements, and `ces verify --json` as the next CES command.

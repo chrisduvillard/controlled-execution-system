@@ -59,7 +59,7 @@ cd /tmp/my-new-project
 ces start
 # prompts: What do you want to build?
 ces ship "Create the project I want, including tests, README, and run instructions"
-ces build --gsd "Create the project I want, including tests, README, and run instructions"
+ces build --from-scratch "Create the project I want, including tests, README, and run instructions"
 ```
 
 `ces start` and `ces ship` are read-only and are the safest first commands for a new idea or an AI-built/vibe-coded repo. They do not create `.ces/`, edit files, or launch Codex/Claude. `ces start` reduces cognitive load by showing the four-command beginner path: plan, build, verify, prove. `ces ship` turns the current project state and optional objective into the next recommended command.
