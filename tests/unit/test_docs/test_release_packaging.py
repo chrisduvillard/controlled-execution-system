@@ -153,6 +153,7 @@ def test_built_wheel_exposes_working_plain_cli(tmp_path: Path) -> None:
     assert root_help.returncode == 0, root_help.stderr or root_help.stdout
     assert "Production Autopilot for local AI-built projects." in root_help.stdout
     assert "ces ship" in root_help.stdout
+    assert "ces start" in root_help.stdout
 
     benchmark_smoke = run(  # noqa: S603
         [

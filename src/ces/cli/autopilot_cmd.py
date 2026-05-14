@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import shlex
 from pathlib import Path
 
 import typer
@@ -28,6 +29,91 @@ def _format_option(value: str) -> str:
     if normalized not in {"markdown", "json"}:
         raise typer.BadParameter("format must be 'markdown' or 'json'")
     return normalized
+
+
+def _guided_start_payload(project_root: Path, objective: str) -> dict:
+    ship_plan = build_ship_plan(project_root, objective=objective)
+    ship_command = f"ces ship {shlex.quote(objective)}"
+    next_command = next(
+        (command for command in ship_plan.recommended_commands if command not in {"ces doctor", ship_command}),
+        ship_plan.recommended_command,
+    )
+    action_stage_name = "Build" if "ces build" in next_command else "Inspect"
+    action_stage_purpose = (
+        "Create or update the project with README, tests, run instructions, and a handoff contract."
+        if action_stage_name == "Build"
+        else "Diagnose the existing project and generate the next bounded readiness step before runtime execution."
+    )
+    stages = [
+        {
+            "name": "Plan",
+            "command": ship_command,
+            "purpose": "Turn the idea into a read-only delivery plan before launching any runtime.",
+        },
+        {
+            "name": action_stage_name,
+            "command": next_command,
+            "purpose": action_stage_purpose,
+        },
+        {
+            "name": "Verify",
+            "command": "ces verify",
+            "purpose": "Run the project's persisted verification policy and save local evidence.",
+        },
+        {
+            "name": "Prove",
+            "command": "ces proof",
+            "purpose": "Produce a compact evidence-backed ship/no-ship proof card.",
+        },
+    ]
+    return {
+        "schema_version": 1,
+        "project_root": str(project_root),
+        "objective": objective,
+        "execution_mode": "interactive-read-only-guide",
+        "current_maturity": ship_plan.current_maturity,
+        "target_maturity": ship_plan.target_maturity,
+        "recommended_command": ship_plan.recommended_command,
+        "recommended_commands": list(ship_plan.recommended_commands),
+        "stages": stages,
+        "safety_notes": [
+            "`ces start` is read-only; it only collects the objective and prints the guided path.",
+            "Only runtime commands such as `ces build` may launch an AI runtime, and runtime launch still requires the existing consent gates.",
+            "Run `ces proof` only after verification evidence exists; proof cards must not overclaim unverified work.",
+        ],
+    }
+
+
+def _guided_start_markdown(payload: dict) -> str:
+    lines = [
+        "# CES Guided Start",
+        "",
+        f"Project root: `{payload['project_root']}`",
+        f"Objective: {payload['objective']}",
+        f"Execution mode: **{payload['execution_mode']}**",
+        "",
+        "This is a beginner-safe guided path from idea to proof-backed delivery. It is read-only and does not create `.ces/`, edit files, or launch Codex or Claude Code.",
+        "",
+        "## Guided path",
+        "",
+    ]
+    for index, stage in enumerate(payload["stages"], start=1):
+        lines.extend(
+            [
+                f"### Step {index}: {stage['name']}",
+                "",
+                f"Command: `{stage['command']}`",
+                "",
+                stage["purpose"],
+                "",
+            ]
+        )
+    lines.extend(["## Safety notes", "", *_bullet(payload["safety_notes"])])
+    return "\n".join(lines).rstrip() + "\n"
+
+
+def _bullet(items: list[str]) -> list[str]:
+    return [f"- {item}" for item in items] or ["- None."]
 
 
 def next_action(
@@ -117,6 +203,34 @@ def ship(
         typer.echo(report.to_json(), nl=False)
         return
     typer.echo(report.to_markdown(), nl=False)
+
+
+def start(
+    objective: str | None = typer.Argument(
+        None,
+        help="Optional project objective; prompts if omitted in markdown mode.",
+    ),
+    project_root: Path | None = typer.Option(
+        None,
+        "--project-root",
+        help="Repo/CES project root to guide; defaults to the current working directory.",
+    ),
+    output_format: str = typer.Option("markdown", "--format", help="Output format: markdown or json."),
+) -> None:
+    """Collect a beginner objective and print the guided ship/build/verify/proof path."""
+
+    format_name = _format_option(output_format)
+    json_requested = _output_mod._json_mode or format_name == "json"
+    objective_text = objective.strip() if objective and objective.strip() else None
+    if objective_text is None and not json_requested:
+        objective_text = typer.prompt("What do you want to build?").strip()
+    if not objective_text:
+        raise typer.BadParameter("objective is required; pass it as an argument or run interactive markdown mode")
+    payload = _guided_start_payload((project_root or Path.cwd()).resolve(), objective_text)
+    if json_requested:
+        typer.echo(json.dumps(payload, indent=2) + "\n", nl=False)
+        return
+    typer.echo(_guided_start_markdown(payload), nl=False)
 
 
 def promote(

@@ -140,3 +140,73 @@ def test_ship_markdown_explains_safe_front_door(tmp_path: Path) -> None:
     assert "read-only" in result.stdout
     assert "does not launch Codex or Claude Code" in result.stdout
     assert "ces build --gsd" in result.stdout
+
+
+def test_start_interactive_prompts_for_objective_and_stays_read_only(tmp_path: Path) -> None:
+    before = sorted(path.relative_to(tmp_path).as_posix() for path in tmp_path.rglob("*"))
+
+    result = runner.invoke(
+        _get_app(), ["start", "--project-root", str(tmp_path)], input="Create a calm habit tracker\n"
+    )
+
+    after = sorted(path.relative_to(tmp_path).as_posix() for path in tmp_path.rglob("*"))
+    assert result.exit_code == 0, result.stdout
+    assert before == after
+    assert not (tmp_path / ".ces").exists()
+    assert "What do you want to build?" in result.stdout
+    assert "# CES Guided Start" in result.stdout
+    assert "Objective: Create a calm habit tracker" in result.stdout
+    assert "Step 1: Plan" in result.stdout
+    assert "Step 2: Build" in result.stdout
+    assert "Step 3: Verify" in result.stdout
+    assert "Step 4: Prove" in result.stdout
+    assert "ces build --gsd 'Create a calm habit tracker'" in result.stdout
+
+
+def test_start_json_outputs_beginner_guided_stages(tmp_path: Path) -> None:
+    result = runner.invoke(
+        _get_app(),
+        ["start", "Create a note app", "--project-root", str(tmp_path), "--format", "json"],
+    )
+
+    assert result.exit_code == 0, result.stdout
+    payload = json.loads(result.stdout)
+    assert payload["execution_mode"] == "interactive-read-only-guide"
+    assert payload["objective"] == "Create a note app"
+    assert [stage["name"] for stage in payload["stages"]] == ["Plan", "Build", "Verify", "Prove"]
+    assert payload["stages"][1]["command"] == "ces build --gsd 'Create a note app'"
+    assert payload["safety_notes"][0].startswith("`ces start` is read-only")
+
+
+def test_start_honors_root_json_flag(tmp_path: Path) -> None:
+    result = runner.invoke(
+        _get_app(),
+        ["--json", "start", "Create a note app", "--project-root", str(tmp_path)],
+    )
+
+    assert result.exit_code == 0, result.stdout
+    payload = json.loads(result.stdout)
+    assert payload["execution_mode"] == "interactive-read-only-guide"
+    assert payload["objective"] == "Create a note app"
+
+
+def test_start_requires_objective_for_noninteractive_json(tmp_path: Path) -> None:
+    result = runner.invoke(_get_app(), ["--json", "start", "--project-root", str(tmp_path)])
+
+    assert result.exit_code != 0
+    assert "objective is required" in result.stderr
+
+
+def test_start_existing_repo_uses_diagnostic_next_step_instead_of_greenfield(tmp_path: Path) -> None:
+    (tmp_path / "README.md").write_text("# Existing app\n", encoding="utf-8")
+
+    result = runner.invoke(
+        _get_app(),
+        ["start", "Improve this app", "--project-root", str(tmp_path), "--format", "json"],
+    )
+
+    assert result.exit_code == 0, result.stdout
+    payload = json.loads(result.stdout)
+    assert [stage["name"] for stage in payload["stages"]] == ["Plan", "Inspect", "Verify", "Prove"]
+    assert payload["stages"][1]["command"] == "ces mri"
+    assert "--gsd" not in payload["stages"][1]["command"]
