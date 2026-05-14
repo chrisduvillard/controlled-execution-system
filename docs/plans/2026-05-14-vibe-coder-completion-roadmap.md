@@ -44,6 +44,11 @@ Scope:
 - Require README, run command, tests, and verification profile in greenfield completion evidence.
 - Make `ces build --gsd` final output always include: how to run, how to test, what is unproven, next CES command.
 
+Implemented in PR B:
+- Completion contracts now persist required artifacts (`README.md`, run command, test command, verification evidence), proof requirements, and `ces verify --json` as the next CES command.
+- Greenfield runtime prompts include a beginner-facing acceptance contract requiring README run/test instructions, verification evidence, and unproven-risk disclosure.
+- Greenfield completion summaries include how to run, how to test, runnable smoke commands when inferred, unproven/remaining-risk guidance, and the next CES command.
+
 Verification:
 - Fresh temp project smoke with fake runtime where possible and real-runtime dogfood when authorized.
 - Regression tests for completion-contract shape and greenfield final UX.

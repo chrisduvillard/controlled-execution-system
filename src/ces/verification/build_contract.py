@@ -9,6 +9,14 @@ from ces.verification.command_inference import infer_verification_commands
 from ces.verification.completion_contract import CompletionContract, criteria_from_texts
 from ces.verification.project_detector import detect_project_type
 
+GREENFIELD_REQUIRED_ARTIFACTS = ("README.md", "run command", "test command", "verification evidence")
+GREENFIELD_PROOF_REQUIREMENTS = (
+    "README documents how to run the project locally",
+    "README documents how to test or verify the project",
+    "Completion evidence lists commands run and their outcomes",
+    "Document unproven areas or remaining risks",
+)
+
 
 def build_completion_contract(
     *,
@@ -30,6 +38,9 @@ def build_completion_contract(
             project_root, project_type, acceptance_criteria=acceptance_criteria
         ),
         runtime=runtime,
+        required_artifacts=GREENFIELD_REQUIRED_ARTIFACTS,
+        proof_requirements=GREENFIELD_PROOF_REQUIREMENTS,
+        next_ces_command="ces verify --json",
     )
 
 
