@@ -319,6 +319,29 @@ class WorkflowEngine:
         await self._audit_transition(actor, actor_type, from_state, to_state)
         return self.get_current_state()
 
+    async def reconcile_manual_completion(
+        self,
+        actor: str,
+        actor_type: ActorType,
+        rationale: str = "",
+    ) -> WorkflowState:
+        """Audit an operator-reviewed manual completion as an explicit lifecycle override.
+
+        ``ces complete`` is a recovery/reconciliation path for work finished
+        outside a normal runtime. It must not write ``workflow_state`` directly;
+        this method keeps the override centralized and emits the same
+        state-transition audit event consumers expect from normal transitions.
+        """
+        from_state = self.get_current_state().value
+        if from_state in {WorkflowState.MERGED.value, WorkflowState.DEPLOYED.value, WorkflowState.CANCELLED.value}:
+            msg = f"Cannot manually complete terminal manifest state: {from_state}"
+            raise ValueError(msg)
+        self._workflow = TaskWorkflow(start_value=WorkflowState.APPROVED.value)
+        self._review_sub = None
+        self._review_sub_state = None
+        await self._audit_transition(actor, actor_type, from_state, WorkflowState.APPROVED.value, rationale)
+        return self.get_current_state()
+
     async def approve_merge(self, actor: str, actor_type: ActorType) -> WorkflowState:
         """Transition: approved -> merged."""
         from_state = self.get_current_state().value

@@ -80,8 +80,8 @@ class TestRuntimeAdapterEnvScrubbing:
         assert "-C" in command
         assert str(tmp_path) in command
         sandbox_index = command.index("--sandbox")
-        assert command[sandbox_index + 1] == "danger-full-access"
-        assert "workspace-write" not in command
+        assert command[sandbox_index + 1] == "workspace-write"
+        assert "danger-full-access" not in command
         assert result.transcript_path is not None
         transcript_path = Path(result.transcript_path)
         assert transcript_path.parent == tmp_path / ".ces" / "runtime-transcripts"

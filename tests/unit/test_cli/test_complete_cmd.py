@@ -10,6 +10,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from typer.testing import CliRunner
 
+from ces.shared.enums import WorkflowState
+
 runner = CliRunner()
 
 
@@ -264,8 +266,8 @@ def test_complete_with_real_local_store_saves_manual_evidence_without_crashing(
         store.close()
 
 
-def test_complete_updates_manifest_workflow_state_to_approved(tmp_path: Path, monkeypatch: object) -> None:
-    """SpecTrail SF-006: manual completion must reconcile manifest state as approved."""
+def test_complete_reconciles_manifest_approval_through_workflow_engine(tmp_path: Path, monkeypatch: object) -> None:
+    """Manual completion must use the workflow service, not direct state writes."""
     monkeypatch.chdir(tmp_path)  # type: ignore[attr-defined]
     ces_dir = tmp_path / ".ces"
     ces_dir.mkdir()
@@ -277,7 +279,7 @@ def test_complete_updates_manifest_workflow_state_to_approved(tmp_path: Path, mo
         evidence_packet_id="EP-existing",
         stage="blocked",
     )
-    manifest = MagicMock()
+    manifest = MagicMock(workflow_state="under_review")
     approved_manifest = MagicMock()
     manifest.model_copy.return_value = approved_manifest
     manifest_manager = AsyncMock()
@@ -291,11 +293,18 @@ def test_complete_updates_manifest_workflow_state_to_approved(tmp_path: Path, mo
         "audit_ledger": AsyncMock(),
     }
 
-    with _patch_services(mock_services):
+    mock_engine = AsyncMock()
+    mock_engine.reconcile_manual_completion = AsyncMock(return_value=WorkflowState.APPROVED)
+    with (
+        _patch_services(mock_services),
+        patch("ces.cli.complete_cmd.WorkflowEngine", return_value=mock_engine) as workflow_cls,
+    ):
         app = _get_app()
         result = runner.invoke(app, ["complete", "--yes"])
 
     assert result.exit_code == 0, result.stdout
+    workflow_cls.assert_called_once()
+    mock_engine.reconcile_manual_completion.assert_awaited_once()
     manifest.model_copy.assert_called_once()
     kwargs = manifest.model_copy.call_args.kwargs["update"]
     assert str(kwargs["workflow_state"].value) == "approved"

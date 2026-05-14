@@ -457,8 +457,10 @@ class TestCompletionGateWiring:
         # Verifier not invoked when no claim was present
         assert verifier.verify_calls == []
 
-    def test_gate_skipped_when_no_sensors_configured(self, tmp_path: Path, monkeypatch) -> None:
-        """Manifest with empty verification_sensors uses the legacy direct path."""
+    def test_actual_workspace_delta_scope_enforced_even_when_no_sensors_configured(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
+        """Actual workspace changes are policy-checked even when the claim gate is disabled."""
         monkeypatch.chdir(tmp_path)
         ces_dir = tmp_path / ".ces"
         ces_dir.mkdir()
@@ -475,6 +477,8 @@ class TestCompletionGateWiring:
             description="Build",
             workflow_state=WorkflowState.IN_FLIGHT,
             verification_sensors=(),  # opt-out: empty tuple
+            affected_files=("allowed.txt",),
+            forbidden_files=(),
         )
         mock_manager = AsyncMock(get_manifest=AsyncMock(return_value=mock_manifest))
 
@@ -489,11 +493,25 @@ class TestCompletionGateWiring:
             "completion_verifier": verifier,
         }
 
-        with _patch_services(mock_services), patch("ces.cli.execute_cmd.WorkflowEngine", return_value=AsyncMock()):
+        before_snapshot = MagicMock()
+        after_snapshot = MagicMock()
+        before_snapshot.diff.return_value.changed_files = ("forbidden.txt",)
+        snapshot_cls = MagicMock()
+        snapshot_cls.capture.side_effect = [before_snapshot, after_snapshot]
+
+        mock_engine = AsyncMock()
+        mock_engine.fail = AsyncMock(return_value=WorkflowState.FAILED)
+        with (
+            _patch_services(mock_services),
+            patch("ces.cli.execute_cmd.WorkflowEngine", return_value=mock_engine),
+            patch("ces.cli.execute_cmd.WorkspaceSnapshot", snapshot_cls, create=True),
+        ):
             result = runner.invoke(_get_app(), ["execute", "M-no-gate", "--accept-runtime-side-effects"])
 
-        assert result.exit_code == 0, result.stdout
-        # Gate did not run, so the verifier was never invoked
+        assert result.exit_code != 0, result.stdout
+        assert "outside manifest scope" in result.stdout
+        mock_engine.fail.assert_awaited_once()
+        # Claim gate did not run, so the verifier was never invoked.
         assert verifier.verify_calls == []
 
 

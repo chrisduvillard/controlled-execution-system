@@ -157,11 +157,15 @@ def test_greenfield_empty_manifest_scope_derives_runtime_changed_files() -> None
         must_not_break=[],
         open_questions={},
     )
-    delta = WorkspaceDelta(created_files=("README.md", "src/runlens/cli.py"), modified_files=("pyproject.toml",))
+    delta = WorkspaceDelta(
+        created_files=("README.md", "src/runlens/cli.py"),
+        modified_files=(".ces/state.db", "pyproject.toml"),
+    )
 
     scoped = _manifest_with_effective_greenfield_scope(manifest, brief, delta)
 
     assert scoped.affected_files == ("README.md", "pyproject.toml", "src/runlens/cli.py")
+    assert ".ces/state.db" not in scoped.affected_files
     assert manifest.affected_files == ()
 
 
@@ -197,11 +201,15 @@ def test_brownfield_empty_manifest_scope_derives_truth_paths_and_runtime_changes
         source_of_truth="README.md",
         critical_flows=["CLI behavior in `src/releasepulse/cli.py` stays compatible"],
     )
-    delta = WorkspaceDelta(modified_files=("src/releasepulse/cli.py",), created_files=("tests/test_cli.py",))
+    delta = WorkspaceDelta(
+        modified_files=(".ces/state.db", "src/releasepulse/cli.py"),
+        created_files=("tests/test_cli.py",),
+    )
 
     scoped = _manifest_with_effective_brownfield_scope(manifest, brief, delta)
 
     assert scoped.affected_files == ("README.md", "src/releasepulse/cli.py", "tests/test_cli.py")
+    assert ".ces/state.db" not in scoped.affected_files
     assert manifest.affected_files == ()
 
 
