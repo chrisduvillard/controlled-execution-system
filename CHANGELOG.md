@@ -7,10 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.19] - 2026-05-14
+
+Audit hardening release after the 0.1.18 publish-workflow patch.
+
+### Added
+
+- Add evidence and project guardrail UX improvements for operator-facing workflows.
+- Add the 2026-05-14 audit closure report covering PRs #114-#117.
+
+### Changed
+
+- Clarify the CES product promise and standalone product boundary guidance in public documentation.
+- Exclude bulky `docs/assets` media from package distributions and add wheel/sdist hygiene tests.
+
 ### Security / governance hardening
 
 - Fail closed to Codex `read-only` sandbox mode when an explicit `CES_CODEX_SANDBOX` override is invalid instead of silently reverting to `danger-full-access`.
 - Treat release, publish, merge, deploy, and customer-message requests as high-risk Intent Gate terms when acceptance criteria are missing.
+- Harden runtime governance boundaries with restrictive sandbox defaults, explicit dangerous-access overrides, centralized lifecycle mutation, and governance-file exclusions from runtime scope.
+- Bind manifest verification to canonical content hashes before signature validation.
+- Scrub persisted evidence recursively before durable storage.
+- Harden release and publish workflows with tag ancestry, full release test, and least-privilege permission guardrails.
 
 ## [0.1.18] - 2026-05-13
 
