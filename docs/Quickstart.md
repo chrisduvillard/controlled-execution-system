@@ -70,12 +70,22 @@ until you pass `--accept-runtime-side-effects`. That flag is explicit consent
 for the runtime boundary; choose Claude Code when you need tool allowlist
 enforcement before the agent starts.
 
-## 3. Start a governed build
+## 3. Plan or start your project
+
+For a brand-new app, start with the read-only front door:
 
 ```bash
-mkdir my-project && cd my-project
-ces build "Add a healthcheck endpoint that returns JSON status"
+mkdir my-task-app && cd my-task-app
+ces ship "Create a small task tracker app with add/list/complete tasks, tests, and a README"
 ```
+
+`ces ship` does not create `.ces/`, edit files, or launch Codex/Claude. It explains the safest command sequence. When you are ready to launch the local runtime, run the recommended greenfield command:
+
+```bash
+ces build --gsd "Create a small task tracker app with add/list/complete tasks, tests, and a README"
+```
+
+For an existing repo, use `ces mri` and `ces next` first, then run `ces build "Change ..."` for the bounded implementation step.
 
 CES will:
 1. Auto-create `.ces/` with local project state

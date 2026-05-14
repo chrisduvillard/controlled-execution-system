@@ -13,6 +13,7 @@ from ces.verification.mri import (
     build_next_prompt,
     build_production_passport,
     build_promotion_plan,
+    build_ship_plan,
     build_slop_scan,
     mine_project_invariants,
 )
@@ -72,6 +73,27 @@ def passport(
     """Produce a local evidence-backed Production Passport."""
 
     report = build_production_passport(project_root or Path.cwd())
+    if _format_option(output_format) == "json":
+        typer.echo(report.to_json(), nl=False)
+        return
+    typer.echo(report.to_markdown(), nl=False)
+
+
+def ship(
+    objective: str | None = typer.Argument(
+        None,
+        help="Optional project objective, e.g. 'Create a task tracker app'.",
+    ),
+    project_root: Path | None = typer.Option(
+        None,
+        "--project-root",
+        help="Repo/CES project root to inspect; defaults to the current working directory.",
+    ),
+    output_format: str = typer.Option("markdown", "--format", help="Output format: markdown or json."),
+) -> None:
+    """Plan the safe path from idea/current repo to proof-backed delivery."""
+
+    report = build_ship_plan(project_root or Path.cwd(), objective=objective)
     if _format_option(output_format) == "json":
         typer.echo(report.to_json(), nl=False)
         return

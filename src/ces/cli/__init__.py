@@ -112,13 +112,16 @@ class JsonAwareTyperGroup(typer.core.TyperGroup):
         return result
 
 
-_ROOT_HELP = """Builder-first governed AI delivery for local repos.
+_ROOT_HELP = """Production Autopilot for local AI-built projects.
 
 Start Here:
-  `ces build`      Describe the change and let CES guide the workflow
-  `ces continue`   Resume the latest builder session
-  `ces explain`    Summarize the latest request, blockers, and next step
-  `ces status`     Show builder-first status; add `--expert` for the full expert view
+  `ces ship`      Read-only plan from idea/current repo to proof-backed delivery
+  `ces build --gsd "Create a task tracker app"`
+                  Create a new project from an empty folder
+  `ces build`     Change an existing local project with governed runtime execution
+  `ces mri`       Read-only diagnosis of readiness gaps and risks
+  `ces next`      Show the next safest readiness step
+  `ces status`    Show builder-first status; add `--expert` for the full expert view
 
 Advanced Governance:
   `ces manifest`, `classify`, `review`, `triage`, `approve`, `audit`, `gate`
@@ -220,6 +223,7 @@ app.command(name="scan", help="Inventory the repository: modules, generated code
 app.command(name="mri", help="Read-only repository diagnostic with project-health risks and next CES actions.")(
     mri_cmd.mri
 )
+app.command(name="ship", help="Read-only plan from idea/current repo to proof-backed delivery.")(autopilot_cmd.ship)
 app.command(name="next", help="Show the next safest production-readiness action.")(autopilot_cmd.next_action)
 app.command(name="next-prompt", help="Generate a guardrailed prompt for the next readiness step.")(
     autopilot_cmd.next_prompt

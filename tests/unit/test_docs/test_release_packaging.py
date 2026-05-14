@@ -147,7 +147,8 @@ def test_built_wheel_exposes_working_plain_cli(tmp_path: Path) -> None:
         env=smoke_env,
     )
     assert root_help.returncode == 0, root_help.stderr or root_help.stdout
-    assert "Builder-first governed AI delivery for local repos." in root_help.stdout
+    assert "Production Autopilot for local AI-built projects." in root_help.stdout
+    assert "ces ship" in root_help.stdout
 
     init_help = run(  # noqa: S603
         [sys.executable, "-c", smoke_cmd, "init", "--help"],

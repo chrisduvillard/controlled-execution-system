@@ -83,6 +83,16 @@ The boundary is intentionally narrow. CES is not a hosted control plane, not a s
 | Package tool | [`uv`](https://docs.astral.sh/uv/) |
 | Local runtime | Codex CLI or Claude Code installed, authenticated, and on `PATH` |
 
+### First command: plan before runtime
+
+If you are starting from an idea or a messy AI-built/vibe-coded repo, use the read-only front door first:
+
+```bash
+ces ship "Create a small project-management app with tests and run instructions"
+```
+
+`ces ship` is a plan-only Production Autopilot report. It does not launch a runtime, create `.ces/`, or mutate files. It tells you whether to create a greenfield app with `ces build --gsd "..."`, diagnose the repo with `ces mri`, or close readiness gaps with `ces next-prompt`.
+
 ### Install from PyPI
 
 ```bash

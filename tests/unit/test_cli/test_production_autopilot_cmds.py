@@ -113,3 +113,30 @@ def test_launch_rehearsal_json_uses_nested_command_shape(tmp_path: Path) -> None
     payload = json.loads(result.stdout)
     assert payload["mode"] == "read-only-plan"
     assert "uv run pytest tests/ -q" in payload["recommended_commands"]
+
+
+def test_ship_json_is_read_only_and_includes_objective(tmp_path: Path) -> None:
+    before = sorted(path.relative_to(tmp_path).as_posix() for path in tmp_path.rglob("*"))
+
+    result = runner.invoke(
+        _get_app(), ["ship", "Create a recipe app", "--project-root", str(tmp_path), "--format", "json"]
+    )
+
+    after = sorted(path.relative_to(tmp_path).as_posix() for path in tmp_path.rglob("*"))
+    assert result.exit_code == 0, result.stdout
+    assert before == after
+    assert not (tmp_path / ".ces").exists()
+    payload = json.loads(result.stdout)
+    assert payload["execution_mode"] == "read-only-plan"
+    assert payload["objective"] == "Create a recipe app"
+    assert payload["recommended_command"].startswith("ces build --gsd")
+
+
+def test_ship_markdown_explains_safe_front_door(tmp_path: Path) -> None:
+    result = runner.invoke(_get_app(), ["ship", "--project-root", str(tmp_path)])
+
+    assert result.exit_code == 0, result.stdout
+    assert "# CES Ship Plan" in result.stdout
+    assert "read-only" in result.stdout
+    assert "does not launch Codex or Claude Code" in result.stdout
+    assert "ces build --gsd" in result.stdout

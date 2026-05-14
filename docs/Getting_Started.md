@@ -56,8 +56,11 @@ If CES is installed as a tool instead, the normal pattern is shorter:
 uv tool install controlled-execution-system
 mkdir -p /tmp/my-new-project
 cd /tmp/my-new-project
-ces build "Describe the project" --greenfield
+ces ship "Create the project I want, including tests, README, and run instructions"
+ces build --gsd "Create the project I want, including tests, README, and run instructions"
 ```
+
+`ces ship` is read-only and is the safest first command for a new idea or an AI-built/vibe-coded repo. It does not create `.ces/`, edit files, or launch Codex/Claude; it turns the current project state and optional objective into the next recommended command.
 
 ## 2. Verify a Local Runtime
 
