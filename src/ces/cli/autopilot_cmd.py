@@ -34,38 +34,70 @@ def _format_option(value: str) -> str:
 def _guided_start_payload(project_root: Path, objective: str) -> dict:
     ship_plan = build_ship_plan(project_root, objective=objective)
     ship_command = f"ces ship {shlex.quote(objective)}"
-    next_command = next(
-        (command for command in ship_plan.recommended_commands if command not in {"ces doctor", ship_command}),
-        ship_plan.recommended_command,
+    build_command = next(
+        (command for command in ship_plan.recommended_commands if command.startswith("ces build ")), None
     )
-    action_stage_name = "Build" if "ces build" in next_command else "Inspect"
-    action_stage_purpose = (
-        "Create or update the project with README, tests, run instructions, and a handoff contract."
-        if action_stage_name == "Build"
-        else "Diagnose the existing project and generate the next bounded readiness step before runtime execution."
-    )
-    stages = [
-        {
-            "name": "Plan",
-            "command": ship_command,
-            "purpose": "Turn the idea into a read-only delivery plan before launching any runtime.",
-        },
-        {
-            "name": action_stage_name,
-            "command": next_command,
-            "purpose": action_stage_purpose,
-        },
-        {
-            "name": "Verify",
-            "command": "ces verify",
-            "purpose": "Run the project's persisted verification policy and save local evidence.",
-        },
-        {
-            "name": "Prove",
-            "command": "ces proof",
-            "purpose": "Produce a compact evidence-backed ship/no-ship proof card.",
-        },
-    ]
+    if build_command and "--from-scratch" not in build_command:
+        stages = [
+            {
+                "name": "Plan",
+                "command": ship_command,
+                "purpose": "Turn the brownfield objective into a read-only delivery plan before launching any runtime.",
+            },
+            {
+                "name": "Inspect",
+                "command": "ces mri && ces next",
+                "purpose": "Diagnose the existing project and choose the next bounded readiness step before runtime execution.",
+            },
+            {
+                "name": "Build",
+                "command": build_command,
+                "purpose": "Make one bounded brownfield change while preserving existing behavior and readiness evidence.",
+            },
+            {
+                "name": "Verify",
+                "command": "ces verify",
+                "purpose": "Run the project's persisted verification policy and save local evidence.",
+            },
+            {
+                "name": "Prove",
+                "command": "ces proof",
+                "purpose": "Produce a compact evidence-backed ship/no-ship proof card.",
+            },
+        ]
+    else:
+        next_command = next(
+            (command for command in ship_plan.recommended_commands if command not in {"ces doctor", ship_command}),
+            ship_plan.recommended_command,
+        )
+        action_stage_name = "Build" if "ces build" in next_command else "Inspect"
+        action_stage_purpose = (
+            "Create or update the project with README, tests, run instructions, and a handoff contract."
+            if action_stage_name == "Build"
+            else "Diagnose the existing project and generate the next bounded readiness step before runtime execution."
+        )
+        stages = [
+            {
+                "name": "Plan",
+                "command": ship_command,
+                "purpose": "Turn the idea into a read-only delivery plan before launching any runtime.",
+            },
+            {
+                "name": action_stage_name,
+                "command": next_command,
+                "purpose": action_stage_purpose,
+            },
+            {
+                "name": "Verify",
+                "command": "ces verify",
+                "purpose": "Run the project's persisted verification policy and save local evidence.",
+            },
+            {
+                "name": "Prove",
+                "command": "ces proof",
+                "purpose": "Produce a compact evidence-backed ship/no-ship proof card.",
+            },
+        ]
     return {
         "schema_version": 1,
         "project_root": str(project_root),

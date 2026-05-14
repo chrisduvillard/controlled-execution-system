@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.22] - 2026-05-14
+
+### Added
+- Add brownfield-safe guidance for existing repos: `ces start` and `ces ship` now show inspect/build/verify/prove paths using plain `ces build "Add ..."` instead of `--from-scratch`.
+- Add a guardrail that blocks accidental `ces build --from-scratch` inside detected existing projects unless the user explicitly overrides with `--yes` or `--greenfield`.
+
+### Changed
+- Clarify `ces build --help`, README, Quickstart, and Getting Started docs so greenfield projects use `--from-scratch` while brownfield projects use plain positional `ces build "..."`.
+
 ## [0.1.21] - 2026-05-14
 
 CLI clarity patch for the greenfield vibe-coder workflow.

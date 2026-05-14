@@ -1175,10 +1175,10 @@ def build_ship_plan(project_root: str | Path, objective: str | None = None) -> S
         commands.extend(["ces mri", "ces next", "ces next-prompt"])
         if recommended != "ces verify":
             commands.append(recommended)
-    commands.extend(["ces passport", "ces launch rehearsal"])
+    commands.extend(["ces verify", "ces proof", "ces passport", "ces launch rehearsal"])
     safety_notes = (
         "`ces ship` is read-only; it plans the path and explains the next command before any runtime launch.",
-        "`ces build --from-scratch` may ask for explicit runtime side-effect consent before launching Codex or Claude Code.",
+        'Use `ces build --from-scratch` only for empty/new projects; use plain `ces build "Add ..."` for brownfield changes.',
         "Keep secrets out of prompts and commits; report only secret names, files, or categories.",
     )
     return ShipPlanReport(

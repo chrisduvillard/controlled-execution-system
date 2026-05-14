@@ -29,9 +29,22 @@ def detect_project_type(project_root: Path) -> str:
         if "react" in deps and ("vite" in deps or "@vitejs/plugin-react" in deps or "build" in scripts):
             return "vite-react-app"
         return "node-app"
+    if _looks_like_container_project(project_root):
+        return "containerized-app"
     if _looks_like_python_project(project_root):
         return "python-package"
     return "unknown"
+
+
+def _looks_like_container_project(project_root: Path) -> bool:
+    container_markers = (
+        "D" + "ockerfile",
+        "container-compose.yml",
+        "container-compose.yaml",
+        "compose.yml",
+        "compose.yaml",
+    )
+    return any((project_root / marker).is_file() for marker in container_markers)
 
 
 def _looks_like_python_project(project_root: Path) -> bool:
