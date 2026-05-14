@@ -85,7 +85,22 @@ The boundary is intentionally narrow. CES is not a hosted control plane, not a s
 
 ### First command: guided start before runtime
 
-If you are starting from an idea or a messy AI-built/vibe-coded repo, use the read-only guided front door first:
+If you are starting a brand-new project from an idea, use the interactive creation wizard first:
+
+```bash
+ces create
+# prompts: Project name / What do you want it to do?
+```
+
+For automation or copy/paste use:
+
+```bash
+ces create "Task Tracker" "Create a small project-management app with tests and run instructions"
+```
+
+`ces create` is read-only: it prints the `mkdir`, `ces ship`, `ces build --from-scratch`, `ces verify`, and `ces proof` sequence without creating folders, initializing `.ces/`, editing files, or launching a runtime.
+
+If you are already inside an idea folder or a messy AI-built/vibe-coded repo, use the read-only guided front door:
 
 ```bash
 ces start
@@ -118,7 +133,7 @@ uv tool install --python 3.13 controlled-execution-system
 Install or pin a specific release:
 
 ```bash
-uv tool install controlled-execution-system==0.1.22
+uv tool install controlled-execution-system==0.1.23
 ```
 
 Upgrade later:
@@ -367,7 +382,7 @@ uv run pytest tests/ -m integration -q
 
 Builder-created manifests expect command-backed completion evidence. When completion-gate sensors are enabled, produce matching artifacts before claiming completion: `pytest-results.json`, `ruff-report.json`, `mypy-report.txt`, and `coverage.json`. Dependency and security-sensitive changes can also be backed by `pip-audit-report.json` and SAST JSON artifacts such as `bandit-report.json`; CES parses those when present.
 
-PyPI publishing is tag-driven. Pushing to `master` runs CI only; pushing a `v*` tag such as `v0.1.22` triggers `.github/workflows/publish.yml`, which runs tests, builds distributions, smoke-tests the installed CLI, validates tag/version agreement, and publishes through trusted publishing. Follow [docs/RELEASE.md](https://github.com/chrisduvillard/controlled-execution-system/blob/master/docs/RELEASE.md) for the maintainer checklist.
+PyPI publishing is tag-driven. Pushing to `master` runs CI only; pushing a `v*` tag such as `v0.1.23` triggers `.github/workflows/publish.yml`, which runs tests, builds distributions, smoke-tests the installed CLI, validates tag/version agreement, and publishes through trusted publishing. Follow [docs/RELEASE.md](https://github.com/chrisduvillard/controlled-execution-system/blob/master/docs/RELEASE.md) for the maintainer checklist.
 
 ---
 

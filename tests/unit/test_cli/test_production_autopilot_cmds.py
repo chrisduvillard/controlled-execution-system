@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import shlex
 from pathlib import Path
 from typing import Any
 
@@ -140,6 +141,120 @@ def test_ship_markdown_explains_safe_front_door(tmp_path: Path) -> None:
     assert "read-only" in result.stdout
     assert "does not launch Codex or Claude Code" in result.stdout
     assert "ces build --from-scratch" in result.stdout
+
+
+def test_create_interactive_collects_project_details_and_stays_read_only(tmp_path: Path) -> None:
+    before = sorted(path.relative_to(tmp_path).as_posix() for path in tmp_path.rglob("*"))
+
+    result = runner.invoke(
+        _get_app(),
+        ["create", "--project-root", str(tmp_path)],
+        input="Calm Notes\nCreate a tiny local notes app\n\n",
+    )
+
+    after = sorted(path.relative_to(tmp_path).as_posix() for path in tmp_path.rglob("*"))
+    assert result.exit_code == 0, result.stdout
+    assert before == after
+    assert not (tmp_path / ".ces").exists()
+    assert not (tmp_path / "calm-notes").exists()
+    assert "Project name" in result.stdout
+    assert "What do you want it to do?" in result.stdout
+    assert "# CES Create Plan" in result.stdout
+    assert "Execution mode: **interactive-read-only-wizard**" in result.stdout
+    assert f"mkdir -p {tmp_path / 'calm-notes'} && cd {tmp_path / 'calm-notes'}" in result.stdout
+    assert "ces build --from-scratch 'Create a tiny local notes app'" in result.stdout
+
+
+def test_create_json_outputs_copy_paste_greenfield_sequence(tmp_path: Path) -> None:
+    result = runner.invoke(
+        _get_app(),
+        [
+            "create",
+            "Calm Notes",
+            "Create a tiny local notes app",
+            "--project-root",
+            str(tmp_path),
+            "--format",
+            "json",
+        ],
+    )
+
+    assert result.exit_code == 0, result.stdout
+    payload = json.loads(result.stdout)
+    assert payload["execution_mode"] == "interactive-read-only-wizard"
+    assert payload["project_name"] == "Calm Notes"
+    assert payload["project_slug"] == "calm-notes"
+    assert payload["objective"] == "Create a tiny local notes app"
+    assert payload["target_directory"] == str(tmp_path / "calm-notes")
+    assert payload["commands"] == [
+        f"mkdir -p {tmp_path / 'calm-notes'} && cd {tmp_path / 'calm-notes'}",
+        "ces ship -- 'Create a tiny local notes app'",
+        "ces build --from-scratch 'Create a tiny local notes app'",
+        "ces verify",
+        "ces proof",
+    ]
+    assert payload["safety_notes"][0].startswith("`ces create` is read-only")
+
+
+def test_create_honors_root_json_and_requires_objective(tmp_path: Path) -> None:
+    result = runner.invoke(_get_app(), ["--json", "create", "Calm Notes", "--project-root", str(tmp_path)])
+
+    assert result.exit_code != 0
+    assert "objective is required" in result.stderr
+
+
+def test_create_quotes_shell_metacharacters_in_objective(tmp_path: Path) -> None:
+    objective = "Create Bob's notes $(touch /tmp/pwned) and `whoami`"
+
+    result = runner.invoke(
+        _get_app(),
+        ["create", "Shell Test", objective, "--project-root", str(tmp_path), "--format", "json"],
+    )
+
+    assert result.exit_code == 0, result.stdout
+    payload = json.loads(result.stdout)
+    assert payload["commands"][1].startswith("ces ship -- ")
+    build_command = payload["commands"][2]
+    assert build_command.startswith("ces build --from-scratch ")
+    assert "$(touch /tmp/pwned)" in build_command
+    assert "'\"'\"'" in build_command
+
+
+def test_create_handles_option_like_objective_safely(tmp_path: Path) -> None:
+    result = runner.invoke(
+        _get_app(),
+        ["create", "--project-root", str(tmp_path), "--format", "json", "Help App", "--", "--help"],
+    )
+
+    assert result.exit_code == 0, result.stdout
+    payload = json.loads(result.stdout)
+    assert payload["commands"][1] == "ces ship -- --help"
+    assert payload["commands"][2] == "ces build --from-scratch=--help"
+
+
+def test_create_quotes_project_root_with_spaces(tmp_path: Path) -> None:
+    project_root = tmp_path / "space root"
+    project_root.mkdir()
+
+    result = runner.invoke(
+        _get_app(),
+        ["create", "Calm Notes", "Create notes", "--project-root", str(project_root), "--format", "json"],
+    )
+
+    assert result.exit_code == 0, result.stdout
+    payload = json.loads(result.stdout)
+    assert (
+        payload["commands"][0]
+        == f"mkdir -p {shlex.quote(str(project_root / 'calm-notes'))} && cd {shlex.quote(str(project_root / 'calm-notes'))}"
+    )
+
+
+def test_root_help_mentions_create_front_door() -> None:
+    result = runner.invoke(_get_app(), ["--help"])
+
+    assert result.exit_code == 0
+    assert "ces create" in result.stdout
+    assert "interactive project creation wizard" in result.stdout.lower()
 
 
 def test_start_interactive_prompts_for_objective_and_stays_read_only(tmp_path: Path) -> None:

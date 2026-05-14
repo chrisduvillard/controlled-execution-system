@@ -25,6 +25,7 @@ def test_root_help_routes_beginner_greenfield_work_without_overclaiming() -> Non
     assert result.exit_code == 0, result.stdout
     lowered = result.stdout.lower()
     assert "start here" in lowered
+    assert "ces create" in result.stdout
     assert "ces ship" in result.stdout
     assert "ces build --from-scratch" in result.stdout
     assert "ces mri" in result.stdout

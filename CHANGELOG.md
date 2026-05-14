@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.23] - 2026-05-14
+
+### Added
+- Add `ces create` as an interactive read-only project creation wizard that prompts for a project name and objective, then prints the new-project folder plus `ship`, `build --from-scratch`, `verify`, and `proof` sequence.
+
+### Changed
+- Update root help, README, Quickstart, and Getting Started docs to position `ces create` as the safest first command for brand-new projects.
+
 ## [0.1.22] - 2026-05-14
 
 ### Added
