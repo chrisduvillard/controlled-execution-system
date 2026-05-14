@@ -48,7 +48,7 @@ def test_greenfield_gauntlet_records_full_ship_build_verify_proof_loop(tmp_path:
 
     command_names = [event.name for event in result.events if event.kind == "command"]
     assert command_names[0].startswith("ces ship")
-    assert "ces build --gsd" in command_names[1]
+    assert "ces build --from-scratch" in command_names[1]
     assert "ces verify" in command_names
     assert command_names[-1] == "ces proof"
 
@@ -60,7 +60,7 @@ def test_greenfield_gauntlet_records_full_ship_build_verify_proof_loop(tmp_path:
 
 def test_friction_metrics_count_failed_commands_interventions_and_recovery_suggestions() -> None:
     events = (
-        BenchmarkEvent(kind="command", name="ces build --gsd", status="passed"),
+        BenchmarkEvent(kind="command", name="ces build --from-scratch", status="passed"),
         BenchmarkEvent(kind="command", name="ces verify", status="failed", friction_points=2),
         BenchmarkEvent(kind="intervention", name="manual fix", status="required", friction_points=3),
         BenchmarkEvent(kind="recovery", name="ces recover --dry-run", status="suggested", friction_points=1),

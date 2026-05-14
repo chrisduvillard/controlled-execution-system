@@ -1726,10 +1726,16 @@ async def run_task(
         None,
         help="Task description to execute",
     ),
-    gsd: str | None = typer.Option(
+    from_scratch: str | None = typer.Option(
+        None,
+        "--from-scratch",
+        help="Beginner-friendly 0-to-100 greenfield request.",
+    ),
+    legacy_gsd: str | None = typer.Option(
         None,
         "--gsd",
-        help="0-to-100 greenfield request. Alias for a greenfield builder run with actionable final UX.",
+        help="Deprecated alias for --from-scratch.",
+        hidden=True,
     ),
     runtime: str = typer.Option(
         "auto",
@@ -1832,10 +1838,13 @@ async def run_task(
         if from_spec is not None:
             await _preview_from_spec(from_spec, story_id=story)
             return
-        if gsd and description:
-            raise typer.BadParameter("Choose either a positional task description or --gsd, not both.")
-        if gsd:
-            description = gsd
+        greenfield_request = from_scratch or legacy_gsd
+        if from_scratch and legacy_gsd:
+            raise typer.BadParameter("Choose only one of --from-scratch or its deprecated --gsd alias.")
+        if greenfield_request and description:
+            raise typer.BadParameter("Choose either a positional task description or --from-scratch, not both.")
+        if greenfield_request:
+            description = greenfield_request
             greenfield = True
         requested_project_root = project_root
         project_root, project_config, bootstrapped = _ensure_builder_project(requested_project_root)

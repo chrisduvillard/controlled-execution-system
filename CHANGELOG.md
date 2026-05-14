@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.21] - 2026-05-14
+
+CLI clarity patch for the greenfield vibe-coder workflow.
+
+### Changed
+
+- Prefer `ces build --from-scratch` in beginner-facing plans, docs, recovery guidance, and benchmark output so greenfield project creation is self-explanatory.
+- Keep the older `--gsd` build option as a backward-compatible alias for existing automation.
+
 ## [0.1.20] - 2026-05-14
 
 Vibe-coder workflow release focused on getting from a new idea to evidence-backed proof with less cognitive load.
@@ -14,9 +23,9 @@ Vibe-coder workflow release focused on getting from a new idea to evidence-backe
 ### Added
 
 - Add `ces ship` as a read-only front door from idea or current repo to proof-backed delivery.
-- Add greenfield acceptance handoff requirements for `ces build --gsd`, including beginner artifacts, run instructions, verification steps, and unproven claims.
+- Add greenfield acceptance handoff requirements for `ces build --from-scratch`, including beginner artifacts, run instructions, verification steps, and unproven claims.
 - Add `ces verify` evidence persistence and `ces proof` proof cards that separate planned checks from executed evidence and fail closed on missing proof.
-- Add the greenfield gauntlet benchmark that models the `ship → build --gsd → verify → proof` loop and rejects zero-check or timed-out success claims.
+- Add the greenfield gauntlet benchmark that models the `ship → build --from-scratch → verify → proof` loop and rejects zero-check or timed-out success claims.
 - Add `ces start` as a read-only guided beginner flow that prompts for an objective and routes greenfield projects to build while routing existing repos to diagnostic next steps.
 
 ### Changed
@@ -276,7 +285,7 @@ use on real greenfield projects when runtime evidence, independent build proof,
 or recovery steps are ambiguous.
 
 ### Added
-- `ces build --gsd`: greenfield delivery alias for the builder workflow, making
+- `ces build --from-scratch`: greenfield delivery alias for the builder workflow, making
   the intended 0→100 product-build path explicit from the CLI.
 - `ces why`: first-class blocker diagnosis command for explaining why a builder
   run is blocked or rejected and which command to run next.

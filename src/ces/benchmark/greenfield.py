@@ -161,7 +161,9 @@ def run_greenfield_benchmark(
     project_root.mkdir(parents=True, exist_ok=True)
     events: list[BenchmarkEvent] = [
         BenchmarkEvent(kind="command", name=f"ces ship {shlex.quote(scenario.request)}", status="passed"),
-        BenchmarkEvent(kind="command", name=f"ces build --gsd {shlex.quote(scenario.request)}", status="passed"),
+        BenchmarkEvent(
+            kind="command", name=f"ces build --from-scratch {shlex.quote(scenario.request)}", status="passed"
+        ),
     ]
 
     for step in scenario.runtime_steps:

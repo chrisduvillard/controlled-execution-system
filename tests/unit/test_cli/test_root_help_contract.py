@@ -26,7 +26,7 @@ def test_root_help_routes_beginner_greenfield_work_without_overclaiming() -> Non
     lowered = result.stdout.lower()
     assert "start here" in lowered
     assert "ces ship" in result.stdout
-    assert "ces build --gsd" in result.stdout
+    assert "ces build --from-scratch" in result.stdout
     assert "ces mri" in result.stdout
     assert "read-only" in lowered
     assert "local" in lowered

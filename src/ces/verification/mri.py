@@ -1160,16 +1160,16 @@ def build_ship_plan(project_root: str | Path, objective: str | None = None) -> S
     prompt = build_next_prompt(project_root)
     objective_text = objective.strip() if objective and objective.strip() else None
     report = scan_project_mri(project_root)
-    gsd_command = _greenfield_command(objective_text)
+    greenfield_command = _greenfield_command(objective_text)
     is_greenfield = _is_greenfield_report(report)
-    recommended = gsd_command if is_greenfield else action.recommended_command
+    recommended = greenfield_command if is_greenfield else action.recommended_command
     commands = ["ces doctor"]
     if is_greenfield:
         if objective_text:
-            commands.append(gsd_command)
+            commands.append(greenfield_command)
         else:
             commands.append(
-                'ces build --gsd "Describe the app you want to create, including tests and run instructions"'
+                'ces build --from-scratch "Describe the app you want to create, including tests and run instructions"'
             )
     else:
         commands.extend(["ces mri", "ces next", "ces next-prompt"])
@@ -1178,7 +1178,7 @@ def build_ship_plan(project_root: str | Path, objective: str | None = None) -> S
     commands.extend(["ces passport", "ces launch rehearsal"])
     safety_notes = (
         "`ces ship` is read-only; it plans the path and explains the next command before any runtime launch.",
-        "`ces build --gsd` may ask for explicit runtime side-effect consent before launching Codex or Claude Code.",
+        "`ces build --from-scratch` may ask for explicit runtime side-effect consent before launching Codex or Claude Code.",
         "Keep secrets out of prompts and commits; report only secret names, files, or categories.",
     )
     return ShipPlanReport(
@@ -1317,7 +1317,7 @@ def _is_greenfield_report(report: ProjectMriReport) -> bool:
 
 def _greenfield_command(objective: str | None) -> str:
     request = objective or "Create a small runnable app with README, tests, and run instructions"
-    return f"ces build --gsd {shlex.quote(request)}"
+    return f"ces build --from-scratch {shlex.quote(request)}"
 
 
 def _validation_commands_for(report: ProjectMriReport) -> tuple[str, ...]:

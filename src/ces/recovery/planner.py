@@ -44,8 +44,8 @@ def build_recovery_plan(project_root: Path, local_store: Any, *, mutate_stale: b
             can_run_auto_evidence=False,
             can_auto_complete=False,
             contract_path=None,
-            explanation='No builder session found. Start with `ces build --gsd "..."`.',
-            next_commands=('ces build --gsd "describe the product"',),
+            explanation='No builder session found. Start with `ces build --from-scratch "..."`.',
+            next_commands=('ces build --from-scratch "describe the product"',),
         )
 
     manifest_id = _manifest_id_from_session(session)

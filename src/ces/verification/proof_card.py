@@ -147,7 +147,7 @@ def _unproven_areas(
     verification: dict[str, Any] | None,
 ) -> list[str]:
     if contract is None:
-        return ["No completion contract found; run `ces build --gsd ...` or `ces ship ...` first."]
+        return ["No completion contract found; run `ces build --from-scratch ...` or `ces ship ...` first."]
     areas: list[str] = []
     if missing:
         areas.append("Required beginner handoff artifacts are incomplete.")

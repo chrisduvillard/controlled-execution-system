@@ -2966,19 +2966,30 @@ def test_completion_summary_includes_actionable_next_command_for_blocked_build()
     assert "Next: ces recover --dry-run" in summary
 
 
-def test_build_gsd_conflicts_with_positional_description(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_build_from_scratch_conflicts_with_positional_description(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     monkeypatch.chdir(tmp_path)
     ces_dir = tmp_path / ".ces"
     ces_dir.mkdir()
     (ces_dir / "config.yaml").write_text("project_id: local-proj\npreferred_runtime: codex\n")
 
-    result = runner.invoke(_get_app(), ["build", "Build A", "--gsd", "Build B", "--yes"])
+    result = runner.invoke(_get_app(), ["build", "Build A", "--from-scratch", "Build B", "--yes"])
 
     assert result.exit_code != 0
-    assert "Choose either a positional task description or --gsd" in result.stdout
+    assert "Choose either a positional task description or --from-scratch" in result.stdout
 
 
-def test_build_gsd_sets_description_and_greenfield_defaults(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_build_from_scratch_help_hides_legacy_gsd_alias() -> None:
+    result = runner.invoke(_get_app(), ["build", "--help"])
+
+    assert result.exit_code == 0
+    assert "from" in result.stdout
+    assert "scratch" in result.stdout
+    assert "--gsd" not in result.stdout
+
+
+def test_build_legacy_gsd_alias_still_sets_greenfield_defaults(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.chdir(tmp_path)
     ces_dir = tmp_path / ".ces"
     ces_dir.mkdir()
@@ -3008,6 +3019,46 @@ def test_build_gsd_sets_description_and_greenfield_defaults(tmp_path: Path, monk
             critical_flows=[],
         )
         result = runner.invoke(_get_app(), ["build", "--gsd", "Build PromptVault", "--yes"])
+
+    assert result.exit_code != 0
+    call = collect_brief.call_args.kwargs
+    assert call["description"] == "Build PromptVault"
+    assert call["force_greenfield"] is True
+    assert call["force_brownfield"] is False
+
+
+def test_build_from_scratch_sets_description_and_greenfield_defaults(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    ces_dir = tmp_path / ".ces"
+    ces_dir.mkdir()
+    (ces_dir / "config.yaml").write_text("project_id: local-proj\npreferred_runtime: codex\n")
+
+    mock_services = {
+        "settings": MagicMock(default_runtime="codex"),
+        "manifest_manager": AsyncMock(),
+        "runtime_registry": MagicMock(resolve_runtime=MagicMock(side_effect=RuntimeError("should not run"))),
+        "agent_runner": AsyncMock(),
+        "local_store": MagicMock(),
+        "evidence_synthesizer": MagicMock(),
+        "audit_ledger": AsyncMock(),
+        "sensor_orchestrator": MagicMock(run_all=AsyncMock(return_value=[])),
+        "legacy_behavior_service": AsyncMock(),
+    }
+
+    with (
+        _patch_services(mock_services),
+        patch("ces.cli.run_cmd.BuilderFlowOrchestrator.collect_brief") as collect_brief,
+    ):
+        collect_brief.return_value = SimpleNamespace(
+            request="Build PromptVault",
+            project_mode="greenfield",
+            acceptance_criteria=[],
+            source_of_truth=None,
+            critical_flows=[],
+        )
+        result = runner.invoke(_get_app(), ["build", "--from-scratch", "Build PromptVault", "--yes"])
 
     assert result.exit_code != 0
     call = collect_brief.call_args.kwargs

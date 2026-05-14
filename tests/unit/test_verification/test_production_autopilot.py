@@ -120,18 +120,18 @@ def test_next_action_and_prompt_are_guardrailed(tmp_path: Path) -> None:
     assert "Completion evidence" in rendered
 
 
-def test_empty_project_next_action_recommends_greenfield_gsd(tmp_path: Path) -> None:
+def test_empty_project_next_action_recommends_greenfield_from_scratch(tmp_path: Path) -> None:
     from ces.verification.mri import build_next_action, build_next_prompt
 
     action = build_next_action(tmp_path)
     prompt = build_next_prompt(tmp_path)
 
     assert action.current_maturity == "vibe-prototype"
-    assert action.recommended_command.startswith("ces build --gsd")
+    assert action.recommended_command.startswith("ces build --from-scratch")
     assert "Create a small runnable app" in action.recommended_command
     assert "README" in action.recommended_command
     assert "tests" in action.recommended_command
-    assert "--gsd" in prompt.to_markdown()
+    assert "--from-scratch" in prompt.to_markdown()
 
 
 def test_production_passport_marks_incomplete_readiness_without_fake_none(tmp_path: Path) -> None:
@@ -157,9 +157,9 @@ def test_ship_plan_is_read_only_beginner_front_door(tmp_path: Path) -> None:
     assert before == after
     assert payload["execution_mode"] == "read-only-plan"
     assert payload["objective"] == "Create a habit tracker app"
-    assert payload["recommended_command"].startswith("ces build --gsd")
+    assert payload["recommended_command"].startswith("ces build --from-scratch")
     assert "ces doctor" in payload["recommended_commands"]
-    assert any(command.startswith("ces build --gsd") for command in payload["recommended_commands"])
+    assert any(command.startswith("ces build --from-scratch") for command in payload["recommended_commands"])
     assert "does not launch Codex or Claude Code" in plan.to_markdown()
 
 
@@ -169,7 +169,7 @@ def test_ship_plan_shell_quotes_greenfield_objective(tmp_path: Path) -> None:
     plan = build_ship_plan(tmp_path, objective="Create app $(touch /tmp/ces-ship-pwned) with `whoami`")
     command = plan.to_dict()["recommended_command"]
 
-    assert command == "ces build --gsd 'Create app $(touch /tmp/ces-ship-pwned) with `whoami`'"
+    assert command == "ces build --from-scratch 'Create app $(touch /tmp/ces-ship-pwned) with `whoami`'"
     assert command in plan.to_markdown()
 
 
@@ -199,7 +199,7 @@ def test_ship_plan_routes_existing_repo_to_readiness_gap_work(tmp_path: Path) ->
     )
     assert "ces mri" in payload["recommended_commands"]
     assert "ces next-prompt" in payload["recommended_commands"]
-    assert not any(command.startswith("ces build --gsd") for command in payload["recommended_commands"])
+    assert not any(command.startswith("ces build --from-scratch") for command in payload["recommended_commands"])
 
 
 def test_invariant_mining_is_conservative_and_evidence_backed(tmp_path: Path) -> None:
