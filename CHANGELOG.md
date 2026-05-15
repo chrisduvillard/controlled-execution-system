@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.25] - 2026-05-15
+
+Verification evidence hardening release after the full audit closure.
+
+### Security / governance hardening
+
+- Harden proof-card verification matching so proof claims must align with executed command evidence, including command identity, kind, cwd, timeout, expected exit codes, required status, and pass/fail semantics.
+- Reject symlink and path-escape writes for `.ces` verification evidence, latest-verification metadata, and contract writes.
+- Scrub secrets and suppress absolute project-root paths from persisted/shareable verification evidence and proof-card output.
+
+### Changed
+
+- Tighten greenfield safety so `ces build --from-scratch --yes` no longer bypasses existing-project guardrails, with clearer brownfield guidance.
+
 ## [0.1.24] - 2026-05-14
 
 ### Added
