@@ -10,6 +10,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from ces.execution.pipeline import COMPLETION_CLAIM_INSTRUCTIONS
+from ces.intent_gate.classifier import classify_intent
+
 _SCHEMA_VERSION = 1
 _SECRET_NAME_RE = re.compile(r"\b([A-Z][A-Z0-9_]*(?:SECRET|TOKEN|API_KEY|PASSWORD|PRIVATE_KEY|ACCESS_KEY)[A-Z0-9_]*)\b")
 _SKIP_DIRS = {
@@ -41,6 +44,8 @@ _SECRET_FILENAMES = {
 }
 _CONTAINER_FILE = "Dock" + "erfile"
 _COMPOSE_FILES = ("dock" + "er-compose.yml", "dock" + "er-compose.yaml")
+_CES_RUNTIME_DECLARATION_SIGNAL = "ces-runtime-declaration"
+_RUNTIME_SIGNAL_NAMES = frozenset({_CONTAINER_FILE, *_COMPOSE_FILES, "Procfile", _CES_RUNTIME_DECLARATION_SIGNAL})
 _SEVERITY_ORDER = {"critical": 0, "high": 1, "medium": 2, "low": 3, "info": 4}
 _MATURITY_LADDER = ("vibe-prototype", "local-app", "shareable-app", "production-candidate", "production-ready")
 _READINESS_CATEGORIES = {
@@ -52,6 +57,45 @@ _READINESS_CATEGORIES = {
     "runtime": 15,
     "ces": 10,
 }
+_OBJECTIVE_STOPWORDS = frozenset(
+    {
+        "a",
+        "an",
+        "and",
+        "are",
+        "as",
+        "at",
+        "by",
+        "change",
+        "current",
+        "existing",
+        "feature",
+        "for",
+        "from",
+        "in",
+        "into",
+        "keep",
+        "make",
+        "new",
+        "of",
+        "on",
+        "or",
+        "the",
+        "this",
+        "to",
+        "update",
+        "with",
+    }
+)
+_OBJECTIVE_HINT_EXCLUDED_PREFIXES = (
+    "docs/audits/",
+    "docs/historical/",
+    "docs/plans/",
+    "tests/fixtures/",
+    "tests/integration/_compat/",
+)
+_RUNTIME_OBJECTIVE_TOKENS = frozenset({"deploy", "deployment", "entrypoint", "procfile", "runtime"})
+_TEST_OBJECTIVE_TOKENS = frozenset({"coverage", "mypy", "pytest", "ruff", "test", "tests", "typecheck", "verify"})
 
 
 @dataclass(frozen=True)
@@ -254,6 +298,9 @@ def _detect_signals(root: Path, project_type: str) -> list[MriSignal]:
         )
     pyproject = _read_toml(root / "pyproject.toml")
     package_json = _read_json(root / "package.json")
+    runtime_declaration = _runtime_declaration_signal(pyproject)
+    if runtime_declaration is not None:
+        signals.append(runtime_declaration)
     signals.extend(_python_tool_signals(pyproject))
     signals.extend(_node_tool_signals(package_json, root))
     workflows_dir = root / ".github" / "workflows"
@@ -272,6 +319,28 @@ def _python_tool_signals(pyproject: dict[str, Any]) -> list[MriSignal]:
             category = "test" if name == "pytest" else "quality"
             signals.append(MriSignal(name, category, f"{name} configuration or dependency detected"))
     return signals
+
+
+def _runtime_declaration_signal(pyproject: dict[str, Any]) -> MriSignal | None:
+    tool = pyproject.get("tool", {}) if isinstance(pyproject.get("tool"), dict) else {}
+    ces = tool.get("ces", {}) if isinstance(tool.get("ces"), dict) else {}
+    declaration = ces.get("runtime_declaration", {}) if isinstance(ces.get("runtime_declaration"), dict) else {}
+    entrypoint = str(declaration.get("entrypoint", "")).strip()
+    if not entrypoint:
+        return None
+    kind = str(declaration.get("kind", "")).strip() or "unspecified"
+    smoke_test = str(declaration.get("smoke_test", "")).strip()
+    guide = str(declaration.get("deployment_guide", "")).strip()
+    evidence_parts = [f"{kind} entrypoint `{entrypoint}`"]
+    if smoke_test:
+        evidence_parts.append(f"smoke `{smoke_test}`")
+    if guide:
+        evidence_parts.append(f"guide `{guide}`")
+    return MriSignal(
+        _CES_RUNTIME_DECLARATION_SIGNAL,
+        "runtime",
+        "tool.ces.runtime_declaration with " + "; ".join(evidence_parts),
+    )
 
 
 def _node_tool_signals(package_json: dict[str, Any], root: Path) -> list[MriSignal]:
@@ -391,7 +460,7 @@ def _ai_slop_findings(root: Path) -> list[MriFinding]:
             text = path.read_text(encoding="utf-8")
         except UnicodeDecodeError:
             continue
-        if "/tests/" in f"/{relative}" or path.name.startswith("test_") or path.name.endswith("_test.py"):
+        if _looks_like_behavioral_test_file(path, relative):
             if "assert " not in text and "pytest.raises" not in text and "unittest" not in text:
                 weak_tests.append(relative)
         if re.search(r"except\s+Exception\s*:\s*(?:\n\s*)pass\b", text):
@@ -430,6 +499,18 @@ def _ai_slop_findings(root: Path) -> list[MriFinding]:
     return findings
 
 
+def _looks_like_behavioral_test_file(path: Path, relative: str) -> bool:
+    relative_path = Path(relative)
+    parts = relative_path.parts
+    if path.name in {"__init__.py", "conftest.py"}:
+        return False
+    if any(part in {"fixtures", "fixture", "support"} for part in parts):
+        return False
+    if "tests" in parts:
+        return path.name.startswith("test_") or path.name.endswith("_test.py")
+    return len(parts) == 1 and (path.name.startswith("test_") or path.name.endswith("_test.py"))
+
+
 def _readiness_score(signals: list[MriSignal]) -> dict[str, Any]:
     names = {signal.name for signal in signals}
     passed: list[str] = []
@@ -443,7 +524,7 @@ def _readiness_score(signals: list[MriSignal]) -> dict[str, Any]:
         passed.append("quality")
     if "github-actions" in names:
         passed.append("ci")
-    if {_CONTAINER_FILE, *_COMPOSE_FILES, "Procfile"} & names:
+    if _RUNTIME_SIGNAL_NAMES & names:
         passed.append("runtime")
     if {".ces/verification-profile.json", ".ces/config.yaml", ".ces/state.db"} & names:
         passed.append("ces")
@@ -468,7 +549,7 @@ def _missing_readiness_signals(signals: list[MriSignal]) -> list[str]:
         missing.append("lint/typecheck signal")
     if "github-actions" not in names:
         missing.append("CI workflow")
-    if not ({_CONTAINER_FILE, *_COMPOSE_FILES, "Procfile"} & names):
+    if not (_RUNTIME_SIGNAL_NAMES & names):
         missing.append("deployment/runtime declaration")
     if ".ces/verification-profile.json" not in names:
         missing.append("CES verification profile")
@@ -480,7 +561,7 @@ def _classify_maturity(signals: list[MriSignal], findings: list[MriFinding], mis
     has_tests = bool({"pytest", "npm-test", "tests-directory"} & names)
     has_quality = bool({"ruff", "mypy", "eslint", "typescript"} & names)
     has_ci = "github-actions" in names
-    has_runtime = bool({_CONTAINER_FILE, *_COMPOSE_FILES, "Procfile"} & names)
+    has_runtime = bool(_RUNTIME_SIGNAL_NAMES & names)
     has_ces_state = bool({".ces/verification-profile.json", ".ces/config.yaml", ".ces/state.db"} & names)
     has_high_risk = any(finding.severity in {"critical", "high"} for finding in findings)
     if has_tests and has_quality and has_ci and has_runtime and has_ces_state and not has_high_risk:
@@ -506,6 +587,7 @@ def _strongest_evidence(signals: list[MriSignal]) -> tuple[str, ...]:
         "eslint",
         "typescript",
         ".ces/verification-profile.json",
+        _CES_RUNTIME_DECLARATION_SIGNAL,
         _CONTAINER_FILE,
         "README.md",
     ]
@@ -755,17 +837,63 @@ class NextActionReport:
 @dataclass(frozen=True)
 class NextPromptReport:
     next_action: NextActionReport
+    project_root: Path
+    original_objective: str
+    contract_status: str
+    project_mode: str
+    project_mode_reason: str
+    detected_project_type: str
+    detected_maturity: str
+    intent_gate_decision: str
+    intent_safe_next_step: str
+    open_questions: tuple[str, ...]
+    explicit_scope: tuple[str, ...]
+    acceptance_criteria: tuple[str, ...]
+    must_not_break: tuple[str, ...]
+    allowed_file_areas: tuple[str, ...]
+    forbidden_changes: tuple[str, ...]
+    slop_budget: tuple[str, ...]
+    scope_drift_kill_switch: tuple[str, ...]
+    slop_risks: tuple[dict[str, str], ...]
+    thin_rescue_signals: dict[str, Any] | None
     prompt: str
     validation_commands: tuple[str, ...]
     non_goals: tuple[str, ...]
+    completion_evidence_required: tuple[str, ...]
+    ces_completion_expectations: tuple[str, ...]
+    next_ces_command_after_implementation: str
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "schema_version": _SCHEMA_VERSION,
             "next_action": self.next_action.to_dict(),
+            "project_root": str(self.project_root),
+            "original_objective": self.original_objective,
+            "contract_status": self.contract_status,
+            "project_mode": self.project_mode,
+            "project_mode_reason": self.project_mode_reason,
+            "detected_project_type": self.detected_project_type,
+            "detected_maturity": self.detected_maturity,
+            "intent_gate": {
+                "decision": self.intent_gate_decision,
+                "safe_next_step": self.intent_safe_next_step,
+                "open_questions": list(self.open_questions),
+            },
+            "scope": list(self.explicit_scope),
+            "acceptance_criteria": list(self.acceptance_criteria),
+            "must_not_break": list(self.must_not_break),
+            "allowed_file_areas": list(self.allowed_file_areas),
+            "forbidden_changes": list(self.forbidden_changes),
+            "slop_budget": list(self.slop_budget),
+            "scope_drift_kill_switch": list(self.scope_drift_kill_switch),
+            "slop_risks": list(self.slop_risks),
+            "thin_rescue_signals": self.thin_rescue_signals,
             "prompt": self.prompt,
             "validation_commands": list(self.validation_commands),
             "non_goals": list(self.non_goals),
+            "completion_evidence_required": list(self.completion_evidence_required),
+            "ces_completion_expectations": list(self.ces_completion_expectations),
+            "next_ces_command_after_implementation": self.next_ces_command_after_implementation,
         }
 
     def to_json(self) -> str:
@@ -1098,51 +1226,113 @@ def build_next_action(project_root: str | Path) -> NextActionReport:
     )
 
 
-def build_next_prompt(project_root: str | Path) -> NextPromptReport:
+def build_next_prompt(
+    project_root: str | Path,
+    objective: str | None = None,
+    *,
+    acceptance_criteria: tuple[str, ...] | list[str] = (),
+    must_not_break: tuple[str, ...] | list[str] = (),
+) -> NextPromptReport:
+    report = scan_project_mri(project_root)
     action = build_next_action(project_root)
-    validation = _validation_commands_for(scan_project_mri(project_root))
-    non_goals = (
-        "Do not add hosted services, dashboards, deployment platforms, or network calls.",
-        "Do not weaken CES governance, approval, evidence, redaction, or consent gates.",
-        "Do not print or commit secret values.",
+    validation = _validation_commands_for(report)
+    normalized_acceptance = tuple(item.strip() for item in acceptance_criteria if item.strip())
+    normalized_must_not_break = tuple(item.strip() for item in must_not_break if item.strip())
+    mode, mode_reason, thin_rescue = _project_mode_assessment(report)
+    original_objective = _contract_objective(objective, action, thin_rescue)
+    intent_preflight = classify_intent(
+        original_objective,
+        constraints=(),
+        acceptance_criteria=normalized_acceptance,
+        must_not_break=normalized_must_not_break,
+        project_mode=mode,
+        non_interactive=True,
     )
-    prompt = "\n".join(
-        [
-            "# Next Production-Readiness Prompt",
-            "",
-            "Objective:",
-            f"Move this project from `{action.current_maturity}` toward `{action.target_maturity}` by completing the next safest production-readiness step.",
-            "",
-            "Scope:",
-            *_bullet(action.highest_priority_blockers),
-            "",
-            "Files/areas to inspect:",
-            *_bullet(
-                (
-                    "README/docs",
-                    "project config",
-                    "tests",
-                    "CI/quality configuration",
-                    ".ces verification policy if present",
-                )
-            ),
-            "",
-            "Validation commands:",
-            *_bullet(validation),
-            "",
-            "Non-goals:",
-            *_bullet(non_goals),
-            "",
-            "Secret-handling rule:",
-            "Report only secret filenames, key names, or categories. Never print secret values.",
-            "",
-            "Completion evidence:",
-            "Summarize files changed, readiness gap closed, commands run, exact results, and remaining blockers.",
-            "",
-            f"Recommended CES command after implementation: `{action.recommended_command}`",
-        ]
+    contract_status = "blocked" if intent_preflight.decision == "blocked" else "implementation-ready"
+    non_goals = _contract_non_goals(mode)
+    explicit_scope = _contract_scope(
+        report=report,
+        action=action,
+        mode=mode,
+        objective=original_objective,
+        contract_status=contract_status,
+        thin_rescue=thin_rescue,
     )
-    return NextPromptReport(action, prompt, validation, non_goals)
+    must_not_break_items = _contract_must_not_break(
+        project_root=report.project_root,
+        report=report,
+        mode=mode,
+        explicit_items=normalized_must_not_break,
+    )
+    allowed_file_areas = _allowed_file_areas(report, mode, thin_rescue, original_objective)
+    forbidden_changes = _forbidden_changes(mode, thin_rescue)
+    slop_budget = _slop_budget()
+    scope_drift_kill_switch = _scope_drift_kill_switch()
+    derived_acceptance = _contract_acceptance_criteria(
+        report=report,
+        action=action,
+        mode=mode,
+        objective=original_objective,
+        explicit_items=normalized_acceptance,
+        thin_rescue=thin_rescue,
+        contract_status=contract_status,
+    )
+    slop_risks = tuple(finding.to_dict() for finding in report.risk_findings if finding.category == "ai-slop")
+    completion_evidence_required = _completion_evidence_required()
+    ces_completion_expectations = _ces_completion_expectations()
+    next_ces_command = (
+        "Clarify the request and rerun ces next-prompt." if contract_status == "blocked" else "ces verify"
+    )
+    prompt = _render_developer_intent_contract(
+        report=report,
+        original_objective=original_objective,
+        contract_status=contract_status,
+        project_mode=mode,
+        project_mode_reason=mode_reason,
+        intent_preflight=intent_preflight,
+        explicit_scope=explicit_scope,
+        non_goals=non_goals,
+        must_not_break=must_not_break_items,
+        acceptance_criteria=derived_acceptance,
+        allowed_file_areas=allowed_file_areas,
+        forbidden_changes=forbidden_changes,
+        slop_budget=slop_budget,
+        scope_drift_kill_switch=scope_drift_kill_switch,
+        slop_risks=slop_risks,
+        validation_commands=validation,
+        completion_evidence_required=completion_evidence_required,
+        ces_completion_expectations=ces_completion_expectations,
+        next_ces_command=next_ces_command,
+        thin_rescue=thin_rescue,
+    )
+    return NextPromptReport(
+        next_action=action,
+        project_root=report.project_root,
+        original_objective=original_objective,
+        contract_status=contract_status,
+        project_mode=mode,
+        project_mode_reason=mode_reason,
+        detected_project_type=report.project_type,
+        detected_maturity=report.maturity,
+        intent_gate_decision=intent_preflight.decision,
+        intent_safe_next_step=intent_preflight.safe_next_step,
+        open_questions=tuple(question.question for question in intent_preflight.ledger.open_questions),
+        explicit_scope=explicit_scope,
+        acceptance_criteria=derived_acceptance,
+        must_not_break=must_not_break_items,
+        allowed_file_areas=allowed_file_areas,
+        forbidden_changes=forbidden_changes,
+        slop_budget=slop_budget,
+        scope_drift_kill_switch=scope_drift_kill_switch,
+        slop_risks=slop_risks,
+        thin_rescue_signals=thin_rescue,
+        prompt=prompt,
+        validation_commands=validation,
+        non_goals=non_goals,
+        completion_evidence_required=completion_evidence_required,
+        ces_completion_expectations=ces_completion_expectations,
+        next_ces_command_after_implementation=next_ces_command,
+    )
 
 
 def build_production_passport(project_root: str | Path) -> ProductionPassportReport:
@@ -1157,7 +1347,7 @@ def build_ship_plan(project_root: str | Path, objective: str | None = None) -> S
     """Build a read-only beginner plan for getting from idea to proof-backed delivery."""
 
     action = build_next_action(project_root)
-    prompt = build_next_prompt(project_root)
+    prompt = build_next_prompt(project_root, objective)
     objective_text = objective.strip() if objective and objective.strip() else None
     report = scan_project_mri(project_root)
     greenfield_command = _greenfield_command(objective_text)
@@ -1343,3 +1533,552 @@ def _bullet(items: Any) -> list[str]:
     if not values:
         return ["- None detected."]
     return [f"- {item}" for item in values]
+
+
+def _project_mode_assessment(report: ProjectMriReport) -> tuple[str, str, dict[str, Any] | None]:
+    if _is_greenfield_report(report):
+        return (
+            "greenfield",
+            "No existing project spine was detected, so the contract should define the smallest runnable starting point.",
+            None,
+        )
+    thin_rescue = _thin_rescue_signals(report)
+    if thin_rescue is not None:
+        return (
+            "thin/born-thin rescue",
+            "Existing project signals are fragile enough that CES should protect current behavior and force one rescue step before broader work.",
+            thin_rescue,
+        )
+    return (
+        "brownfield",
+        "The repository has an existing project spine, so the contract should scope work to one bounded change while preserving current behavior.",
+        None,
+    )
+
+
+def _thin_rescue_signals(report: ProjectMriReport) -> dict[str, Any] | None:
+    names = {signal.name for signal in report.signals}
+    missing_readme = "README.md" not in names
+    missing_run_instructions = missing_readme or not _readme_has_instruction(report.project_root, ("run", "start"))
+    missing_tests = not bool({"pytest", "npm-test", "tests-directory"} & names)
+    missing_quality_gates = not bool({"ruff", "mypy", "eslint", "typescript"} & names)
+    missing_ci = "github-actions" not in names
+    missing_runtime_declaration = not bool(_RUNTIME_SIGNAL_NAMES & names)
+    missing_verification_profile = ".ces/verification-profile.json" not in names
+    slop_risks = tuple(finding.to_dict() for finding in report.risk_findings if finding.category == "ai-slop")
+    spine_gap_count = sum(
+        (
+            missing_readme,
+            missing_run_instructions,
+            missing_tests,
+            missing_quality_gates,
+            missing_ci,
+            missing_runtime_declaration,
+            missing_verification_profile,
+        )
+    )
+    weak_project_spine = spine_gap_count >= 3
+    if report.maturity not in {"vibe-prototype", "local-app"} and not (weak_project_spine and slop_risks):
+        return None
+    if not weak_project_spine and not slop_risks:
+        return None
+    safest_next_step = _thin_rescue_next_step(
+        missing_readme=missing_readme,
+        missing_run_instructions=missing_run_instructions,
+        missing_tests=missing_tests,
+        missing_quality_gates=missing_quality_gates,
+        missing_ci=missing_ci,
+        missing_runtime_declaration=missing_runtime_declaration,
+        missing_verification_profile=missing_verification_profile,
+        slop_risks=slop_risks,
+    )
+    return {
+        "missing_readme": missing_readme,
+        "missing_run_instructions": missing_run_instructions,
+        "missing_tests": missing_tests,
+        "missing_quality_gates": missing_quality_gates,
+        "missing_ci": missing_ci,
+        "missing_runtime_declaration": missing_runtime_declaration,
+        "missing_verification_profile": missing_verification_profile,
+        "weak_project_spine": weak_project_spine,
+        "slop_risks": list(slop_risks),
+        "safest_next_step": safest_next_step,
+    }
+
+
+def _thin_rescue_next_step(
+    *,
+    missing_readme: bool,
+    missing_run_instructions: bool,
+    missing_tests: bool,
+    missing_quality_gates: bool,
+    missing_ci: bool,
+    missing_runtime_declaration: bool,
+    missing_verification_profile: bool,
+    slop_risks: tuple[dict[str, str], ...],
+) -> str:
+    if missing_readme or missing_run_instructions:
+        return "Document the current run and test path in README without changing user-visible behavior."
+    if missing_tests:
+        return "Add one focused characterization test for the primary current flow before adding new behavior."
+    if slop_risks:
+        risk = slop_risks[0]
+        return (
+            f"Fix the highest-severity AI-slop risk in {risk['evidence']} with the smallest behavior-preserving change."
+        )
+    if missing_verification_profile:
+        return "Persist a CES verification profile that matches the checks the repository already uses."
+    if missing_quality_gates or missing_ci:
+        return "Add the smallest local verification/CI gate that matches the existing stack without introducing new frameworks."
+    if missing_runtime_declaration:
+        return "Declare the current runtime entrypoint or deployment command without changing deployment architecture."
+    return "Make one minimal readiness improvement without broad rewrites or speculative cleanup."
+
+
+def _contract_objective(
+    objective: str | None,
+    action: NextActionReport,
+    thin_rescue: dict[str, Any] | None,
+) -> str:
+    if objective and objective.strip():
+        return objective.strip()
+    if thin_rescue is not None:
+        return thin_rescue["safest_next_step"]
+    return (
+        "Create a small runnable app with README, tests, and run instructions"
+        if action.recommended_command.startswith("ces build --from-scratch")
+        else "Close the next smallest readiness gap without broad rewrites."
+    )
+
+
+def _contract_non_goals(mode: str) -> tuple[str, ...]:
+    items = [
+        "Do not add hosted services, dashboards, deployment platforms, or network calls.",
+        "Do not weaken CES governance, approval, evidence, redaction, runtime-boundary, or consent gates.",
+        "Do not print or commit secret values.",
+        "Do not broaden scope beyond the explicit objective and acceptance criteria.",
+        "Do not replace the existing stack, framework, or architecture unless the request explicitly requires it.",
+    ]
+    if mode == "thin/born-thin rescue":
+        items.append("Do not turn the rescue step into a multi-epic rewrite, backlog, or redesign.")
+    return tuple(items)
+
+
+def _contract_scope(
+    *,
+    report: ProjectMriReport,
+    action: NextActionReport,
+    mode: str,
+    objective: str,
+    contract_status: str,
+    thin_rescue: dict[str, Any] | None,
+) -> tuple[str, ...]:
+    if contract_status == "blocked":
+        return (
+            "Do not start implementation yet.",
+            "Clarify the missing acceptance criteria and failure boundaries before editing code.",
+        )
+    if mode == "greenfield":
+        return (
+            f"Build exactly this objective: {objective}",
+            "Keep the project to the smallest runnable shape with source, tests, README, and only the minimal config required to run and verify it.",
+            "Prefer boring defaults over framework sprawl.",
+        )
+    if mode == "thin/born-thin rescue" and thin_rescue is not None:
+        return (
+            f"Use the original objective only as context: {objective}",
+            f"Execute one rescue step only: {thin_rescue['safest_next_step']}",
+            "Protect current fragile behavior while making the smallest verifiable readiness improvement.",
+        )
+    return (
+        f"Build exactly this objective: {objective}",
+        f"Keep the change bounded to the next safest step toward `{action.target_maturity}`.",
+        "Preserve existing behavior and project conventions outside the scoped change.",
+    )
+
+
+def _contract_must_not_break(
+    *,
+    project_root: Path,
+    report: ProjectMriReport,
+    mode: str,
+    explicit_items: tuple[str, ...],
+) -> tuple[str, ...]:
+    invariants = tuple(item.text for item in mine_project_invariants(project_root).invariants)
+    defaults = [
+        "Current working behavior outside the scoped change must keep working.",
+        "Existing verification commands must keep passing once the scoped change is complete.",
+    ]
+    if mode != "greenfield":
+        defaults.append(
+            "Existing entrypoints, data files, and runtime boundaries must stay intact unless the scope explicitly says otherwise."
+        )
+    items = tuple(dict.fromkeys((*explicit_items, *invariants, *defaults)))
+    return items or ("Keep the current project runnable and reviewable.",)
+
+
+def _allowed_file_areas(
+    report: ProjectMriReport,
+    mode: str,
+    thin_rescue: dict[str, Any] | None,
+    objective: str,
+) -> tuple[str, ...]:
+    areas: list[str] = ["README.md", "tests/", "project config (pyproject.toml/package.json)"]
+    if mode == "greenfield":
+        areas.extend(["primary app source files", "minimal CI/quality config only if required for verification"])
+    else:
+        areas.extend(_objective_file_areas(report.project_root, objective))
+        areas.extend(_paths_from_risk_findings(report.risk_findings))
+        areas.append("docs/ and runtime entrypoint files only if the scoped step requires them")
+    if thin_rescue is not None:
+        if thin_rescue["missing_verification_profile"]:
+            areas.append(".ces/verification-profile.json")
+        if thin_rescue["missing_ci"]:
+            areas.append(".github/workflows/")
+    return tuple(dict.fromkeys(areas))
+
+
+def _paths_from_risk_findings(findings: tuple[MriFinding, ...]) -> list[str]:
+    areas: list[str] = []
+    for finding in findings:
+        if finding.category not in {"ai-slop", "secret-hygiene"}:
+            continue
+        for token in (part.strip() for part in finding.evidence.split(";")):
+            candidate = token.split(" (", 1)[0].strip()
+            if not candidate or "TODO/FIXME" in candidate:
+                continue
+            if "/" in candidate or candidate.endswith((".py", ".md", ".toml", ".json", ".yml", ".yaml")):
+                areas.append(candidate)
+    return areas
+
+
+def _objective_file_areas(project_root: Path, objective: str) -> list[str]:
+    objective_tokens = _objective_tokens(objective)
+    if not objective_tokens:
+        return []
+
+    areas: list[str] = []
+    if objective_tokens & _TEST_OBJECTIVE_TOKENS and _is_regular_dir(project_root / "tests"):
+        areas.append("tests/")
+    if objective_tokens & _RUNTIME_OBJECTIVE_TOKENS:
+        if _is_regular_file(project_root / "pyproject.toml"):
+            areas.append("pyproject.toml")
+        if _is_regular_file(project_root / "docs" / "Production_Deployment_Guide.md"):
+            areas.append("docs/Production_Deployment_Guide.md")
+        if _is_regular_file(project_root / "Procfile"):
+            areas.append("Procfile")
+
+    scored_candidates: list[tuple[int, str]] = []
+    for area in _objective_area_candidates(project_root):
+        area_tokens = _area_tokens(area)
+        overlap = objective_tokens & area_tokens
+        if not overlap:
+            continue
+        high_signal_token_match = any(
+            len(_normalize_objective_token(raw_token)) >= 6 and _normalize_objective_token(raw_token) in overlap
+            for raw_token in re.findall(r"[a-z0-9]+", area.casefold())
+        )
+        if len(overlap) < 2 and not (high_signal_token_match and (area.startswith("src/") or "/" not in area)):
+            continue
+        score = len(overlap) * 10
+        if area.startswith("src/"):
+            score += 4
+        elif area.startswith("tests/"):
+            score += 2
+        elif area.startswith("docs/"):
+            score += 1
+        if area.endswith("/"):
+            score += 1
+        if high_signal_token_match:
+            score += 2
+        scored_candidates.append((score, area))
+
+    scored_candidates.sort(key=lambda item: (-item[0], item[1]))
+    areas.extend(area for _, area in scored_candidates[:4])
+    return list(dict.fromkeys(areas))
+
+
+def _objective_area_candidates(project_root: Path) -> tuple[str, ...]:
+    areas: set[str] = set()
+    for path in _iter_project_files(project_root):
+        relative = path.relative_to(project_root).as_posix()
+        if relative.startswith(_OBJECTIVE_HINT_EXCLUDED_PREFIXES):
+            continue
+        if relative in {"README.md", "pyproject.toml", "package.json", "Procfile"}:
+            areas.add(relative)
+            continue
+        if relative.startswith(("src/", "tests/", "docs/", ".github/workflows/")):
+            areas.add(relative)
+        parts = Path(relative).parts
+        if len(parts) >= 2 and parts[0] == "src":
+            areas.add(f"{parts[0]}/{parts[1]}/")
+    return tuple(sorted(areas))
+
+
+def _objective_tokens(text: str) -> set[str]:
+    tokens: set[str] = set()
+    for raw_token in re.findall(r"[a-z0-9]+", text.casefold()):
+        token = _normalize_objective_token(raw_token)
+        if len(token) < 3 and token not in {"ci", "ui"}:
+            continue
+        if token in _OBJECTIVE_STOPWORDS:
+            continue
+        tokens.add(token)
+    return tokens
+
+
+def _area_tokens(area: str) -> set[str]:
+    return {_normalize_objective_token(token) for token in re.findall(r"[a-z0-9]+", area.casefold()) if token}
+
+
+def _normalize_objective_token(token: str) -> str:
+    if token.endswith("ies") and len(token) > 4:
+        return token[:-3] + "y"
+    if token.endswith("s") and len(token) > 4 and not token.endswith("ss"):
+        return token[:-1]
+    return token
+
+
+def _forbidden_changes(mode: str, thin_rescue: dict[str, Any] | None) -> tuple[str, ...]:
+    items = [
+        "Do not create or edit `.ces/state.db`, `.ces/artifacts/`, or `.ces/exports/`.",
+        "Do not introduce a new framework, service, queue, database, or background job unless the request explicitly requires it.",
+        "Do not rewrite unrelated modules, rename broad directories, or perform 'while I was here' refactors.",
+        "Do not add dependencies without rationale plus lockfile and audit evidence.",
+        "Do not change secret files or inline credentials.",
+    ]
+    if mode == "thin/born-thin rescue" and thin_rescue is not None:
+        items.append("Do not mix multiple rescue steps into one implementation.")
+    return tuple(items)
+
+
+def _slop_budget() -> tuple[str, ...]:
+    return (
+        "No new framework unless the request cannot be satisfied with the current stack.",
+        "No new service unless the request explicitly requires one.",
+        "No broad rewrite unless the request explicitly asks for one.",
+        "No dependency addition without rationale plus lockfile and audit evidence.",
+        "No speculative features.",
+        "No 'while I was here' refactors.",
+    )
+
+
+def _scope_drift_kill_switch() -> tuple[str, ...]:
+    return (
+        "If implementation requires changing scope, stop and report the needed decision.",
+        "If acceptance criteria are insufficient for a high-risk change, block instead of guessing.",
+        "If a simpler implementation satisfies the request, use it.",
+    )
+
+
+def _contract_acceptance_criteria(
+    *,
+    report: ProjectMriReport,
+    action: NextActionReport,
+    mode: str,
+    objective: str,
+    explicit_items: tuple[str, ...],
+    thin_rescue: dict[str, Any] | None,
+    contract_status: str,
+) -> tuple[str, ...]:
+    if contract_status == "blocked":
+        return ("Do not implement until the missing acceptance criteria and failure boundaries are supplied.",)
+    if explicit_items:
+        return explicit_items
+    if mode == "greenfield":
+        return (
+            f"The delivered project satisfies the stated objective exactly: {objective}",
+            "The project is runnable with documented run instructions and includes focused automated verification.",
+            "README documents how to run, test, and verify the project locally.",
+            "Verification commands pass without broadening the stack beyond what the objective requires.",
+        )
+    if mode == "thin/born-thin rescue" and thin_rescue is not None:
+        return (
+            thin_rescue["safest_next_step"],
+            "The current fragile behavior is preserved while the single rescue step is completed.",
+            "The result closes one readiness gap with concrete local verification evidence and documents remaining gaps honestly.",
+        )
+    return (
+        f"Only the requested change is delivered: {objective}",
+        f"The next readiness target is advanced toward `{action.target_maturity}` without unrelated rewrites.",
+        "Existing behavior and verification expectations remain intact outside the scoped change.",
+        "Local verification commands pass and remaining blockers are called out explicitly.",
+    )
+
+
+def _completion_evidence_required() -> tuple[str, ...]:
+    return (
+        "List every file changed and explain why each file was in scope.",
+        "Report the exact verification commands run and their exact results.",
+        "Map each acceptance criterion to concrete proof.",
+        "Disclose any open questions, deviations, or remaining blockers instead of hand-waving them.",
+    )
+
+
+def _ces_completion_expectations() -> tuple[str, ...]:
+    return (
+        "Emit exactly one `ces:completion` fenced block before exiting.",
+        "Include `summary`, `files_changed`, `exploration_evidence`, `verification_commands`, and `criteria_satisfied`.",
+        "If dependencies changed, include `dependency_changes` with rationale, lockfile evidence, and audit evidence.",
+        "Include `complexity_notes`, `open_questions`, and `scope_deviations`; uncertainty must be disclosed, not hidden.",
+        "Every acceptance criterion must appear once in `criteria_satisfied` with concrete evidence.",
+    )
+
+
+def _render_developer_intent_contract(
+    *,
+    report: ProjectMriReport,
+    original_objective: str,
+    contract_status: str,
+    project_mode: str,
+    project_mode_reason: str,
+    intent_preflight: Any,
+    explicit_scope: tuple[str, ...],
+    non_goals: tuple[str, ...],
+    must_not_break: tuple[str, ...],
+    acceptance_criteria: tuple[str, ...],
+    allowed_file_areas: tuple[str, ...],
+    forbidden_changes: tuple[str, ...],
+    slop_budget: tuple[str, ...],
+    scope_drift_kill_switch: tuple[str, ...],
+    slop_risks: tuple[dict[str, str], ...],
+    validation_commands: tuple[str, ...],
+    completion_evidence_required: tuple[str, ...],
+    ces_completion_expectations: tuple[str, ...],
+    next_ces_command: str,
+    thin_rescue: dict[str, Any] | None,
+) -> str:
+    lines = [
+        "# CES Developer Intent Contract",
+        "",
+        f"Original objective: {original_objective}",
+        f"Contract status: **{contract_status}**",
+        f"Project mode: **{project_mode}**",
+        f"Detected project type: `{report.project_type}`",
+        f"Detected maturity: **{report.maturity}**",
+        f"Project root: `{report.project_root}`",
+        "",
+        "Build exactly what the user asked for. Treat overbuilding, scope drift, and speculative cleanup as failed checks.",
+        "",
+        "## Project mode rationale",
+        "",
+        project_mode_reason,
+        "",
+        "## Scope",
+        "",
+        *_bullet(explicit_scope),
+        "",
+        "## Non-goals",
+        "",
+        *_bullet(non_goals),
+        "",
+        "## Must-not-break behaviors",
+        "",
+        *_bullet(must_not_break),
+        "",
+        "## Acceptance criteria",
+        "",
+        *_bullet(acceptance_criteria),
+        "",
+        "## Allowed file areas",
+        "",
+        *_bullet(allowed_file_areas),
+        "",
+        "## Forbidden changes",
+        "",
+        *_bullet(forbidden_changes),
+        "",
+        "## Slop budget",
+        "",
+        *_bullet(slop_budget),
+        "",
+        "## Scope Drift Kill Switch",
+        "",
+        *_bullet(scope_drift_kill_switch),
+    ]
+    if thin_rescue is not None:
+        lines.extend(
+            [
+                "",
+                "## Thin/Born-Thin Rescue Signals",
+                "",
+                f"- Missing README: {thin_rescue['missing_readme']}",
+                f"- Missing run instructions: {thin_rescue['missing_run_instructions']}",
+                f"- Missing tests: {thin_rescue['missing_tests']}",
+                f"- Missing CI/quality gates: {thin_rescue['missing_ci'] or thin_rescue['missing_quality_gates']}",
+                f"- Missing runtime declaration: {thin_rescue['missing_runtime_declaration']}",
+                f"- Missing verification profile: {thin_rescue['missing_verification_profile']}",
+                f"- Weak project spine: {thin_rescue['weak_project_spine']}",
+                f"- Single safest next step: {thin_rescue['safest_next_step']}",
+            ]
+        )
+    lines.extend(["", "## AI-Slop Risks", ""])
+    if slop_risks:
+        lines.extend(
+            _bullet(
+                f"{finding['severity']} / {finding['title']} — {finding['evidence']}. {finding['recommendation']}"
+                for finding in slop_risks
+            )
+        )
+    else:
+        lines.append("- No AI-slop risks were detected by the deterministic slop scan.")
+    lines.extend(
+        [
+            "",
+            "## Verification commands",
+            "",
+            *_bullet(validation_commands),
+            "",
+            "## Completion evidence required",
+            "",
+            *_bullet(completion_evidence_required),
+            "",
+            "## Exact `ces:completion` expectations",
+            "",
+            *_bullet(ces_completion_expectations),
+            "",
+            "## Intent Gate",
+            "",
+            f"- Decision: {intent_preflight.decision}",
+            f"- Safe next step: {intent_preflight.safe_next_step}",
+        ]
+    )
+    if intent_preflight.ledger.open_questions:
+        lines.extend(
+            [
+                "- Open questions:",
+                *[
+                    f"  - {question.question} ({question.why_it_matters})"
+                    for question in intent_preflight.ledger.open_questions
+                ],
+            ]
+        )
+    lines.extend(
+        [
+            "",
+            "## Next CES command after implementation",
+            "",
+            f"`{next_ces_command}`",
+            "",
+            "## Reference completion schema",
+            "",
+            "````text",
+            COMPLETION_CLAIM_INSTRUCTIONS.strip(),
+            "````",
+        ]
+    )
+    return "\n".join(lines).rstrip() + "\n"
+
+
+def _readme_has_instruction(root: Path, verbs: tuple[str, ...]) -> bool:
+    readme = root / "README.md"
+    if not readme.is_file():
+        return False
+    text = readme.read_text(encoding="utf-8", errors="ignore")
+    for verb in verbs:
+        escaped = re.escape(verb)
+        if re.search(rf"(?im)^\s*(?:[-*]\s*)?{escaped}\s*:\s*`?\S+", text):
+            return True
+        if re.search(rf"(?im)^\s*(?:```(?:bash|sh|shell)?\s*)?\$\s*\S*{escaped}\S*\b", text):
+            return True
+    return False

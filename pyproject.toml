@@ -131,6 +131,12 @@ exclude = [
 [tool.hatch.build.targets.wheel]
 packages = ["src/ces"]
 
+[tool.ces.runtime_declaration]
+kind = "local-cli"
+entrypoint = "uv run ces"
+smoke_test = "uv run ces --help"
+deployment_guide = "docs/Production_Deployment_Guide.md"
+
 [tool.ruff]
 line-length = 120
 target-version = "py312"
@@ -242,6 +248,7 @@ show_missing = true
 python_version = "3.12"
 strict = true
 plugins = ["pydantic.mypy"]
+exclude = '(^|/)dogfood-output/'
 check_untyped_defs = false
 disallow_any_generics = false
 disallow_incomplete_defs = false

@@ -15,6 +15,7 @@ This playbook explains when to stay in the builder-first CES flow, when to switc
 | You need local proof of readiness for a handoff | `builder-first` | `ces passport` summarizes deterministic signals, blockers, warnings, missing readiness signals, recommended promotion, and available CES evidence sources |
 | You want to promote readiness one checkpoint at a time | `builder-first` | `ces promote production-candidate` produces a plan-only sequence rather than bypassing existing governance gates |
 | You need conservative project constraints or AI-native failure findings | `builder-first` | `ces invariants` and `ces slop-scan` mine evidence-backed constraints and deterministic slop findings without LLM calls |
+| You need a strict agent contract before handing work to Codex, Claude Code, or another coding agent | `builder-first` | `ces next-prompt` compiles the objective plus repo context into a read-only Developer Intent Contract with scope, non-goals, anti-slop rules, verification commands, and completion evidence expectations |
 | You need to inspect or persist project-specific verification expectations | `expert workflow` | `ces profile detect`, `ces profile show`, and `ces profile doctor` expose the required/optional/advisory/unavailable check policy before approval |
 | You need explicit governance control over review, triage, approval, or manifest lifecycle | `expert workflow` | `ces review`, `ces triage`, `ces approve`, `ces manifest`, and `ces classify` expose the lower-level governance surfaces directly |
 | You need to make a named legacy-behavior decision | `expert workflow` | `ces brownfield register`, `ces brownfield review OLB-<entry-id> --disposition preserve`, and `ces brownfield promote` are the explicit brownfield governance surfaces after the builder-first loop identifies the behavior |
@@ -204,7 +205,7 @@ Those commands sit outside the builder-first request loop. Follow the [Operation
 | `ces approve` | Final operator decision | Approval/rejection plus the builder truth behind the current evidence chain |
 | `ces report builder` | Audit and handoff | Exported markdown/json report with request, linked artifacts, review state, latest outcome, and next step |
 | `ces next` | Production-readiness planning | Next maturity target, blockers, recommended command, and feature-work guidance |
-| `ces next-prompt` | Agent prompt handoff | Scoped readiness prompt with validation commands, non-goals, secret-handling rule, and completion evidence expectations |
+| `ces next-prompt` | Agent contract handoff | Read-only Developer Intent Contract with objective, project mode, anti-slop boundaries, verification commands, and exact completion evidence expectations |
 | `ces passport` | Readiness proof packet | Deterministic maturity, score, signals, blockers, warnings, missing signals, and evidence sources |
 | `ces launch rehearsal` | Release-readiness rehearsal | Non-destructive validation plan and local smoke commands based on detected project type |
 | `ces audit --limit 20` | Operator audit inspection | Event stream queries around incidents, recoveries, and other governance activity |
@@ -226,6 +227,43 @@ That sequence gives you:
 - the review-facing summary and assignments
 - the triage decision for approval posture
 - a portable builder run report in `.ces/exports/`
+
+## Developer Intent Contract
+
+CES does not replace your coding agent. CES gives your coding agent a narrow, testable, evidence-backed mission.
+
+Use `ces next-prompt` before code edits when you want CES to compile the repo plus objective into a strict Developer Intent Contract. The contract is read-only and is designed to paste cleanly into Codex, Claude Code, or similar tools.
+
+The contract includes:
+
+- the original objective
+- greenfield, brownfield, or thin/born-thin rescue mode
+- detected project type and maturity from MRI
+- explicit scope, non-goals, must-not-break rules, allowed file areas, and forbidden changes
+- anti-slop rules, scope-drift kill switch, verification commands, and completion evidence
+- exact `ces:completion` expectations
+- one safest next rescue step for thin/vibe-coded repos instead of a sprawling backlog
+
+Examples:
+
+```bash
+# New project from an idea
+ces next-prompt "Create a small task tracker with tests and run instructions" --project-root /tmp/task-tracker
+
+# Existing thin/vibe-coded app rescue
+ces next-prompt "Rescue this AI-built repo enough to safely add checkout validation" --project-root ./messy-app
+
+# Normal brownfield feature change
+ces next-prompt "Add invoice notes to CSV exports" --project-root .
+```
+
+For risky work, pass explicit boundaries:
+
+```bash
+ces next-prompt "Rotate production database credentials" \
+  --acceptance "New credentials pass smoke verification before cutover." \
+  --must-not-break "Existing rollback path and deployment command."
+```
 
 ## Practical Rules
 

@@ -41,6 +41,19 @@ def test_production_deployment_guide_uses_real_package_name() -> None:
     assert "uv tool install ces" not in guide
 
 
+def test_repo_declares_local_runtime_entrypoint_in_pyproject_and_docs() -> None:
+    pyproject = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    declaration = pyproject["tool"]["ces"]["runtime_declaration"]
+    guide = (ROOT / "docs" / "Production_Deployment_Guide.md").read_text(encoding="utf-8")
+
+    assert declaration["kind"] == "local-cli"
+    assert declaration["entrypoint"] == "uv run ces"
+    assert declaration["smoke_test"] == "uv run ces --help"
+    assert declaration["deployment_guide"] == "docs/Production_Deployment_Guide.md"
+    assert "[tool.ces.runtime_declaration]" in guide
+    assert "uv run ces --help" in guide
+
+
 def test_hermes_local_state_is_ignored_and_not_tracked() -> None:
     """Hermes agent scratch state should never become part of the public repo contract."""
     gitignore = (ROOT / ".gitignore").read_text(encoding="utf-8")

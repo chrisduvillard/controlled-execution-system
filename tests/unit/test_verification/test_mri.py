@@ -73,6 +73,46 @@ python_version = "3.12"
     assert report.maturity == "production-ready"
 
 
+def test_project_mri_treats_tool_ces_runtime_declaration_as_runtime_signal(tmp_path: Path) -> None:
+    from ces.verification.mri import scan_project_mri
+
+    (tmp_path / "pyproject.toml").write_text(
+        """
+[project]
+name = "ready"
+dependencies = ["pytest", "ruff", "mypy"]
+
+[tool.ces.runtime_declaration]
+kind = "local-cli"
+entrypoint = "uv run ready"
+smoke_test = "uv run ready --help"
+
+[tool.pytest.ini_options]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 100
+
+[tool.mypy]
+python_version = "3.12"
+""".strip(),
+        encoding="utf-8",
+    )
+    (tmp_path / "README.md").write_text("# Ready\n", encoding="utf-8")
+    (tmp_path / "tests").mkdir()
+    (tmp_path / "tests" / "test_ready.py").write_text("def test_ready():\n    assert True\n", encoding="utf-8")
+    (tmp_path / ".github" / "workflows").mkdir(parents=True)
+    (tmp_path / ".github" / "workflows" / "ci.yml").write_text("name: CI\n", encoding="utf-8")
+    (tmp_path / ".ces").mkdir()
+    (tmp_path / ".ces" / "verification-profile.json").write_text("{}\n", encoding="utf-8")
+
+    report = scan_project_mri(tmp_path)
+
+    assert report.maturity == "production-ready"
+    assert "deployment/runtime declaration" not in report.missing_readiness_signals
+    assert any(signal.name == "ces-runtime-declaration" for signal in report.signals)
+
+
 def test_project_mri_json_shape_is_stable(tmp_path: Path) -> None:
     from ces.verification.mri import scan_project_mri
 

@@ -8,7 +8,7 @@ than exact payload snapshots.
 from __future__ import annotations
 
 import json
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
 from pathlib import Path
 from typing import Any
 
@@ -22,7 +22,7 @@ RICH_OR_ANSI_MARKERS = ("╭", "╮", "╰", "╯", "│", "\x1b[")
 
 
 @pytest.fixture(autouse=True)
-def _reset_json_mode() -> None:
+def _reset_json_mode() -> Iterator[None]:
     set_json_mode(False)
     yield
     set_json_mode(False)

@@ -274,16 +274,35 @@ def next_action(
 
 
 def next_prompt(
+    objective: str | None = typer.Argument(
+        None,
+        help="Optional objective to compile into the Developer Intent Contract.",
+    ),
     project_root: Path | None = typer.Option(
         None,
         "--project-root",
         help="Repo/CES project root to inspect; defaults to the current working directory.",
     ),
+    acceptance: list[str] | None = typer.Option(
+        None,
+        "--acceptance",
+        help="Repeatable acceptance criteria to include in the generated contract.",
+    ),
+    must_not_break: list[str] | None = typer.Option(
+        None,
+        "--must-not-break",
+        help="Repeatable behavior or boundary that the implementation must preserve.",
+    ),
     output_format: str = typer.Option("markdown", "--format", help="Output format: markdown or json."),
 ) -> None:
     """Generate a guardrailed agent prompt for the next readiness step."""
 
-    report = build_next_prompt(project_root or Path.cwd())
+    report = build_next_prompt(
+        project_root or Path.cwd(),
+        objective,
+        acceptance_criteria=tuple(item.strip() for item in acceptance or [] if item.strip()),
+        must_not_break=tuple(item.strip() for item in must_not_break or [] if item.strip()),
+    )
     if _format_option(output_format) == "json":
         typer.echo(report.to_json(), nl=False)
         return
