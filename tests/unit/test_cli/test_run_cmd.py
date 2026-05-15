@@ -3072,7 +3072,7 @@ def test_build_from_scratch_empty_greenfield_directory_reaches_brief_without_par
     assert "Any stack or constraint I should respect?" in result.stdout
 
 
-def test_build_from_scratch_existing_project_yes_is_explicit_override(
+def test_build_from_scratch_existing_project_greenfield_is_explicit_override(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.chdir(tmp_path)
@@ -3101,7 +3101,9 @@ def test_build_from_scratch_existing_project_yes_is_explicit_override(
             source_of_truth=None,
             critical_flows=[],
         )
-        result = runner.invoke(_get_app(), ["build", "--from-scratch", "Create replacement app", "--yes"])
+        result = runner.invoke(
+            _get_app(), ["build", "--from-scratch", "Create replacement app", "--yes", "--greenfield"]
+        )
 
     assert result.exit_code != 0
     call = collect_brief.call_args.kwargs
@@ -3237,3 +3239,17 @@ def test_runtime_execution_normalization_scrubs_stdout_and_stderr() -> None:
     assert secret_value not in execution["stdout"]
     assert secret_value not in execution["stderr"]
     assert "OPENAI_API_KEY=<REDACTED>" in execution["stderr"]
+
+
+def test_build_from_scratch_in_existing_project_yes_does_not_bypass_guard(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "package.json").write_text('{"name":"existing-app","scripts":{"test":"echo ok"}}')
+
+    result = runner.invoke(_get_app(), ["build", "--from-scratch", "Create replacement app", "--yes"])
+
+    assert result.exit_code != 0
+    assert "already looks like an existing project" in result.stdout
+    assert "--greenfield" in result.stdout
+    assert not (tmp_path / ".ces").exists()

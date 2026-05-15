@@ -343,3 +343,33 @@ def test_ship_existing_repo_recommends_brownfield_sequence(tmp_path: Path) -> No
     assert payload["recommended_commands"][:4] == ["ces doctor", "ces mri", "ces next", "ces next-prompt"]
     assert "ces verify" in payload["recommended_commands"]
     assert "ces proof" in payload["recommended_commands"]
+
+
+def test_start_guided_payload_uses_double_dash_for_dash_prefixed_objective(tmp_path: Path) -> None:
+    result = runner.invoke(
+        _get_app(),
+        ["start", "--project-root", str(tmp_path), "--format", "json", "--", "-make a timer"],
+    )
+
+    assert result.exit_code == 0, result.stdout
+    payload = json.loads(result.stdout)
+    assert payload["stages"][0]["command"] == "ces ship -- '-make a timer'"
+
+
+def test_create_existing_target_directory_warns_before_from_scratch(tmp_path: Path) -> None:
+    existing = tmp_path / "calm-notes"
+    existing.mkdir()
+    (existing / "pyproject.toml").write_text("[project]\nname='calm-notes'\n", encoding="utf-8")
+    before = sorted(path.relative_to(tmp_path).as_posix() for path in tmp_path.rglob("*"))
+
+    result = runner.invoke(
+        _get_app(),
+        ["create", "Calm Notes", "Create notes", "--project-root", str(tmp_path), "--format", "json"],
+    )
+
+    after = sorted(path.relative_to(tmp_path).as_posix() for path in tmp_path.rglob("*"))
+    assert result.exit_code == 0, result.stdout
+    assert before == after
+    payload = json.loads(result.stdout)
+    assert payload["target_exists"] is True
+    assert any("Target directory already exists" in note for note in payload["safety_notes"])

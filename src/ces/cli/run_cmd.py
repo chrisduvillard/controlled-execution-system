@@ -697,11 +697,10 @@ def _guard_from_scratch_in_existing_project(
     *,
     requested_project_root: Path | None,
     from_scratch_request: str | None,
-    yes: bool,
     explicit_greenfield: bool,
 ) -> None:
     """Prevent accidental greenfield runs inside real brownfield projects."""
-    if not from_scratch_request or yes or explicit_greenfield:
+    if not from_scratch_request or explicit_greenfield:
         return
     target_root = (requested_project_root or Path.cwd()).resolve()
     project_type = _existing_project_type_for_from_scratch_guard(target_root)
@@ -711,7 +710,7 @@ def _guard_from_scratch_in_existing_project(
         "This directory already looks like an existing project "
         f"({project_type}). `--from-scratch` is for empty/new projects. "
         'Use `ces build "Add the smallest safe improvement"` for brownfield changes, '
-        "or rerun with `--yes`/`--greenfield` if replacing this project is intentional."
+        "or rerun with `--greenfield` if replacing this project is intentional."
     )
 
 
@@ -1918,7 +1917,6 @@ async def run_task(
         _guard_from_scratch_in_existing_project(
             requested_project_root=requested_project_root,
             from_scratch_request=greenfield_request,
-            yes=yes,
             explicit_greenfield=explicit_greenfield,
         )
         project_root, project_config, bootstrapped = _ensure_builder_project(requested_project_root)
