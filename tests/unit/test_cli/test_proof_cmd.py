@@ -62,6 +62,8 @@ def _write_latest_verification(root: Path) -> None:
                             "exit_code": 0,
                             "stdout": "",
                             "stderr": "",
+                            "cwd": ".",
+                            "timeout_seconds": 120,
                             "expected_exit_codes": [0],
                             "passed": True,
                         }

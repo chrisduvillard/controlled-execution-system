@@ -81,3 +81,52 @@ def test_verify_json_exits_nonzero_when_no_commands_are_inferred(tmp_path: Path,
     payload = json.loads(result.stdout)
     assert payload["verification"]["passed"] is False
     assert payload["verification"]["commands"] == []
+
+
+def test_verify_refuses_to_write_latest_evidence_through_symlinked_ces_dir(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    outside = tmp_path.parent / "outside-ces-state"
+    outside.mkdir(exist_ok=True)
+    (tmp_path / ".ces").symlink_to(outside, target_is_directory=True)
+    (tmp_path / "pyproject.toml").write_text("[project]\nname='demo'\n", encoding="utf-8")
+    (tmp_path / "tests").mkdir()
+    (tmp_path / "tests" / "test_demo.py").write_text("def test_demo():\n    assert True\n", encoding="utf-8")
+
+    result = runner.invoke(_get_app(), ["verify", "--json"])
+
+    assert result.exit_code != 0
+    assert not (outside / "latest-verification.json").exists()
+    assert "symlinked .ces" in result.stdout or "symlinked .ces" in result.stderr
+
+
+def test_verify_refuses_to_overwrite_symlinked_latest_evidence_file(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    outside = tmp_path.parent / "outside-latest-verification.json"
+    outside.write_text("outside\n", encoding="utf-8")
+    (tmp_path / ".ces").mkdir()
+    (tmp_path / ".ces" / "latest-verification.json").symlink_to(outside)
+    (tmp_path / "pyproject.toml").write_text("[project]\nname='demo'\n", encoding="utf-8")
+    (tmp_path / "tests").mkdir()
+    (tmp_path / "tests" / "test_demo.py").write_text("def test_demo():\n    assert True\n", encoding="utf-8")
+
+    result = runner.invoke(_get_app(), ["verify", "--json"])
+
+    assert result.exit_code != 0
+    assert outside.read_text(encoding="utf-8") == "outside\n"
+    assert "symlinked file" in result.stdout or "symlinked file" in result.stderr
+
+
+def test_verify_write_contract_refuses_symlinked_ces_dir_before_contract_write(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    outside = tmp_path.parent / "outside-contract-state"
+    outside.mkdir(exist_ok=True)
+    (tmp_path / ".ces").symlink_to(outside, target_is_directory=True)
+    (tmp_path / "pyproject.toml").write_text("[project]\nname='demo'\n", encoding="utf-8")
+    (tmp_path / "tests").mkdir()
+    (tmp_path / "tests" / "test_demo.py").write_text("def test_demo():\n    assert True\n", encoding="utf-8")
+
+    result = runner.invoke(_get_app(), ["verify", "--json", "--write-contract"])
+
+    assert result.exit_code != 0
+    assert not (outside / "completion-contract.json").exists()
+    assert "project root" in result.stdout or "project root" in result.stderr or "symlinked" in result.stdout

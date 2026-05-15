@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import os
+import tempfile
 from pathlib import Path
 
 import typer
@@ -57,7 +59,7 @@ def verify_project(
                 runtime_name="manual",
             )
             if write_contract:
-                contract.write(resolved_contract_path)
+                _write_contract_safely(resolved_root, resolved_contract_path, contract)
                 contract_persisted = True
         verification = run_verification_commands(resolved_root, contract.inferred_commands)
         payload = {
@@ -102,10 +104,62 @@ def verify_project(
 
 
 def _write_latest_verification(project_root: Path, payload: dict[str, object]) -> Path:
-    path = project_root / ".ces" / "latest-verification.json"
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+    ces_dir = _safe_ces_state_dir(project_root)
+    path = _safe_project_write_path(project_root, ces_dir / "latest-verification.json", "verification evidence")
+    _write_json_atomic(path, payload)
     return path
+
+
+def _write_contract_safely(project_root: Path, path: Path, contract: CompletionContract) -> Path:
+    safe_path = _safe_project_write_path(project_root, path, "completion contract")
+    _write_json_atomic(safe_path, contract.to_dict())
+    return safe_path
+
+
+def _write_json_atomic(path: Path, payload: dict[str, object]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile(
+        "w",
+        encoding="utf-8",
+        dir=path.parent,
+        prefix=f".{path.name}.",
+        suffix=".tmp",
+        delete=False,
+    ) as handle:
+        tmp_name = handle.name
+        json.dump(payload, handle, indent=2)
+        handle.write("\n")
+    os.replace(tmp_name, path)
+
+
+def _safe_project_write_path(project_root: Path, path: Path, description: str) -> Path:
+    """Return a project-local output path, rejecting symlink escapes and final symlinks."""
+
+    resolved_root = project_root.resolve()
+    candidate = path if path.is_absolute() else resolved_root / path
+    if candidate.is_symlink():
+        raise ValueError(f"Refusing to write {description} through a symlinked file")
+    try:
+        resolved_parent = candidate.parent.resolve()
+        resolved_parent.relative_to(resolved_root)
+        resolved_candidate = resolved_parent / candidate.name
+    except (OSError, ValueError) as exc:
+        raise ValueError(f"{description.capitalize()} path must stay inside the project root") from exc
+    return resolved_candidate
+
+
+def _safe_ces_state_dir(project_root: Path) -> Path:
+    """Return the project-local .ces directory, rejecting symlink escapes."""
+
+    resolved_root = project_root.resolve()
+    ces_dir = resolved_root / ".ces"
+    if ces_dir.is_symlink():
+        raise ValueError("Refusing to write verification evidence through a symlinked .ces directory")
+    try:
+        ces_dir.resolve().relative_to(resolved_root)
+    except (OSError, ValueError) as exc:
+        raise ValueError("Verification evidence path must stay inside the project root") from exc
+    return ces_dir
 
 
 def _resolve_contract_path(project_root: Path, contract_path: Path | None) -> Path:

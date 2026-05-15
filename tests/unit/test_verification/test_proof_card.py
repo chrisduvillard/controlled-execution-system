@@ -62,9 +62,24 @@ def _write_latest_verification(root: Path, *, passed: bool = True) -> None:
                             "exit_code": 0 if passed else 1,
                             "stdout": "",
                             "stderr": "",
+                            "cwd": ".",
+                            "timeout_seconds": 120,
                             "expected_exit_codes": [0],
                             "passed": passed,
-                        }
+                        },
+                        {
+                            "id": "tests",
+                            "kind": "test",
+                            "command": "pytest",
+                            "required": True,
+                            "exit_code": 0 if passed else 1,
+                            "stdout": "",
+                            "stderr": "",
+                            "cwd": ".",
+                            "timeout_seconds": 120,
+                            "expected_exit_codes": [0],
+                            "passed": passed,
+                        },
                     ],
                 }
             }
@@ -189,3 +204,176 @@ def test_changed_files_uses_read_only_nul_porcelain(monkeypatch, tmp_path: Path)
     env = calls[0]["env"]
     assert isinstance(env, dict)
     assert env["GIT_OPTIONAL_LOCKS"] == "0"
+
+
+def test_proof_card_rejects_latest_verification_not_matching_current_contract(tmp_path: Path) -> None:
+    from ces.verification.proof_card import build_proof_card
+
+    _write_completion_contract(tmp_path)
+    (tmp_path / ".ces" / "latest-verification.json").write_text(
+        json.dumps(
+            {
+                "verification": {
+                    "passed": True,
+                    "commands": [
+                        {
+                            "id": "old-smoke",
+                            "kind": "smoke",
+                            "command": "true",
+                            "required": True,
+                            "exit_code": 0,
+                            "stdout": "",
+                            "stderr": "",
+                            "cwd": ".",
+                            "timeout_seconds": 120,
+                            "expected_exit_codes": [0],
+                            "passed": True,
+                        }
+                    ],
+                }
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "README.md").write_text(
+        "Run: `python app.py --help`\n\nTest: `pytest`\n\nVerification evidence: old smoke passed.\n",
+        encoding="utf-8",
+    )
+
+    payload = build_proof_card(tmp_path).to_dict()
+
+    assert payload["ship_recommendation"] == "no-ship"
+    assert any("does not match the current completion contract" in item for item in payload["unproven_areas"])
+
+
+def test_proof_card_rejects_required_artifact_paths_outside_project(tmp_path: Path) -> None:
+    from ces.verification.proof_card import build_proof_card
+
+    _write_completion_contract(tmp_path)
+    contract_path = tmp_path / ".ces" / "completion-contract.json"
+    payload = json.loads(contract_path.read_text(encoding="utf-8"))
+    payload["required_artifacts"] = [
+        "README.md",
+        "run command",
+        "test command",
+        "verification evidence",
+        "/etc/passwd",
+        "../outside-proof.txt",
+    ]
+    contract_path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+    (tmp_path.parent / "outside-proof.txt").write_text("outside\n", encoding="utf-8")
+    _write_latest_verification(tmp_path)
+    (tmp_path / "README.md").write_text(
+        "Run: `python app.py --help`\n\nTest: `pytest`\n\nVerification evidence: local smoke passed.\n",
+        encoding="utf-8",
+    )
+
+    result = build_proof_card(tmp_path).to_dict()
+
+    assert result["ship_recommendation"] == "no-ship"
+    assert "/etc/passwd" in result["missing_required_artifacts"]
+    assert "../outside-proof.txt" in result["missing_required_artifacts"]
+
+
+def test_proof_card_shareable_output_omits_raw_stdout_stderr_and_absolute_root(tmp_path: Path) -> None:
+    from ces.verification.proof_card import build_proof_card
+
+    _write_completion_contract(tmp_path)
+    _write_latest_verification(tmp_path)
+    latest_path = tmp_path / ".ces" / "latest-verification.json"
+    payload = json.loads(latest_path.read_text(encoding="utf-8"))
+    payload["verification"]["commands"][0]["stdout"] = "OPENAI_API_KEY=sk-supersecretvalue"
+    payload["verification"]["commands"][0]["stderr"] = f"local path {tmp_path}"
+    latest_path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+    (tmp_path / "README.md").write_text(
+        "Run: `python app.py --help`\n\nTest: `pytest`\n\nVerification evidence: local smoke passed.\n",
+        encoding="utf-8",
+    )
+
+    output = build_proof_card(tmp_path).to_json()
+
+    assert "sk-supersecretvalue" not in output
+    assert "OPENAI_API_KEY" not in output
+    assert str(tmp_path) not in output
+    assert "stdout" not in output
+    assert "stderr" not in output
+
+
+def test_proof_card_requires_real_readme_run_and_test_instructions_not_incidental_words(tmp_path: Path) -> None:
+    from ces.verification.proof_card import build_proof_card
+
+    _write_completion_contract(tmp_path)
+    _write_latest_verification(tmp_path)
+    (tmp_path / "README.md").write_text(
+        "# Calculator\n\nRuntime tests are planned before launch. Verification evidence exists elsewhere.\n",
+        encoding="utf-8",
+    )
+
+    payload = build_proof_card(tmp_path).to_dict()
+
+    assert payload["ship_recommendation"] == "no-ship"
+    assert "run command" in payload["missing_required_artifacts"]
+    assert "test command" in payload["missing_required_artifacts"]
+
+
+def test_proof_card_rejects_verification_with_mismatched_expected_exit_codes(tmp_path: Path) -> None:
+    from ces.verification.proof_card import build_proof_card
+
+    _write_completion_contract(tmp_path)
+    contract_path = tmp_path / ".ces" / "completion-contract.json"
+    payload = json.loads(contract_path.read_text(encoding="utf-8"))
+    payload["inferred_commands"][0]["command"] = "false"
+    payload["inferred_commands"][0]["expected_exit_codes"] = [0]
+    payload["inferred_commands"] = payload["inferred_commands"][:1]
+    contract_path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+    (tmp_path / ".ces" / "latest-verification.json").write_text(
+        json.dumps(
+            {
+                "verification": {
+                    "passed": True,
+                    "commands": [
+                        {
+                            "id": "cli-smoke",
+                            "kind": "smoke",
+                            "command": "false",
+                            "required": True,
+                            "exit_code": 1,
+                            "stdout": "",
+                            "stderr": "",
+                            "cwd": ".",
+                            "timeout_seconds": 120,
+                            "expected_exit_codes": [1],
+                            "passed": True,
+                        }
+                    ],
+                }
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "README.md").write_text(
+        "Run: `false`\n\nTest: `pytest`\n\nVerification evidence: local smoke passed.\n",
+        encoding="utf-8",
+    )
+
+    result = build_proof_card(tmp_path).to_dict()
+
+    assert result["ship_recommendation"] == "no-ship"
+    assert any("does not match the current completion contract" in item for item in result["unproven_areas"])
+
+
+def test_proof_card_scrubs_inline_secret_from_verification_commands(tmp_path: Path) -> None:
+    from ces.verification.proof_card import build_proof_card
+
+    _write_completion_contract(tmp_path)
+    contract_path = tmp_path / ".ces" / "completion-contract.json"
+    payload = json.loads(contract_path.read_text(encoding="utf-8"))
+    payload["inferred_commands"][0]["command"] = "OPENAI_API_KEY=sk-sup...alue python app.py"
+    contract_path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+
+    output = build_proof_card(tmp_path).to_json()
+
+    assert "sk-sup...alue" not in output
+    assert "OPENAI_API_KEY" in output

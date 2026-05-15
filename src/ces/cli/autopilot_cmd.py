@@ -34,7 +34,7 @@ def _format_option(value: str) -> str:
 
 def _guided_start_payload(project_root: Path, objective: str) -> dict:
     ship_plan = build_ship_plan(project_root, objective=objective)
-    ship_command = f"ces ship {shlex.quote(objective)}"
+    ship_command = f"ces ship -- {shlex.quote(objective)}"
     build_command = next(
         (command for command in ship_plan.recommended_commands if command.startswith("ces build ")), None
     )
@@ -158,6 +158,7 @@ def _create_payload(project_root: Path, project_name: str, objective: str) -> di
     slug = _project_slug(project_name)
     target_directory = project_root / slug
     quoted_target = shlex.quote(str(target_directory))
+    target_exists = target_directory.exists()
     quoted_objective = shlex.quote(objective)
     ship_command = f"ces ship -- {quoted_objective}"
     build_command = (
@@ -171,6 +172,7 @@ def _create_payload(project_root: Path, project_name: str, objective: str) -> di
         "project_name": project_name,
         "project_slug": slug,
         "target_directory": str(target_directory),
+        "target_exists": target_exists,
         "objective": objective,
         "execution_mode": "interactive-read-only-wizard",
         "commands": [
@@ -184,6 +186,13 @@ def _create_payload(project_root: Path, project_name: str, objective: str) -> di
             "`ces create` is read-only; it prints a project creation plan and copy-paste commands without creating files.",
             "Run the mkdir/cd command first so `--from-scratch` starts in a new empty directory.",
             "Only `ces build --from-scratch` launches the governed runtime and creates project files after existing consent gates pass.",
+            *(
+                [
+                    "Target directory already exists; choose a new directory or use brownfield `ces build` instead of `--from-scratch`."
+                ]
+                if target_exists
+                else []
+            ),
         ],
     }
 
