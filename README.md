@@ -116,6 +116,41 @@ ces ship "Create a small project-management app with tests and run instructions"
 
 `ces start` and `ces ship` are plan-only Production Autopilot reports. They do not launch a runtime, create `.ces/`, or mutate files. `ces start` gives beginners the exact path: plan, inspect/build, verify, prove. `ces ship` tells you whether to create a greenfield app with `ces build --from-scratch "..."` or work safely in an existing brownfield repo with `ces mri`, `ces next`, plain `ces build "Add ..."`, `ces verify`, and `ces proof`.
 
+### Compile the next agent contract before touching code
+
+CES does not replace your coding agent. CES gives your coding agent a narrow, testable, evidence-backed mission.
+
+Use `ces next-prompt` when you want CES to turn an objective plus repo context into a strict Developer Intent Contract before you hand work to Codex, Claude Code, or another coding agent:
+
+```bash
+ces next-prompt "Add invoice notes to CSV exports"
+ces next-prompt "Rotate production database credentials" \
+  --acceptance "Old credentials are revoked only after the new ones pass smoke verification." \
+  --must-not-break "Existing deploy and rollback commands."
+```
+
+The contract is read-only. It does not create `.ces/`, edit files, or launch a runtime. It reports:
+
+- the original objective
+- greenfield, brownfield, or thin/born-thin rescue mode
+- detected project type and maturity from MRI
+- explicit scope, non-goals, must-not-break rules, and forbidden changes
+- anti-slop limits, scope-drift kill switch, verification commands, and `ces:completion` expectations
+- one safest next step for thin/vibe-coded repos instead of a giant rescue roadmap
+
+Examples:
+
+```bash
+# New project from an idea
+ces next-prompt "Create a small task tracker with tests and run instructions" --project-root /tmp/task-tracker
+
+# Existing thin/vibe-coded app rescue
+ces next-prompt "Stabilize this AI-built app enough to safely add signup error handling" --project-root ./messy-app
+
+# Normal brownfield feature change
+ces next-prompt "Add invoice notes to CSV exports" --project-root .
+```
+
 ### Install from PyPI
 
 ```bash

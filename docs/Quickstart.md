@@ -126,6 +126,39 @@ ces launch rehearsal
 
 These report-style commands are local and read-only by default. They support `--project-root PATH` and `--format markdown|json`, so a CES source checkout can inspect a separate target project without creating `.ces/` state or launching a runtime.
 
+### Turn vague requests into a strict agent contract
+
+CES does not replace your coding agent. CES gives your coding agent a narrow, testable, evidence-backed mission.
+
+`ces next-prompt` now emits a Developer Intent Contract instead of a loose readiness note. The contract stays read-only and gives your coding agent:
+
+- the original objective and detected project mode
+- explicit scope, non-goals, must-not-break rules, and forbidden changes
+- anti-slop limits and a scope-drift kill switch
+- verification commands, completion evidence requirements, and exact `ces:completion` expectations
+- a single safest next step when the repo is thin/born-thin or vibe-coded
+
+Examples:
+
+```bash
+# New project from an idea
+ces next-prompt "Create a small task tracker with tests and run instructions" --project-root /tmp/task-tracker
+
+# Existing thin/vibe-coded app rescue
+ces next-prompt "Rescue this AI-built repo enough to safely add checkout validation" --project-root ./messy-app
+
+# Normal brownfield feature change
+ces next-prompt "Add invoice notes to CSV exports" --project-root .
+```
+
+For higher-risk work, pass explicit boundaries instead of trusting the agent to infer them:
+
+```bash
+ces next-prompt "Rotate production database credentials" \
+  --acceptance "New credentials pass smoke verification before cutover." \
+  --must-not-break "Existing rollback command and deployment path."
+```
+
 ## What just happened?
 
 CES created a `.ces/` directory in your project with:

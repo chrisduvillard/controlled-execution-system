@@ -28,6 +28,17 @@ Each CES operator needs:
 CES stores operational state locally in `.ces/state.db`. It does not require
 Postgres, Redis, Celery, FastAPI, or a hosted service stack for supported usage.
 
+This repository declares its own local rollout entrypoint in
+`pyproject.toml` under `[tool.ces.runtime_declaration]`:
+- `kind = "local-cli"`
+- `entrypoint = "uv run ces"`
+- `smoke_test = "uv run ces --help"`
+- `deployment_guide = "docs/Production_Deployment_Guide.md"`
+
+That declaration is intentionally local-first. It documents the workstation/CI
+command contract for CES itself; it does not add a hosted service, container,
+or network deployment surface.
+
 ## Environment Variables
 
 | Variable | Required | Default | Description |

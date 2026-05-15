@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Iterator
 
 import pytest
 import typer
@@ -18,7 +19,7 @@ from ces.cli._output import set_json_mode
 
 
 @pytest.fixture(autouse=True)
-def _reset_json_mode() -> None:
+def _reset_json_mode() -> Iterator[None]:
     set_json_mode(False)
     yield
     set_json_mode(False)

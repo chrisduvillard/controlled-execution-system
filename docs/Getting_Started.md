@@ -148,6 +148,33 @@ ces launch rehearsal --format json
 
 Use them when you want CES to diagnose the repository, explain the next safest production-readiness step, generate an actionable agent prompt, summarize evidence in a Production Passport, and rehearse launch checks without mutating the target project. Each command accepts `--project-root PATH` for source-checkout workflows.
 
+### Developer Intent Contract
+
+CES does not replace your coding agent. CES gives your coding agent a narrow, testable, evidence-backed mission.
+
+`ces next-prompt` is the read-only contract compiler for that handoff. It turns an objective plus the repo's MRI/slop context into a strict Developer Intent Contract that works well when pasted into Codex, Claude Code, or a similar agent.
+
+Use it in three common cases:
+
+```bash
+# Greenfield: define the smallest acceptable runnable project
+ces next-prompt "Create a small task tracker with tests and run instructions" --project-root /tmp/task-tracker
+
+# Thin or vibe-coded repo: rescue one fragile readiness gap before broader work
+ces next-prompt "Stabilize this AI-built app enough to safely add signup error handling" --project-root ./messy-app
+
+# Normal brownfield change: scope one bounded feature or fix
+ces next-prompt "Add invoice notes to CSV exports" --project-root .
+```
+
+For high-risk work, pass explicit acceptance boundaries instead of letting the agent guess:
+
+```bash
+ces next-prompt "Rotate production database credentials" \
+  --acceptance "New credentials pass smoke verification before cutover." \
+  --must-not-break "Existing rollback path."
+```
+
 ## 7. Choose Builder-First vs Expert Workflow
 
 Use `builder-first` when you want CES to keep the active request, artifacts, and

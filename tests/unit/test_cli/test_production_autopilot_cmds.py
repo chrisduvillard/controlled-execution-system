@@ -57,9 +57,65 @@ def test_next_prompt_markdown_contains_agent_guardrails(tmp_path: Path) -> None:
     result = runner.invoke(_get_app(), ["next-prompt", "--project-root", str(tmp_path)])
 
     assert result.exit_code == 0, result.stdout
-    assert "# Next Production-Readiness Prompt" in result.stdout
-    assert "Secret-handling rule" in result.stdout
-    assert "Completion evidence" in result.stdout
+    assert "# CES Developer Intent Contract" in result.stdout
+    assert "Scope Drift Kill Switch" in result.stdout
+    assert "Exact `ces:completion` expectations" in result.stdout
+
+
+def test_next_prompt_json_accepts_objective_acceptance_and_must_not_break(tmp_path: Path) -> None:
+    _write_minimal_project(tmp_path)
+
+    result = runner.invoke(
+        _get_app(),
+        [
+            "next-prompt",
+            "Add invoice notes",
+            "--project-root",
+            str(tmp_path),
+            "--acceptance",
+            "Notes render in export output.",
+            "--must-not-break",
+            "Existing export rows stay intact.",
+            "--format",
+            "json",
+        ],
+    )
+
+    assert result.exit_code == 0, result.stdout
+    payload = json.loads(result.stdout)
+    assert payload["original_objective"] == "Add invoice notes"
+    assert payload["acceptance_criteria"] == ["Notes render in export output."]
+    assert "Existing export rows stay intact." in payload["must_not_break"]
+    assert payload["contract_status"] == "implementation-ready"
+
+
+def test_next_prompt_json_blocks_high_risk_objective_without_acceptance(tmp_path: Path) -> None:
+    _write_minimal_project(tmp_path)
+
+    result = runner.invoke(
+        _get_app(),
+        ["next-prompt", "Rotate production database credentials", "--project-root", str(tmp_path), "--format", "json"],
+    )
+
+    assert result.exit_code == 0, result.stdout
+    payload = json.loads(result.stdout)
+    assert payload["contract_status"] == "blocked"
+    assert payload["intent_gate"]["decision"] == "blocked"
+
+
+def test_next_prompt_cli_is_read_only(tmp_path: Path) -> None:
+    _write_minimal_project(tmp_path)
+    before = sorted(path.relative_to(tmp_path).as_posix() for path in tmp_path.rglob("*"))
+
+    result = runner.invoke(
+        _get_app(),
+        ["next-prompt", "Add invoice notes", "--project-root", str(tmp_path), "--format", "json"],
+    )
+
+    after = sorted(path.relative_to(tmp_path).as_posix() for path in tmp_path.rglob("*"))
+    assert result.exit_code == 0, result.stdout
+    assert before == after
+    assert not (tmp_path / ".ces").exists()
 
 
 def test_passport_json_contains_evidence_backed_summary(tmp_path: Path) -> None:

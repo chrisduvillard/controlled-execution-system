@@ -103,3 +103,17 @@ def test_readme_command_reference_uses_supported_operations_examples() -> None:
     assert '`ces emergency declare "Security incident detected"`' in readme
     assert '| `emergency declare "Security incident detected"` |' not in readme
     assert "| `emergency ...` | Expert operations kill switch and emergency controls |" not in readme
+
+
+def test_agent_contract_docs_explain_next_prompt_positioning_and_examples() -> None:
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    quickstart = (ROOT / "docs" / "Quickstart.md").read_text(encoding="utf-8")
+    playbook = (ROOT / "docs" / "Operator_Playbook.md").read_text(encoding="utf-8")
+
+    phrase = "CES does not replace your coding agent. CES gives your coding agent a narrow, testable, evidence-backed mission."
+    for text in (readme, quickstart, playbook):
+        assert phrase in text
+        assert "Developer Intent Contract" in text
+        assert "thin/vibe-coded" in text or "thin/born-thin" in text
+        assert "Create a small task tracker with tests and run instructions" in text
+        assert "Add invoice notes to CSV exports" in text
