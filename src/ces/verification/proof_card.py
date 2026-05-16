@@ -25,6 +25,8 @@ class ProofCardReport:
     project_root: Path
     objective: str | None
     evidence_status: str
+    proof_status: str
+    approval_safety: str
     ship_recommendation: str
     changed_files: tuple[str, ...]
     commands_run: tuple[dict[str, Any], ...]
@@ -41,6 +43,8 @@ class ProofCardReport:
             "project_root": self.project_root.name or ".",
             "objective": self.objective,
             "evidence_status": self.evidence_status,
+            "proof_status": self.proof_status,
+            "approval_safety": self.approval_safety,
             "ship_recommendation": self.ship_recommendation,
             "changed_files": list(self.changed_files),
             "commands_run": list(self.commands_run),
@@ -72,6 +76,8 @@ class ProofCardReport:
                     f"Project root: `{payload['project_root']}`",
                     f"Objective: {payload['objective'] or 'No completion contract found.'}",
                     f"Evidence status: **{payload['evidence_status']}**",
+                    f"Proof status: **{payload['proof_status']}**",
+                    f"Approval safety: **{payload['approval_safety']}**",
                     f"Ship recommendation: **{payload['ship_recommendation']}**",
                     f"Next command: `{payload['next_command']}`",
                     f"Execution contract: {payload['execution_contract']['contract_id'] or 'None'}",
@@ -105,19 +111,38 @@ def build_proof_card(project_root: str | Path) -> ProofCardReport:
     contract = CompletionContract.read(contract_path) if contract_path.is_file() else None
     execution_contract = _load_execution_contract(root)
     verification = _load_latest_verification(root)
+    verification_fresh = _verification_is_fresh(root, contract_path, verification)
     missing = _missing_required_artifacts(root, contract, verification)
     unproven = _unproven_areas(contract, missing, verification, root=root)
+    verification_passed = _verification_passed(verification)
     verification_matches = _verification_matches_contract(contract, verification, root)
     status = (
         "candidate"
-        if contract and _verification_passed(verification) and verification_matches and not missing and not unproven
+        if contract
+        and verification_passed
+        and verification_fresh
+        and verification_matches
+        and not missing
+        and not unproven
         else "incomplete"
     )
+    proof_status = _proof_status(
+        contract=contract,
+        verification=verification,
+        verification_passed=verification_passed,
+        verification_fresh=verification_fresh,
+        verification_matches=verification_matches,
+        missing=missing,
+        unproven=unproven,
+    )
+    approval_safety = _approval_safety(proof_status, verification=verification, verification_fresh=verification_fresh)
     recommendation = "candidate" if status == "candidate" else "no-ship"
     return ProofCardReport(
         project_root=root,
         objective=contract.request if contract else None,
         evidence_status=status,
+        proof_status=proof_status,
+        approval_safety=approval_safety,
         ship_recommendation=recommendation,
         changed_files=_changed_files(root),
         commands_run=_commands_run(verification),
@@ -173,6 +198,8 @@ def _unproven_areas(
         areas.append("No persisted verification run found; run `ces verify --json` before treating this as proof.")
     elif not _verification_passed(verification):
         areas.append("Latest persisted verification run did not pass.")
+    elif not _verification_is_fresh(root, root / ".ces" / "completion-contract.json", verification):
+        areas.append("Latest persisted verification run is not fresh for the current completion contract.")
     elif not _verification_matches_contract(contract, verification, root):
         areas.append("Latest persisted verification run does not match the current completion contract.")
     if contract.proof_requirements and missing:
@@ -189,6 +216,57 @@ def _load_latest_verification(root: Path) -> dict[str, Any] | None:
     except (json.JSONDecodeError, OSError):
         return None
     return payload if isinstance(payload, dict) else None
+
+
+def _verification_is_fresh(root: Path, contract_path: Path, verification: dict[str, Any] | None) -> bool:
+    """Return True when the persisted verification is at least as new as the contract."""
+
+    if verification is None or not contract_path.is_file():
+        return False
+    verification_path = root / _VERIFICATION_RESULT_PATH
+    if not verification_path.is_file():
+        return False
+    try:
+        return verification_path.stat().st_mtime >= contract_path.stat().st_mtime
+    except OSError:
+        return False
+
+
+def _proof_status(
+    *,
+    contract: CompletionContract | None,
+    verification: dict[str, Any] | None,
+    verification_passed: bool,
+    verification_fresh: bool,
+    verification_matches: bool,
+    missing: list[str],
+    unproven: list[str],
+) -> str:
+    """Collapse contract/evidence state into operator-facing proof status."""
+
+    if contract is None:
+        return "unproven"
+    if verification is None:
+        return "unproven"
+    if not verification_passed:
+        return "contradicted"
+    if not verification_fresh or not verification_matches:
+        return "unproven"
+    if missing or unproven:
+        return "partially_proven"
+    return "proven"
+
+
+def _approval_safety(proof_status: str, *, verification: dict[str, Any] | None, verification_fresh: bool) -> str:
+    """Return a compact approval safety hint for the current proof state."""
+
+    if proof_status == "proven":
+        return "safe-to-review"
+    if proof_status == "contradicted":
+        return "blocked"
+    if verification is None or not verification_fresh:
+        return "needs-fresh-verification"
+    return "needs-evidence"
 
 
 def _load_execution_contract(root: Path) -> dict[str, str] | None:

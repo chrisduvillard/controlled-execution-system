@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 from pathlib import Path
 
@@ -124,13 +125,69 @@ def test_proof_card_marks_candidate_when_required_beginner_artifacts_exist(tmp_p
     card = build_proof_card(tmp_path)
     payload = card.to_dict()
 
+    assert payload["proof_status"] == "proven"
+    assert payload["approval_safety"] == "safe-to-review"
     assert payload["evidence_status"] == "candidate"
     assert payload["ship_recommendation"] == "candidate"
     assert payload["missing_required_artifacts"] == []
     markdown = card.to_markdown()
     assert "# CES Proof Card" in markdown
+    assert "Proof status: **proven**" in markdown
     assert "Ship recommendation: **candidate**" in markdown
     assert "python app.py --help" in markdown
+
+
+def test_proof_card_marks_partial_when_verification_passes_but_artifacts_are_missing(tmp_path: Path) -> None:
+    from ces.verification.proof_card import build_proof_card
+
+    _write_completion_contract(tmp_path)
+    _write_latest_verification(tmp_path)
+    (tmp_path / "README.md").write_text("Run: `python app.py --help`\n", encoding="utf-8")
+
+    payload = build_proof_card(tmp_path).to_dict()
+
+    assert payload["proof_status"] == "partially_proven"
+    assert payload["approval_safety"] == "needs-evidence"
+    assert payload["ship_recommendation"] == "no-ship"
+
+
+def test_proof_card_marks_contradicted_when_latest_verification_failed(tmp_path: Path) -> None:
+    from ces.verification.proof_card import build_proof_card
+
+    _write_completion_contract(tmp_path)
+    _write_latest_verification(tmp_path, passed=False)
+    (tmp_path / "README.md").write_text(
+        "Run: `python app.py --help`\n\nTest: `pytest`\n\nVerification evidence: smoke failed.\n",
+        encoding="utf-8",
+    )
+
+    payload = build_proof_card(tmp_path).to_dict()
+
+    assert payload["proof_status"] == "contradicted"
+    assert payload["approval_safety"] == "blocked"
+    assert payload["ship_recommendation"] == "no-ship"
+
+
+def test_proof_card_rejects_stale_verification_older_than_completion_contract(tmp_path: Path) -> None:
+    from ces.verification.proof_card import build_proof_card
+
+    _write_completion_contract(tmp_path)
+    _write_latest_verification(tmp_path)
+    (tmp_path / "README.md").write_text(
+        "Run: `python app.py --help`\n\nTest: `pytest`\n\nVerification evidence: local smoke passed.\n",
+        encoding="utf-8",
+    )
+    verification_path = tmp_path / ".ces" / "latest-verification.json"
+    contract_path = tmp_path / ".ces" / "completion-contract.json"
+    os.utime(verification_path, (1000, 1000))
+    os.utime(contract_path, (2000, 2000))
+
+    payload = build_proof_card(tmp_path).to_dict()
+
+    assert payload["proof_status"] == "unproven"
+    assert payload["approval_safety"] == "needs-fresh-verification"
+    assert payload["ship_recommendation"] == "no-ship"
+    assert any("not fresh" in item for item in payload["unproven_areas"])
 
 
 def test_proof_card_without_contract_is_honest_no_ship(tmp_path: Path) -> None:
