@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import os
 from typing import Iterable
+from urllib.parse import urlsplit, urlunsplit
 
 # Keys always preserved. These are the minimum set needed for a CLI tool to
 # run on Windows, macOS, Linux; they include locale, proxy, and CA bundle
@@ -78,8 +79,38 @@ def build_subprocess_env(extra_keys: Iterable[str] = ()) -> dict[str, str]:
     for key in dict.fromkeys((*BASE_RUNTIME_ENV_KEYS, *extra_keys)):
         value = os.environ.get(key)
         if value is not None:
-            env[key] = value
+            env[key] = _sanitize_runtime_env_value(key, value)
     for key, value in os.environ.items():
         if key.startswith(BASE_RUNTIME_ENV_PREFIXES) and key not in env:
             env[key] = value
     return env
+
+
+def _sanitize_runtime_env_value(key: str, value: str) -> str:
+    """Return a subprocess-safe allowlisted env value.
+
+    Proxy variables are useful in managed networks, but proxy URLs can embed
+    credentials in their authority component. CES should preserve proxy routing
+    without passing those credentials to agent subprocesses.
+    """
+    if key.lower() in {"http_proxy", "https_proxy", "all_proxy"}:
+        return _strip_proxy_credentials(value)
+    return value
+
+
+def _strip_proxy_credentials(value: str) -> str:
+    parsed = urlsplit(value)
+    if not parsed.scheme or "@" not in parsed.netloc:
+        return value
+    host = parsed.hostname or ""
+    if not host:
+        return value
+    if ":" in host and not host.startswith("["):
+        host = f"[{host}]"
+    port: int | None
+    try:
+        port = parsed.port
+    except ValueError:
+        port = None
+    netloc = f"{host}:{port}" if port is not None else host
+    return urlunsplit((parsed.scheme, netloc, parsed.path, parsed.query, parsed.fragment))
