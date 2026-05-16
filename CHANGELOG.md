@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.26] - 2026-05-16
+
+Developer Intent Contract runtime-readiness release.
+
+### Added
+
+- Add runtime/deployment declaration handling to the Developer Intent Contract so `ces next-prompt` can report production readiness with explicit evidence.
+- Add stricter project-mode and allowed-file inference for greenfield, brownfield, and thin-project rescue prompts.
+
+### Changed
+
+- Improve generated agent prompts with clearer scope, non-goals, verification evidence, and anti-slop constraints for bounded implementation work.
+
 ## [0.1.25] - 2026-05-15
 
 Verification evidence hardening release after the full audit closure.
