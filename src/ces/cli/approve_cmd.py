@@ -17,6 +17,7 @@ from __future__ import annotations
 import json
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 
 import typer
 from rich.panel import Panel
@@ -42,6 +43,7 @@ from ces.control.services.evidence_integrity import compute_reviewed_evidence_ha
 from ces.control.services.workflow_engine import WorkflowEngine
 from ces.execution.providers.bootstrap import resolve_primary_provider
 from ces.shared.enums import ActorType, GateType, ReviewSubState, WorkflowState
+from ces.verification.proof_card import build_proof_card
 
 # Color mapping for triage display
 _TRIAGE_COLOR_STYLES = {
@@ -64,6 +66,41 @@ def _coerce_workflow_state_value(value: object) -> str:
     if isinstance(candidate, str) and candidate in {state.value for state in WorkflowState}:
         return candidate
     return WorkflowState.QUEUED.value
+
+
+def _completion_contract_path(root: Path) -> Path:
+    return root / ".ces" / "completion-contract.json"
+
+
+def _format_approval_proof_block(payload: dict[str, Any]) -> str:
+    proof_status = payload.get("proof_status") or "unproven"
+    approval_safety = payload.get("approval_safety") or "unknown"
+    ship_recommendation = payload.get("ship_recommendation") or "no-ship"
+    next_command = payload.get("next_command") or "ces verify --json"
+    reasons: list[str] = []
+    for key in ("unproven_areas", "missing_required_artifacts"):
+        value = payload.get(key)
+        if isinstance(value, list):
+            reasons.extend(str(item) for item in value[:4])
+    reason_lines = "\n".join(f"- {reason}" for reason in reasons) or "- Proof status is not proven."
+    return (
+        f"Approval blocked: proof is {proof_status}.\n\n"
+        f"Approval safety: {approval_safety}\n"
+        f"Ship recommendation: {ship_recommendation}\n\n"
+        f"Reason:\n{reason_lines}\n\n"
+        f"Next:\n  {next_command}\n  ces proof"
+    )
+
+
+def _enforce_completion_contract_proof(root: Path) -> dict[str, Any] | None:
+    """Fail closed when a completion contract exists but proof is not proven."""
+
+    if not _completion_contract_path(root).is_file():
+        return None
+    proof_payload = build_proof_card(root).to_dict()
+    if proof_payload.get("proof_status") == "proven" and proof_payload.get("approval_safety") == "safe-to-review":
+        return proof_payload
+    raise GovernanceViolationError(_format_approval_proof_block(proof_payload))
 
 
 def _with_workflow_state(manifest: object, workflow_state: object) -> object:
@@ -167,6 +204,7 @@ async def approve_evidence(
     try:
         resolved_project_root = find_project_root(project_root)
         project_id = get_project_id(resolved_project_root)
+        _enforce_completion_contract_proof(resolved_project_root)
 
         services_context = (
             get_services(project_root=resolved_project_root) if project_root is not None else get_services()

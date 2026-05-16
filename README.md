@@ -185,7 +185,7 @@ ces proof
 ces approve
 ```
 
-`ces proof` is the approval checkpoint. It reports `proven`, `partially_proven`, `unproven`, or `contradicted`, and keeps the recommendation at no-ship unless fresh verification matches the current completion contract and required evidence is present.
+`ces proof` is the approval checkpoint. It reports `proven`, `partially_proven`, `unproven`, or `contradicted`, and keeps the recommendation at no-ship unless fresh verification matches the current completion contract and required evidence is present. For contract-bound work, `ces approve` now fails closed unless proof is `proven` and approval safety is `safe-to-review`.
 
 The legacy phase interview remains available as:
 
