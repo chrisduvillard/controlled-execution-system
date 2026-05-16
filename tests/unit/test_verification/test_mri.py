@@ -151,6 +151,17 @@ def test_project_mri_treats_node_ces_runtime_declaration_as_runtime_signal(tmp_p
     assert any(signal.name == ".ces/completion-contract.json" for signal in report.signals)
 
 
+def test_project_mri_detects_bun_lock_as_dependency_signal(tmp_path: Path) -> None:
+    from ces.verification.mri import scan_project_mri
+
+    (tmp_path / "package.json").write_text(json.dumps({"scripts": {"test": "bun test"}}), encoding="utf-8")
+    (tmp_path / "bun.lock").write_text("", encoding="utf-8")
+
+    report = scan_project_mri(tmp_path)
+
+    assert any(signal.name == "bun.lock" and signal.category == "dependency" for signal in report.signals)
+
+
 def test_project_mri_json_shape_is_stable(tmp_path: Path) -> None:
     from ces.verification.mri import scan_project_mri
 

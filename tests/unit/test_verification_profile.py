@@ -71,3 +71,18 @@ def test_detector_does_not_require_pytest_for_generic_tests_directory(tmp_path: 
 
     assert profile.requirement_for("pytest").status is VerificationStatus.UNAVAILABLE
     assert profile.requirement_for("pytest").required is False
+
+
+def test_detector_marks_configured_node_package_scripts(tmp_path: Path) -> None:
+    (tmp_path / "package.json").write_text(
+        json.dumps({"scripts": {"test": "bun test", "build": "bun build ./src/index.ts"}}),
+        encoding="utf-8",
+    )
+    (tmp_path / "bun.lock").write_text("", encoding="utf-8")
+
+    profile = detect_verification_profile(tmp_path)
+
+    assert profile.requirement_for("node-test").status is VerificationStatus.REQUIRED
+    assert profile.requirement_for("node-build").status is VerificationStatus.REQUIRED
+    assert profile.requirement_for("node-lint").status is VerificationStatus.UNAVAILABLE
+    assert "package.json test script detected" in profile.requirement_for("node-test").reason

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import re
 import tomllib
 from pathlib import Path
@@ -15,38 +16,48 @@ _DEP_NAME_RE = re.compile(r"^\s*([A-Za-z0-9_.-]+)")
 def detect_verification_profile(project_root: str | Path) -> VerificationProfile:
     """Inspect project files and build a verification profile.
 
-    The detector is intentionally conservative: configured pytest, ruff, and
-    mypy checks are marked required because their artifacts should be present
-    before completion. Coverage is marked advisory by default unless a human
-    edits the profile to make it required.
+    The detector is intentionally conservative: configured pytest, ruff, mypy,
+    and package.json checks are marked required because their artifacts should be
+    present before completion. Coverage is marked advisory by default unless a
+    human edits the profile to make it required.
     """
     root = Path(project_root)
     pyproject = _read_pyproject(root)
+    package_json = _read_package_json(root)
     tool = pyproject.get("tool", {}) if isinstance(pyproject.get("tool", {}), dict) else {}
     deps = _flatten_dependencies(pyproject)
+    scripts = package_json.get("scripts", {}) if isinstance(package_json.get("scripts", {}), dict) else {}
 
     pytest_configured = "pytest" in tool or _deps_contain(deps, "pytest")
     ruff_configured = "ruff" in tool or _deps_contain(deps, "ruff")
     mypy_configured = "mypy" in tool or _deps_contain(deps, "mypy")
     coverage_configured = "coverage" in tool or _deps_contain(deps, "coverage") or _deps_contain(deps, "pytest-cov")
 
-    return VerificationProfile(
-        version=1,
-        checks={
-            "pytest": _configured_required("pytest", pytest_configured),
-            "ruff": _configured_required("ruff", ruff_configured),
-            "mypy": _configured_required("mypy", mypy_configured),
-            "coverage": VerificationCheck(
-                status=VerificationStatus.ADVISORY,
-                configured=coverage_configured,
-                reason=(
-                    "coverage configuration or dependency detected; coverage evidence is advisory by default"
-                    if coverage_configured
-                    else "coverage is not configured; coverage evidence is advisory by default"
-                ),
+    checks = {
+        "pytest": _configured_required("pytest", pytest_configured),
+        "ruff": _configured_required("ruff", ruff_configured),
+        "mypy": _configured_required("mypy", mypy_configured),
+        "coverage": VerificationCheck(
+            status=VerificationStatus.ADVISORY,
+            configured=coverage_configured,
+            reason=(
+                "coverage configuration or dependency detected; coverage evidence is advisory by default"
+                if coverage_configured
+                else "coverage is not configured; coverage evidence is advisory by default"
             ),
-        },
-    )
+        ),
+    }
+    if package_json:
+        checks.update(
+            {
+                "node-test": _node_script_required("test", scripts),
+                "node-build": _node_script_required("build", scripts),
+                "node-typecheck": _node_script_required("typecheck", scripts),
+                "node-lint": _node_script_required("lint", scripts),
+            }
+        )
+
+    return VerificationProfile(version=1, checks=checks)
 
 
 def write_verification_profile(project_root: str | Path, profile: VerificationProfile | None = None) -> Path:
@@ -73,11 +84,37 @@ def _configured_required(name: str, configured: bool) -> VerificationCheck:
     )
 
 
+def _node_script_required(script_name: str, scripts: dict[str, Any]) -> VerificationCheck:
+    configured = script_name in scripts
+    if configured:
+        return VerificationCheck(
+            status=VerificationStatus.REQUIRED,
+            configured=True,
+            reason=f"package.json {script_name} script detected",
+        )
+    return VerificationCheck(
+        status=VerificationStatus.UNAVAILABLE,
+        configured=False,
+        reason=f"package.json {script_name} script not detected",
+    )
+
+
 def _read_pyproject(root: Path) -> dict[str, Any]:
     path = root / "pyproject.toml"
     if not path.is_file():
         return {}
     return tomllib.loads(path.read_text(encoding="utf-8"))
+
+
+def _read_package_json(root: Path) -> dict[str, Any]:
+    path = root / "package.json"
+    if not path.is_file():
+        return {}
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return {}
+    return payload if isinstance(payload, dict) else {}
 
 
 def _flatten_dependencies(pyproject: dict[str, Any]) -> list[str]:

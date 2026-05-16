@@ -11,6 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Treat `.ces/completion-contract.json` as CES verification evidence in Project MRI readiness reports.
 - Recognize Node `package.json` CES runtime declarations so desktop/app projects can satisfy runtime readiness without Python metadata.
+- Infer Bun package-manager commands from `bun.lock` / `bun.lockb` so Node verification and launch rehearsal use `bun run ...` instead of npm wrappers.
+- Include Node package scripts in `ces profile detect` verification profiles, marking configured test/build scripts as required and absent lint/typecheck scripts as unavailable.
 
 ## [0.1.26] - 2026-05-16
 

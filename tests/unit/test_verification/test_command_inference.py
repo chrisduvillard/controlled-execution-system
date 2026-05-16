@@ -49,6 +49,20 @@ def test_infers_node_package_commands(tmp_path: Path) -> None:
     assert [command.command for command in commands] == ["npm test", "npm run build"]
 
 
+def test_infers_bun_node_package_commands_when_bun_lock_exists(tmp_path: Path) -> None:
+    from ces.verification.command_inference import infer_verification_commands
+
+    (tmp_path / "package.json").write_text(
+        json.dumps({"scripts": {"test": "bun test", "build": "bun build ./src/index.ts"}}),
+        encoding="utf-8",
+    )
+    (tmp_path / "bun.lock").write_text("", encoding="utf-8")
+
+    commands = infer_verification_commands(tmp_path, "node-app")
+
+    assert [command.command for command in commands] == ["bun run test", "bun run build"]
+
+
 def test_infers_node_subproject_commands_from_acceptance_paths(tmp_path: Path) -> None:
     from ces.verification.command_inference import infer_verification_commands
 
@@ -88,6 +102,33 @@ def test_infers_node_subproject_commands_from_acceptance_paths(tmp_path: Path) -
         "npm run typecheck",
         "npm run build",
         "npm run lint",
+    ]
+
+
+def test_infers_bun_subproject_install_and_commands_from_acceptance_paths(tmp_path: Path) -> None:
+    from ces.verification.command_inference import infer_verification_commands
+
+    (tmp_path / "pyproject.toml").write_text("[project]\nname='ces'\n", encoding="utf-8")
+    app = tmp_path / "examples" / "gstack-like-app"
+    app.mkdir(parents=True)
+    (app / "bun.lock").write_text("", encoding="utf-8")
+    (app / "package.json").write_text(
+        json.dumps({"scripts": {"test": "bun test", "build": "bun build ./src/index.ts"}}),
+        encoding="utf-8",
+    )
+
+    commands = infer_verification_commands(
+        tmp_path,
+        "python-package",
+        acceptance_criteria=("examples/gstack-like-app preserves the existing Bun workflow",),
+    )
+
+    subproject_commands = [command for command in commands if command.cwd == "examples/gstack-like-app"]
+    assert [command.kind for command in subproject_commands] == ["install", "test", "build"]
+    assert [command.command for command in subproject_commands] == [
+        "bun install --frozen-lockfile",
+        "bun run test",
+        "bun run build",
     ]
 
 
