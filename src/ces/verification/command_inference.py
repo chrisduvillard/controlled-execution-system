@@ -74,15 +74,44 @@ def _python_commands(project_root: Path, project_type: str) -> tuple[Verificatio
 def _node_commands(project_root: Path) -> tuple[VerificationCommand, ...]:
     payload = _read_json(project_root / "package.json")
     scripts = payload.get("scripts", {}) if isinstance(payload, dict) else {}
+    package_manager = _node_package_manager(project_root, payload)
     commands: list[VerificationCommand] = []
     for name, kind in (("test", "test"), ("typecheck", "typecheck"), ("build", "build"), ("lint", "lint")):
         if isinstance(scripts, dict) and name in scripts:
             commands.append(
                 VerificationCommand(
-                    id=_command_id(commands), kind=kind, command=f"npm {'test' if name == 'test' else f'run {name}'}"
+                    id=_command_id(commands), kind=kind, command=_node_run_command(package_manager, name)
                 )
             )
     return tuple(commands)
+
+
+def _node_package_manager(project_root: Path, package_json: dict[str, Any]) -> str:
+    declared = str(package_json.get("packageManager", "")).strip().casefold()
+    if declared.startswith("bun@") or (project_root / "bun.lock").is_file() or (project_root / "bun.lockb").is_file():
+        return "bun"
+    if declared.startswith("pnpm@") or (project_root / "pnpm-lock.yaml").is_file():
+        return "pnpm"
+    if declared.startswith("yarn@") or (project_root / "yarn.lock").is_file():
+        return "yarn"
+    return "npm"
+
+
+def _node_run_command(package_manager: str, script_name: str) -> str:
+    if package_manager == "npm" and script_name == "test":
+        return "npm test"
+    return f"{package_manager} run {script_name}"
+
+
+def _node_install_command(project_root: Path) -> str:
+    package_manager = _node_package_manager(project_root, _read_json(project_root / "package.json"))
+    if package_manager == "bun":
+        return "bun install --frozen-lockfile"
+    if package_manager == "pnpm":
+        return "pnpm install --frozen-lockfile"
+    if package_manager == "yarn":
+        return "yarn install --frozen-lockfile"
+    return "npm ci"
 
 
 def _subproject_commands(
@@ -104,7 +133,7 @@ def _subproject_commands(
             VerificationCommand(
                 id=f"VC-{start_index + len(commands) + 1:03d}",
                 kind="install",
-                command="npm ci",
+                command=_node_install_command(subproject),
                 cwd=rel_path,
                 timeout_seconds=300,
             )

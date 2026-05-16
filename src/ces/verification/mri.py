@@ -12,6 +12,7 @@ from typing import Any
 
 from ces.execution.pipeline import COMPLETION_CLAIM_INSTRUCTIONS
 from ces.intent_gate.classifier import classify_intent
+from ces.verification.command_inference import _node_package_manager, _node_run_command
 
 _SCHEMA_VERSION = 1
 _SECRET_NAME_RE = re.compile(r"\b([A-Z][A-Z0-9_]*(?:SECRET|TOKEN|API_KEY|PASSWORD|PRIVATE_KEY|ACCESS_KEY)[A-Z0-9_]*)\b")
@@ -277,6 +278,8 @@ def _detect_signals(root: Path, project_type: str) -> list[MriSignal]:
         "requirements.txt": ("dependency", "pip requirements"),
         "package.json": ("project", "Node package metadata"),
         "package-lock.json": ("dependency", "npm lockfile"),
+        "bun.lock": ("dependency", "Bun lockfile"),
+        "bun.lockb": ("dependency", "Bun lockfile"),
         "pnpm-lock.yaml": ("dependency", "pnpm lockfile"),
         "yarn.lock": ("dependency", "Yarn lockfile"),
         _CONTAINER_FILE: ("runtime", "container runtime image"),
@@ -1468,9 +1471,13 @@ def build_launch_rehearsal(project_root: str | Path) -> LaunchRehearsalReport:
                 RehearsalCommand("uv run mypy . --ignore-missing-imports", "recommended", "Check type-readiness signal")
             )
     if "package.json" in names:
+        package_json = _read_json(root / "package.json")
+        package_manager = _node_package_manager(root, package_json)
         commands.append(
             RehearsalCommand(
-                "npm test", "recommended", "Run configured Node test command if dependencies are installed"
+                _node_run_command(package_manager, "test"),
+                "recommended",
+                "Run configured Node test command if dependencies are installed",
             )
         )
     if not commands:
@@ -1540,7 +1547,9 @@ def _validation_commands_for(report: ProjectMriReport) -> tuple[str, ...]:
         if "mypy" in names:
             commands.append("uv run mypy . --ignore-missing-imports")
     if "package.json" in names:
-        commands.append("npm test")
+        package_json = _read_json(report.project_root / "package.json")
+        package_manager = _node_package_manager(report.project_root, package_json)
+        commands.append(_node_run_command(package_manager, "test"))
     return tuple(commands)
 
 

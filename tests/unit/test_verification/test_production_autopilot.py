@@ -408,3 +408,18 @@ line-length = 100
     assert "uv run pytest tests/ -q" in report.recommended_commands
     assert "uv run ruff check ." in report.recommended_commands
     assert all(command.category in {"recommended", "smoke"} for command in report.commands)
+
+
+def test_launch_rehearsal_uses_bun_commands_for_bun_projects(tmp_path: Path) -> None:
+    from ces.verification.mri import build_launch_rehearsal
+
+    (tmp_path / "package.json").write_text(
+        json.dumps({"scripts": {"test": "bun test", "build": "bun build ./src/index.ts"}}),
+        encoding="utf-8",
+    )
+    (tmp_path / "bun.lock").write_text("", encoding="utf-8")
+
+    report = build_launch_rehearsal(tmp_path)
+
+    assert "bun run test" in report.recommended_commands
+    assert "npm test" not in report.recommended_commands
