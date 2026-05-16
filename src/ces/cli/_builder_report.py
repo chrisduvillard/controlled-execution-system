@@ -221,15 +221,32 @@ def serialize_builder_run_report(report: BuilderRunReport | None) -> dict[str, A
     return scrub_secrets_recursive(asdict(_public_report(report)))
 
 
+_SHARE_SAFE_PATH_FIELDS = frozenset({"completion_contract_path", "prl_draft_path", "runtime_transcript_path"})
+
+
 def _public_report(report: BuilderRunReport) -> BuilderRunReport:
     """Return a share-safe report view for CLI, JSON, and Markdown exports."""
     string_updates: dict[str, Any] = {}
     for field_name, value in asdict(report).items():
         if isinstance(value, str):
-            string_updates[field_name] = _public_text(value)
+            public_value = _public_text(value)
+            if field_name in _SHARE_SAFE_PATH_FIELDS:
+                public_value = _public_path(public_value)
+            string_updates[field_name] = public_value
         elif isinstance(value, tuple):
             string_updates[field_name] = tuple(_public_text(item) if isinstance(item, str) else item for item in value)
     return replace(report, **string_updates)
+
+
+def _public_path(value: str) -> str:
+    """Keep artifact identity while removing local filesystem prefixes."""
+    normalized = value.replace("\\", "/")
+    if "/.ces/" in normalized:
+        _, suffix = normalized.split("/.ces/", 1)
+        return f"<project>/.ces/{suffix}"
+    if normalized.startswith(".ces/"):
+        return f"<project>/{normalized}"
+    return _public_text(value)
 
 
 def _public_text(value: str) -> str:

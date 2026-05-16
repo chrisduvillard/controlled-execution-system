@@ -7,12 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.27] - 2026-05-16
+
+Runtime privacy and Node readiness hardening release.
+
+### Security / privacy hardening
+
+- Strip embedded credentials from proxy environment variables before launching runtime subprocesses, including malformed proxy URLs.
+- Redact secret-shaped values and Linux, macOS, Windows, and root home paths from builder report JSON and Markdown exports.
+- Redact project-local `.ces` artifact path prefixes in builder reports while preserving the artifact identity as `<project>/.ces/...`.
+- Keep private local CES state out of source control by removing the tracked `.ces/verification-profile.json` and reinforcing top-level `.ces/` ignore handling during bootstrap.
+
 ### Fixed
 
+- Reject `ces build --from-spec` manifest dependency cycles and unresolved dependencies with explicit user errors.
+- Resolve `--from-spec` preview roots without requiring ambient local `.ces` state, matching clean CI checkouts and absolute spec paths.
+- Require explicit brownfield context for non-interactive local bootstrap instead of silently preserving inferred state.
+- Treat profile-only `.ces/verification-profile.json` bootstrap state as incomplete and upgrade it through normal project initialization.
 - Treat `.ces/completion-contract.json` as CES verification evidence in Project MRI readiness reports.
 - Recognize Node `package.json` CES runtime declarations so desktop/app projects can satisfy runtime readiness without Python metadata.
 - Infer Bun package-manager commands from `bun.lock` / `bun.lockb` so Node verification and launch rehearsal use `bun run ...` instead of npm wrappers.
 - Include Node package scripts in `ces profile detect` verification profiles, marking configured test/build scripts as required and absent lint/typecheck scripts as unavailable.
+
+### Changed
+
+- Clarify the default Codex sandbox posture in `SECURITY.md` around workspace-write execution and host command safeguards.
 
 ## [0.1.26] - 2026-05-16
 
