@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from ces.verification.command_inference import infer_verification_commands
-from ces.verification.completion_contract import CompletionContract, criteria_from_texts
+from ces.verification.completion_contract import BehaviorDelta, CompletionContract, criteria_from_texts
 from ces.verification.project_detector import detect_project_type
 
 GREENFIELD_REQUIRED_ARTIFACTS = ("README.md", "run command", "test command", "verification evidence")
@@ -25,6 +25,7 @@ def build_completion_contract(
     acceptance_criteria: list[str] | tuple[str, ...],
     runtime_name: str,
     runtime_metadata: dict[str, Any] | None = None,
+    behavior_delta: BehaviorDelta | None = None,
 ) -> CompletionContract:
     project_type = detect_project_type(project_root)
     runtime = {"name": runtime_name}
@@ -40,6 +41,7 @@ def build_completion_contract(
         runtime=runtime,
         required_artifacts=GREENFIELD_REQUIRED_ARTIFACTS,
         proof_requirements=GREENFIELD_PROOF_REQUIREMENTS,
+        behavior_delta=behavior_delta or BehaviorDelta(),
         next_ces_command="ces verify --json",
     )
 
@@ -51,6 +53,7 @@ def write_completion_contract(
     acceptance_criteria: list[str] | tuple[str, ...],
     runtime_name: str,
     runtime_metadata: dict[str, Any] | None = None,
+    behavior_delta: BehaviorDelta | None = None,
 ) -> Path:
     contract = build_completion_contract(
         project_root=project_root,
@@ -58,6 +61,7 @@ def write_completion_contract(
         acceptance_criteria=acceptance_criteria,
         runtime_name=runtime_name,
         runtime_metadata=runtime_metadata,
+        behavior_delta=behavior_delta,
     )
     path = project_root / ".ces" / "completion-contract.json"
     contract.write(path)

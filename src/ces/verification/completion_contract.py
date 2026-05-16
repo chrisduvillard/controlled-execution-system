@@ -26,6 +26,33 @@ class VerificationCommand:
 
 
 @dataclass(frozen=True)
+class BehaviorDelta:
+    """Brownfield behavior categories carried into completion proof."""
+
+    added: tuple[str, ...] = ()
+    modified: tuple[str, ...] = ()
+    removed: tuple[str, ...] = ()
+    preserved: tuple[str, ...] = ()
+    unknown: tuple[str, ...] = ()
+
+    def has_signal(self) -> bool:
+        """Return whether any behavior-delta category contains information."""
+
+        return any((self.added, self.modified, self.removed, self.preserved, self.unknown))
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any] | None) -> BehaviorDelta:
+        source = payload or {}
+        return cls(
+            added=_string_tuple(source.get("added")),
+            modified=_string_tuple(source.get("modified")),
+            removed=_string_tuple(source.get("removed")),
+            preserved=_string_tuple(source.get("preserved")),
+            unknown=_string_tuple(source.get("unknown")),
+        )
+
+
+@dataclass(frozen=True)
 class CompletionContract:
     request: str
     project_type: str
@@ -34,6 +61,7 @@ class CompletionContract:
     runtime: dict[str, Any] = field(default_factory=dict)
     required_artifacts: tuple[str, ...] = ()
     proof_requirements: tuple[str, ...] = ()
+    behavior_delta: BehaviorDelta = field(default_factory=BehaviorDelta)
     next_ces_command: str = "ces verify --json"
     version: int = 1
 
@@ -67,6 +95,7 @@ class CompletionContract:
             runtime=dict(payload.get("runtime", {}) or {}),
             required_artifacts=tuple(str(item) for item in payload.get("required_artifacts", []) or []),
             proof_requirements=tuple(str(item) for item in payload.get("proof_requirements", []) or []),
+            behavior_delta=BehaviorDelta.from_dict(_dict_or_none(payload.get("behavior_delta"))),
             next_ces_command=str(payload.get("next_ces_command", "ces verify --json") or "ces verify --json"),
         )
 
@@ -96,3 +125,13 @@ def _expected_exit_codes(item: dict[str, Any]) -> tuple[int, ...]:
     if "expected_exit_code" in item:
         return (int(item["expected_exit_code"]),)
     return (0,)
+
+
+def _dict_or_none(value: Any) -> dict[str, Any] | None:
+    return value if isinstance(value, dict) else None
+
+
+def _string_tuple(value: Any) -> tuple[str, ...]:
+    if not isinstance(value, list | tuple):
+        return ()
+    return tuple(str(item).strip() for item in value if str(item).strip())

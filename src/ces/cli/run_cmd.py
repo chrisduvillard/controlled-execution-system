@@ -95,7 +95,7 @@ from ces.verification.build_contract import (
     GREENFIELD_REQUIRED_ARTIFACTS,
     write_completion_contract,
 )
-from ces.verification.completion_contract import CompletionContract
+from ces.verification.completion_contract import BehaviorDelta, CompletionContract
 from ces.verification.project_detector import detect_project_type
 from ces.verification.runner import run_verification_commands
 
@@ -780,7 +780,25 @@ def _write_completion_contract_for_build(
         acceptance_criteria=tuple(brief.acceptance_criteria),
         runtime_name=runtime_name,
         runtime_metadata=runtime_metadata,
+        behavior_delta=_completion_behavior_delta(project_root, brief),
     )
+
+
+def _completion_behavior_delta(project_root: Path, brief: BuilderBriefDraft) -> BehaviorDelta:
+    """Carry brownfield behavior deltas from intake/brief into completion proof."""
+
+    latest_contract = project_root / ".ces" / "contracts" / "latest.json"
+    if latest_contract.is_file():
+        try:
+            payload = json.loads(latest_contract.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            payload = {}
+        delta = payload.get("behavior_delta") if isinstance(payload, dict) else None
+        if isinstance(delta, dict):
+            parsed = BehaviorDelta.from_dict(delta)
+            if parsed.has_signal():
+                return parsed
+    return BehaviorDelta(preserved=tuple(item.strip() for item in brief.must_not_break if item.strip()))
 
 
 def _completion_verification_blockers(

@@ -185,7 +185,7 @@ ces proof
 ces approve
 ```
 
-`ces proof` is the approval checkpoint. It reports `proven`, `partially_proven`, `unproven`, or `contradicted`, and keeps the recommendation at no-ship unless fresh verification matches the current completion contract and required evidence is present. It also includes a review summary with the decision, approval gate, primary blocker, evidence freshness, command coverage, artifact coverage, and next steps. For contract-bound work, `ces approve` now fails closed unless proof is `proven` and approval safety is `safe-to-review`.
+`ces proof` is the approval checkpoint. It reports `proven`, `partially_proven`, `unproven`, or `contradicted`, and keeps the recommendation at no-ship unless fresh verification matches the current completion contract and required evidence is present. It also includes a review summary with the decision, approval gate, primary blocker, evidence freshness, command coverage, artifact coverage, behavior-delta coverage, and next steps. For brownfield work, proof cards carry OpenSpec-style behavior deltas (`added`, `modified`, `removed`, `preserved`, `unknown`); unresolved `unknown` behavior blocks approval as `partially_proven` until evidence or clarification resolves it. For contract-bound work, `ces approve` now fails closed unless proof is `proven` and approval safety is `safe-to-review`.
 
 The legacy phase interview remains available as:
 

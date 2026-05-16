@@ -136,6 +136,7 @@ def test_proof_card_marks_candidate_when_required_beginner_artifacts_exist(tmp_p
         "freshness": "fresh",
         "command_coverage": "2/2 required commands verified",
         "artifact_coverage": "4/4 required artifacts present",
+        "behavior_delta_coverage": "0 recorded / 0 unknown",
         "next_steps": ["Review changed files and evidence, then run `ces approve` if satisfied."],
     }
     assert payload["missing_required_artifacts"] == []
@@ -145,9 +146,47 @@ def test_proof_card_marks_candidate_when_required_beginner_artifacts_exist(tmp_p
     assert "Decision: **ready-for-review**" in markdown
     assert "Approval gate: **open**" in markdown
     assert "Command coverage: 2/2 required commands verified" in markdown
+    assert "Behavior delta coverage: 0 recorded / 0 unknown" in markdown
     assert "Proof status: **proven**" in markdown
     assert "Ship recommendation: **candidate**" in markdown
     assert "python app.py --help" in markdown
+
+
+def test_proof_card_surfaces_behavior_delta_and_blocks_unknowns(tmp_path: Path) -> None:
+    from ces.verification.proof_card import build_proof_card
+
+    _write_completion_contract(tmp_path)
+    contract_path = tmp_path / ".ces" / "completion-contract.json"
+    payload = json.loads(contract_path.read_text(encoding="utf-8"))
+    payload["behavior_delta"] = {
+        "added": ["CSV export includes invoice notes."],
+        "modified": ["CSV export writes an extra notes column."],
+        "removed": [],
+        "preserved": ["Existing CSV column order remains stable."],
+        "unknown": ["Downstream importers are not yet checked."],
+    }
+    contract_path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+    _write_latest_verification(tmp_path)
+    (tmp_path / "README.md").write_text(
+        "# Calculator\n\nRun: `python app.py --help`\n\nTest: `pytest`\n\nVerification evidence: local smoke passed.\n",
+        encoding="utf-8",
+    )
+
+    result = build_proof_card(tmp_path).to_dict()
+
+    assert result["proof_status"] == "partially_proven"
+    assert result["approval_safety"] == "needs-evidence"
+    assert result["behavior_delta"] == payload["behavior_delta"]
+    assert result["review_summary"]["behavior_delta_coverage"] == "4 recorded / 1 unknown"
+    assert (
+        result["review_summary"]["primary_blocker"]
+        == "Unknown behavior delta remains unresolved: Downstream importers are not yet checked."
+    )
+    assert any("Unknown behavior delta" in item for item in result["unproven_areas"])
+    markdown = build_proof_card(tmp_path).to_markdown()
+    assert "## Behavior delta" in markdown
+    assert "Added:" in markdown
+    assert "Unknown:" in markdown
 
 
 def test_proof_card_marks_partial_when_verification_passes_but_artifacts_are_missing(tmp_path: Path) -> None:
