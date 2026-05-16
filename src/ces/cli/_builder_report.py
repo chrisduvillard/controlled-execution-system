@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import json
 import re
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
+from ces.execution.secrets import scrub_secrets_recursive
 from ces.harness.services.evidence_quality import compute_evidence_quality_state
 
 
@@ -217,10 +218,30 @@ def load_matching_builder_run_report(
 def serialize_builder_run_report(report: BuilderRunReport | None) -> dict[str, Any] | None:
     if report is None:
         return None
-    return asdict(report)
+    return scrub_secrets_recursive(asdict(_public_report(report)))
+
+
+def _public_report(report: BuilderRunReport) -> BuilderRunReport:
+    """Return a share-safe report view for CLI, JSON, and Markdown exports."""
+    string_updates: dict[str, Any] = {}
+    for field_name, value in asdict(report).items():
+        if isinstance(value, str):
+            string_updates[field_name] = _public_text(value)
+        elif isinstance(value, tuple):
+            string_updates[field_name] = tuple(_public_text(item) if isinstance(item, str) else item for item in value)
+    return replace(report, **string_updates)
+
+
+def _public_text(value: str) -> str:
+    scrubbed = scrub_secrets_recursive(value)
+    text = scrubbed if isinstance(scrubbed, str) else value
+    text = re.sub(r"(?<![A-Za-z0-9_.-])[A-Za-z]:\\Users\\[^\\\s]+", "<home>", text)
+    text = re.sub(r"(?<![A-Za-z0-9_.-])(?:/home|/Users)/[^/\s]+", "<home>", text)
+    return re.sub(r"(?<![A-Za-z0-9_.-])/root(?=/|\s|$)", "<home>", text)
 
 
 def summarize_builder_run(report: BuilderRunReport) -> list[str]:
+    report = _public_report(report)
     lines = [
         f"Builder request: {report.request}",
         f"Project mode: {report.project_mode}",
@@ -281,6 +302,7 @@ def export_builder_run_report(
     report = build_builder_run_report(snapshot)
     if report is None:
         raise ValueError("No builder run report could be derived from the current snapshot.")
+    report = _public_report(report)
     output_dir.mkdir(parents=True, exist_ok=True)
     stem = f"builder-run-report-{_slugify(report.session_id or report.manifest_id or 'latest')}"
     markdown_path = output_dir / f"{stem}.md"
@@ -298,6 +320,7 @@ def export_builder_run_report(
 
 
 def render_builder_run_report_markdown(report: BuilderRunReport) -> str:
+    report = _public_report(report)
     lines = [
         f"# Builder Run Report - {report.request}",
         "",

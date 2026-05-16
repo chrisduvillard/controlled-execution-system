@@ -544,7 +544,7 @@ class BuilderFlowOrchestrator:
         return export_path
 
     def _has_repo_files(self) -> bool:
-        ignored_roots = {".ces", ".git", ".hg", ".svn", "__pycache__"}
+        ignored_roots = {".ces", ".git", ".gitignore", ".hg", ".svn", "__pycache__"}
         for path in self._project_root.iterdir():
             if path.name in ignored_roots:
                 continue

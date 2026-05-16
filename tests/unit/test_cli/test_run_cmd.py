@@ -633,6 +633,25 @@ class TestRunCommand:
         assert (tmp_path / ".ces" / "config.yaml").exists()
         assert "set up local project state" in result.stdout.lower()
 
+    def test_build_auto_bootstrap_upgrades_profile_only_ces_dir(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.chdir(tmp_path)
+        ces_dir = tmp_path / ".ces"
+        ces_dir.mkdir()
+        (ces_dir / "verification-profile.json").write_text('{"schema_version": 1}\n', encoding="utf-8")
+
+        from ces.cli.run_cmd import _ensure_builder_project
+
+        project_root, config, bootstrapped = _ensure_builder_project()
+
+        assert project_root == tmp_path
+        assert bootstrapped is True
+        assert config["project_name"] == tmp_path.name
+        assert (ces_dir / "config.yaml").exists()
+        assert (ces_dir / "keys").is_dir()
+        assert ".ces/" in (tmp_path / ".gitignore").read_text(encoding="utf-8")
+
     def test_build_without_description_prompts_and_persists_builder_brief(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
@@ -3239,6 +3258,29 @@ def test_runtime_execution_normalization_scrubs_stdout_and_stderr() -> None:
     assert secret_value not in execution["stdout"]
     assert secret_value not in execution["stderr"]
     assert "OPENAI_API_KEY=<REDACTED>" in execution["stderr"]
+
+
+def test_build_from_spec_topological_sort_rejects_cycles() -> None:
+    from ces.cli.run_cmd import _topological_sort_manifests
+
+    first = SimpleNamespace(manifest_id="M-1", dependencies=[SimpleNamespace(artifact_id="M-2")])
+    second = SimpleNamespace(manifest_id="M-2", dependencies=[SimpleNamespace(artifact_id="M-1")])
+
+    with pytest.raises(typer.BadParameter, match="dependency graph contains a cycle"):
+        _topological_sort_manifests([first, second])
+
+
+def test_build_auto_bootstrap_updates_top_level_gitignore(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.chdir(tmp_path)
+
+    from ces.cli.run_cmd import _ensure_builder_project
+
+    project_root, _config, bootstrapped = _ensure_builder_project()
+
+    assert project_root == tmp_path.resolve()
+    assert bootstrapped is True
+    gitignore = (tmp_path / ".gitignore").read_text(encoding="utf-8")
+    assert ".ces/" in gitignore
 
 
 def test_build_from_scratch_in_existing_project_yes_does_not_bypass_guard(

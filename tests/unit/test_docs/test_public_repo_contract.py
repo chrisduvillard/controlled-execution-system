@@ -28,8 +28,8 @@ def test_security_docs_distinguish_codex_and_claude_runtime_boundaries() -> None
     security = (ROOT / "SECURITY.md").read_text(encoding="utf-8")
 
     assert "Claude runs with `--allowedTools`" in security
-    assert "Codex defaults to `--sandbox danger-full-access`" in security
-    assert "invalid explicit values fail closed to `read-only`" in security
+    assert "Codex defaults to `workspace-write`" in security
+    assert "invalid explicit sandbox values fail closed to `read-only`" in security.lower()
     assert "not manifest-tool-allowlist-enforced" in security
 
 
@@ -64,6 +64,22 @@ def test_hermes_local_state_is_ignored_and_not_tracked() -> None:
     assert git is not None
     tracked = subprocess.check_output(  # noqa: S603 - fixed git executable and literal args only
         [git, "ls-files", ".hermes", ".hermes/**"],
+        cwd=ROOT,
+        text=True,
+    ).splitlines()
+    assert tracked == []
+
+
+def test_ces_local_state_is_ignored_and_not_tracked() -> None:
+    """CES local state should stay out of the public repo contract."""
+    gitignore = (ROOT / ".gitignore").read_text(encoding="utf-8")
+
+    assert ".ces/" in gitignore
+
+    git = shutil.which("git")
+    assert git is not None
+    tracked = subprocess.check_output(  # noqa: S603 - fixed git executable and literal args only
+        [git, "ls-files", ".ces", ".ces/**"],
         cwd=ROOT,
         text=True,
     ).splitlines()

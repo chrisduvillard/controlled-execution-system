@@ -30,6 +30,15 @@ def test_sdist_excludes_internal_workflow_and_test_material() -> None:
     assert "/docs/plans" in excludes
 
 
+def test_build_backend_and_direct_runtime_imports_are_declared() -> None:
+    pyproject = tomllib.loads((_REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    build_requires = pyproject["build-system"]["requires"]
+    dependencies = pyproject["project"]["dependencies"]
+
+    assert "hatchling>=1.27.0,<2" in build_requires
+    assert "click>=8.3.2,<9" in dependencies
+
+
 def test_every_integration_test_file_is_marked_integration() -> None:
     integration_files = sorted((_REPO_ROOT / "tests" / "integration").glob("test_*.py"))
 

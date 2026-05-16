@@ -43,3 +43,17 @@ class TestBuildSubprocessEnv:
         # Without extra_keys, the same var is stripped.
         env_default = build_subprocess_env()
         assert "ANTHROPIC_API_KEY" not in env_default
+
+    def test_proxy_credentials_are_stripped_before_runtime_spawn(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("HTTPS_PROXY", "http://user:pass@proxy.internal:8080")
+        monkeypatch.setenv("ALL_PROXY", "socks5://token@proxy.internal")
+        monkeypatch.setenv("HTTP_PROXY", "http://user:pass@proxy.internal:notaport")
+
+        env = build_subprocess_env()
+
+        assert env["HTTPS_PROXY"] == "http://proxy.internal:8080"
+        assert env["ALL_PROXY"] == "socks5://proxy.internal"
+        assert env["HTTP_PROXY"] == "http://proxy.internal"
+        assert "user:pass" not in env["HTTPS_PROXY"]
+        assert "user:pass" not in env["HTTP_PROXY"]
+        assert "token@" not in env["ALL_PROXY"]

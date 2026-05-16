@@ -31,7 +31,12 @@ from ces.cli._legacy_config import reject_server_mode
 from ces.cli._output import console
 from ces.cli._runtime_diagnostics import summarize_runtime_failure, write_runtime_diagnostics
 from ces.cli._wizard_helpers import WIZARD_STEPS
-from ces.cli.init_cmd import derive_project_name, initialize_local_project
+from ces.cli.init_cmd import (
+    _ensure_local_gitignore_entries,
+    _has_only_profile_bootstrap_state,
+    derive_project_name,
+    initialize_local_project,
+)
 from ces.cli.ownership import resolve_actor
 from ces.control.models.manifest import TaskManifest
 from ces.control.services.approval_pipeline import required_gate_type_for_risk
@@ -718,17 +723,37 @@ def _ensure_builder_project(project_root: Path | None = None) -> tuple[Path, dic
     """Return project root/config, auto-bootstrapping local state when missing."""
     if project_root is not None:
         resolved_root = project_root.resolve()
-        if (resolved_root / ".ces").is_dir():
+        ces_dir = resolved_root / ".ces"
+        if ces_dir.is_dir() and not _has_only_profile_bootstrap_state(ces_dir):
             return resolved_root, get_project_config(resolved_root), False
         config = initialize_local_project(resolved_root, name=derive_project_name(resolved_root.name))
+        _ensure_local_gitignore_entries(resolved_root)
         return resolved_root, config, True
     try:
         project_root = find_project_root()
+        ces_dir = project_root / ".ces"
+        if _has_only_profile_bootstrap_state(ces_dir):
+            config = initialize_local_project(project_root, name=derive_project_name(project_root.name))
+            _ensure_local_gitignore_entries(project_root)
+            return project_root, config, True
         return project_root, get_project_config(project_root), False
     except typer.BadParameter:
         project_root = Path.cwd().resolve()
         config = initialize_local_project(project_root, name=derive_project_name(project_root.name))
+        _ensure_local_gitignore_entries(project_root)
         return project_root, config, True
+
+
+def _preview_project_root(spec_path: Path, requested_project_root: Path | None) -> Path:
+    """Resolve a spec-preview root without requiring local CES state for absolute specs."""
+    if requested_project_root is not None:
+        return requested_project_root.resolve()
+    try:
+        return find_project_root()
+    except typer.BadParameter:
+        if spec_path.is_absolute():
+            return spec_path.parent.resolve()
+        return Path.cwd().resolve()
 
 
 def _coerce_text(value: Any) -> str:
@@ -1900,7 +1925,8 @@ async def run_task(
     try:
         reverse_preflight_mode = _normalize_reverse_preflight_mode(reverse_preflight)
         if from_spec is not None:
-            await _preview_from_spec(from_spec, story_id=story)
+            preview_project_root = _preview_project_root(from_spec, project_root)
+            await _preview_from_spec(from_spec, story_id=story, project_root=preview_project_root)
             return
         greenfield_request = from_scratch or legacy_gsd
         explicit_greenfield = greenfield
@@ -2244,7 +2270,12 @@ async def explain_task(
         handle_error(exc)
 
 
-async def _preview_from_spec(spec_path: Path, story_id: str | None) -> None:
+async def _preview_from_spec(
+    spec_path: Path,
+    story_id: str | None,
+    *,
+    project_root: Path | None = None,
+) -> None:
     """Print the topologically-ordered manifests derived from a spec.
 
     Does NOT invoke the builder orchestrator -- actual per-manifest build
@@ -2252,14 +2283,15 @@ async def _preview_from_spec(spec_path: Path, story_id: str | None) -> None:
     manifest-driven entry point. For now, the preview confirms the plumbing:
     spec -> persisted manifests -> topological order -> story filter.
     """
+    root = (project_root or Path.cwd()).resolve()
+    spec_path = spec_path if spec_path.is_absolute() else root / spec_path
     if not spec_path.exists() or not spec_path.is_file():
         raise typer.BadParameter(f"Spec file not found: {spec_path}")
 
-    root = Path.cwd()
     loader = TemplateLoader(root)
     doc = SpecParser(loader).parse(spec_path.read_text(encoding="utf-8"))
 
-    async with get_services() as services:
+    async with get_services(project_root=root) as services:
         manager = services["manifest_manager"]
         manifests = list(await manager.list_by_spec(doc.frontmatter.spec_id))
 
@@ -2270,6 +2302,12 @@ async def _preview_from_spec(spec_path: Path, story_id: str | None) -> None:
         return
 
     ordered = _topological_sort_manifests(manifests)
+    if len(ordered) != len(manifests):
+        missing = sorted(m.manifest_id for m in manifests if m not in ordered)
+        raise typer.BadParameter(
+            "Spec manifest dependency graph contains a cycle or unresolved in-spec dependency; "
+            f"cannot produce a complete build order. Blocked manifests: {', '.join(missing)}"
+        )
 
     table = Table(title=f"Build order for {doc.frontmatter.spec_id}")
     table.add_column("Order")
@@ -2318,4 +2356,10 @@ def _topological_sort_manifests(manifests: list) -> list:
             indegree[nxt] -= 1
             if indegree[nxt] == 0:
                 queue.append(nxt)
+    if len(out) != len(manifests):
+        missing = sorted(mid for mid, count in indegree.items() if count > 0)
+        raise typer.BadParameter(
+            "Spec manifest dependency graph contains a cycle or unresolved in-spec dependency; "
+            f"cannot produce a complete build order. Blocked manifests: {', '.join(missing)}"
+        )
     return out

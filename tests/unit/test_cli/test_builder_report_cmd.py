@@ -149,6 +149,53 @@ def test_report_builder_accepts_project_root(tmp_path: Path) -> None:
     assert services["_get_services_calls"][0]["kwargs"] == {"project_root": project.resolve()}
 
 
+def test_builder_report_redacts_secret_shaped_values_and_home_paths() -> None:
+    from ces.cli._builder_report import (
+        build_builder_run_report,
+        render_builder_run_report_markdown,
+        serialize_builder_run_report,
+    )
+
+    secret_value = "sk-" + "builder-report-secret"
+    snapshot = SimpleNamespace(
+        request=f"Fix exporter with OPENAI_API_KEY={secret_value} under /home/alice/private-app",
+        project_mode="brownfield",
+        stage="blocked",
+        next_action="inspect_report",
+        next_step=f"Read C:\\Users\\Bob\\private-app\\runtime.log and token={secret_value}",
+        latest_activity="CES recorded runtime output.",
+        latest_artifact="verification",
+        brief=SimpleNamespace(prl_draft_path="/home/alice/private-app/.ces/prl.md"),
+        manifest=SimpleNamespace(manifest_id="M-secret", workflow_state="failed"),
+        runtime_execution=SimpleNamespace(
+            exit_code=1,
+            reported_model="gpt-5.5",
+            transcript_path="/home/alice/private-app/.ces/runtime-transcripts/run.jsonl",
+        ),
+        evidence={
+            "packet_id": "EP-secret",
+            "triage_color": "red",
+            "verification_findings": [f"stdout leaked {secret_value} from /home/alice/private-app"],
+        },
+        approval=SimpleNamespace(decision="reject"),
+        session=SimpleNamespace(session_id="BS-secret"),
+        brownfield=None,
+    )
+
+    report = build_builder_run_report(snapshot)
+
+    assert report is not None
+    payload_text = json.dumps(serialize_builder_run_report(report))
+    markdown = render_builder_run_report_markdown(report)
+    combined = payload_text + markdown
+    assert secret_value not in combined
+    assert "OPENAI_API_KEY=<REDACTED>" in combined
+    assert "/home/alice" not in combined
+    assert "C:\\Users\\Bob" not in combined
+    assert "<home>/private-app" in combined
+    assert "<home>\\private-app" in combined
+
+
 def test_builder_report_exposes_entry_level_brownfield_counts_when_item_count_is_inflated() -> None:
     """ReleasePulse RP-CES-007: one reviewed OLB entry must not display as 13 behaviors reviewed."""
     from ces.cli._builder_report import build_builder_run_report, render_builder_run_report_markdown
