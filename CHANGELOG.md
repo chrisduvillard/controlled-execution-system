@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.28] - 2026-05-16
+
+Brownfield source-checkout targeting patch.
+
+### Fixed
+
+- Add `--project-root` support across `ces brownfield register`, `list`, `review`, `promote`, and `discard` so source-checkout and installed-package dogfood can manage another CES project without changing cwd.
+- Route brownfield service construction through the resolved project root, including `register --from-default-scan`, so scan/register/review workflows consistently use the intended project state.
+
 ## [0.1.27] - 2026-05-16
 
 Runtime privacy and Node readiness hardening release.
