@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Treat `.ces/completion-contract.json` as CES verification evidence in Project MRI readiness reports.
+- Recognize Node `package.json` CES runtime declarations so desktop/app projects can satisfy runtime readiness without Python metadata.
+
 ## [0.1.26] - 2026-05-16
 
 Developer Intent Contract runtime-readiness release.

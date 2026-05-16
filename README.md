@@ -243,9 +243,10 @@ Local state is stored in the governed project:
 | `.ces/artifacts/` | Runtime and evidence artifacts |
 | `.ces/exports/` | Builder reports and exported handoff files |
 | `.ces/baseline/` | Day-0 sensor snapshots |
+| `.ces/completion-contract.json` | Builder-produced completion contract with independent verification commands |
 | `.ces/verification-profile.json` | Optional project-aware verification policy for required, optional, advisory, and unavailable checks |
 
-Keep local `.ces/` state untracked unless you intentionally share an exported report. A repository may intentionally track `.ces/verification-profile.json` when the team wants a shared verification policy.
+Keep local `.ces/` state untracked unless you intentionally share an exported report. A repository may intentionally track `.ces/verification-profile.json` or `.ces/completion-contract.json` when the team wants shared verification policy or proof-loop expectations.
 
 ---
 

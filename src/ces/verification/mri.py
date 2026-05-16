@@ -45,6 +45,7 @@ _SECRET_FILENAMES = {
 _CONTAINER_FILE = "Dock" + "erfile"
 _COMPOSE_FILES = ("dock" + "er-compose.yml", "dock" + "er-compose.yaml")
 _CES_RUNTIME_DECLARATION_SIGNAL = "ces-runtime-declaration"
+_CES_COMPLETION_CONTRACT_SIGNAL = ".ces/completion-contract.json"
 _RUNTIME_SIGNAL_NAMES = frozenset({_CONTAINER_FILE, *_COMPOSE_FILES, "Procfile", _CES_RUNTIME_DECLARATION_SIGNAL})
 _SEVERITY_ORDER = {"critical": 0, "high": 1, "medium": 2, "low": 3, "info": 4}
 _MATURITY_LADDER = ("vibe-prototype", "local-app", "shareable-app", "production-candidate", "production-ready")
@@ -283,6 +284,7 @@ def _detect_signals(root: Path, project_type: str) -> list[MriSignal]:
         _COMPOSE_FILES[1]: ("runtime", "compose runtime file"),
         "Procfile": ("runtime", "Procfile runtime declaration"),
         "README.md": ("documentation", "README present"),
+        _CES_COMPLETION_CONTRACT_SIGNAL: ("ces", "CES completion contract with verification commands"),
         ".ces/verification-profile.json": ("ces", "CES verification profile"),
         ".ces/config.yaml": ("ces", "CES project config"),
         ".ces/state.db": ("ces", "CES local state database"),
@@ -298,7 +300,7 @@ def _detect_signals(root: Path, project_type: str) -> list[MriSignal]:
         )
     pyproject = _read_toml(root / "pyproject.toml")
     package_json = _read_json(root / "package.json")
-    runtime_declaration = _runtime_declaration_signal(pyproject)
+    runtime_declaration = _runtime_declaration_signal(pyproject, package_json)
     if runtime_declaration is not None:
         signals.append(runtime_declaration)
     signals.extend(_python_tool_signals(pyproject))
@@ -321,10 +323,8 @@ def _python_tool_signals(pyproject: dict[str, Any]) -> list[MriSignal]:
     return signals
 
 
-def _runtime_declaration_signal(pyproject: dict[str, Any]) -> MriSignal | None:
-    tool = pyproject.get("tool", {}) if isinstance(pyproject.get("tool"), dict) else {}
-    ces = tool.get("ces", {}) if isinstance(tool.get("ces"), dict) else {}
-    declaration = ces.get("runtime_declaration", {}) if isinstance(ces.get("runtime_declaration"), dict) else {}
+def _runtime_declaration_signal(pyproject: dict[str, Any], package_json: dict[str, Any]) -> MriSignal | None:
+    declaration = _runtime_declaration_from_pyproject(pyproject) or _runtime_declaration_from_package_json(package_json)
     entrypoint = str(declaration.get("entrypoint", "")).strip()
     if not entrypoint:
         return None
@@ -339,8 +339,21 @@ def _runtime_declaration_signal(pyproject: dict[str, Any]) -> MriSignal | None:
     return MriSignal(
         _CES_RUNTIME_DECLARATION_SIGNAL,
         "runtime",
-        "tool.ces.runtime_declaration with " + "; ".join(evidence_parts),
+        "CES runtime declaration with " + "; ".join(evidence_parts),
     )
+
+
+def _runtime_declaration_from_pyproject(pyproject: dict[str, Any]) -> dict[str, Any]:
+    tool = pyproject.get("tool", {}) if isinstance(pyproject.get("tool"), dict) else {}
+    ces = tool.get("ces", {}) if isinstance(tool.get("ces"), dict) else {}
+    declaration = ces.get("runtime_declaration", {}) if isinstance(ces.get("runtime_declaration"), dict) else {}
+    return declaration if isinstance(declaration, dict) else {}
+
+
+def _runtime_declaration_from_package_json(package_json: dict[str, Any]) -> dict[str, Any]:
+    ces = package_json.get("ces", {}) if isinstance(package_json.get("ces"), dict) else {}
+    declaration = ces.get("runtime_declaration", {}) if isinstance(ces.get("runtime_declaration"), dict) else {}
+    return declaration if isinstance(declaration, dict) else {}
 
 
 def _node_tool_signals(package_json: dict[str, Any], root: Path) -> list[MriSignal]:
@@ -526,7 +539,7 @@ def _readiness_score(signals: list[MriSignal]) -> dict[str, Any]:
         passed.append("ci")
     if _RUNTIME_SIGNAL_NAMES & names:
         passed.append("runtime")
-    if {".ces/verification-profile.json", ".ces/config.yaml", ".ces/state.db"} & names:
+    if {".ces/verification-profile.json", _CES_COMPLETION_CONTRACT_SIGNAL, ".ces/config.yaml", ".ces/state.db"} & names:
         passed.append("ces")
     passed = sorted(passed)
     missing = sorted(category for category in _READINESS_CATEGORIES if category not in passed)
@@ -551,7 +564,7 @@ def _missing_readiness_signals(signals: list[MriSignal]) -> list[str]:
         missing.append("CI workflow")
     if not (_RUNTIME_SIGNAL_NAMES & names):
         missing.append("deployment/runtime declaration")
-    if ".ces/verification-profile.json" not in names:
+    if not ({".ces/verification-profile.json", _CES_COMPLETION_CONTRACT_SIGNAL} & names):
         missing.append("CES verification profile")
     return missing
 
@@ -562,7 +575,9 @@ def _classify_maturity(signals: list[MriSignal], findings: list[MriFinding], mis
     has_quality = bool({"ruff", "mypy", "eslint", "typescript"} & names)
     has_ci = "github-actions" in names
     has_runtime = bool(_RUNTIME_SIGNAL_NAMES & names)
-    has_ces_state = bool({".ces/verification-profile.json", ".ces/config.yaml", ".ces/state.db"} & names)
+    has_ces_state = bool(
+        {".ces/verification-profile.json", _CES_COMPLETION_CONTRACT_SIGNAL, ".ces/config.yaml", ".ces/state.db"} & names
+    )
     has_high_risk = any(finding.severity in {"critical", "high"} for finding in findings)
     if has_tests and has_quality and has_ci and has_runtime and has_ces_state and not has_high_risk:
         return "production-ready"
@@ -587,6 +602,7 @@ def _strongest_evidence(signals: list[MriSignal]) -> tuple[str, ...]:
         "eslint",
         "typescript",
         ".ces/verification-profile.json",
+        _CES_COMPLETION_CONTRACT_SIGNAL,
         _CES_RUNTIME_DECLARATION_SIGNAL,
         _CONTAINER_FILE,
         "README.md",
@@ -601,7 +617,7 @@ def _strongest_evidence(signals: list[MriSignal]) -> tuple[str, ...]:
 def _recommended_actions(signals: list[MriSignal], findings: list[MriFinding], missing: list[str]) -> tuple[str, ...]:
     names = {signal.name for signal in signals}
     actions = ["ces doctor"]
-    if ".ces/verification-profile.json" not in names:
+    if not ({".ces/verification-profile.json", _CES_COMPLETION_CONTRACT_SIGNAL} & names):
         actions.append("ces profile detect --write")
     if "test signal" not in missing and "lint/typecheck signal" not in missing:
         actions.append("ces verify")
