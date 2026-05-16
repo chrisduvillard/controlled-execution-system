@@ -151,6 +151,46 @@ ces next-prompt "Stabilize this AI-built app enough to safely add signup error h
 ces next-prompt "Add invoice notes to CSV exports" --project-root .
 ```
 
+### Turn intent into an execution contract
+
+Use `ces intake` when you want a persisted bridge from a human request, PRD, or GitHub issue into CES-governed execution:
+
+```bash
+ces intake "Add CSV invoice notes"
+ces intake docs/prd.md
+ces intake --from-github-issue 123
+```
+
+`ces intake` deliberately supports only stable boundaries:
+
+- inline intent text
+- local Markdown PRDs such as `prd.md`
+- GitHub issue numbers or URLs via the `gh` CLI
+
+It does **not** import spec-kit, OpenSpec, BMAD, GSD, Kiro, or other project-specific methodology layouts. If those tools produce a useful plan, copy or export the stable human-facing result into `prd.md` or a GitHub issue, then let CES own the execution contract and proof loop.
+
+Intake writes:
+
+- `.ces/contracts/<contract-id>.json`
+- `.ces/contracts/latest.json`
+- `docs/contracts/<contract-id>.md`
+- `docs/specs/<contract-id>.md`, a generated CES spec sidecar for the existing `--from-spec` path
+
+After intake, the intended loop is:
+
+```bash
+ces build --from-contract
+ces verify
+ces proof
+ces approve
+```
+
+The legacy phase interview remains available as:
+
+```bash
+ces intake interview 1
+```
+
 ### Install from PyPI
 
 ```bash
@@ -265,6 +305,8 @@ ces report builder
 | Command | Use it for |
 |---|---|
 | `ces build "<request>"` | Start a governed local task from a natural-language request. |
+| `ces intake "<request>"` / `ces intake docs/prd.md` | Persist a narrow execution contract from inline intent, a local Markdown PRD, or `--from-github-issue`. |
+| `ces build --from-contract` | Continue from the latest intake contract's generated CES spec sidecar. |
 | `ces continue` | Resume the latest saved builder session from the right stage. |
 | `ces explain` | Read the current request, blockers, evidence, and next step. |
 | `ces explain --view decisioning` | Inspect the governance decision path for the active request. |

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import re
 import uuid
 from dataclasses import replace
@@ -1905,6 +1906,11 @@ async def run_task(
         "--from-spec",
         help="Preview the build order for a decomposed spec's manifests.",
     ),
+    from_contract: bool = typer.Option(
+        False,
+        "--from-contract",
+        help="Preview the build order for the latest intake execution contract.",
+    ),
     project_root: Path | None = typer.Option(
         None,
         "--project-root",
@@ -1924,6 +1930,11 @@ async def run_task(
     """Run the full local CES flow in one builder-first command."""
     try:
         reverse_preflight_mode = _normalize_reverse_preflight_mode(reverse_preflight)
+        if from_contract:
+            preview_project_root = (project_root or Path.cwd()).resolve()
+            contract_spec_path = _latest_contract_spec_path(preview_project_root)
+            await _preview_from_spec(contract_spec_path, story_id=story, project_root=preview_project_root)
+            return
         if from_spec is not None:
             preview_project_root = _preview_project_root(from_spec, project_root)
             await _preview_from_spec(from_spec, story_id=story, project_root=preview_project_root)
@@ -2268,6 +2279,20 @@ async def explain_task(
         raise
     except Exception as exc:
         handle_error(exc)
+
+
+def _latest_contract_spec_path(project_root: Path) -> Path:
+    path = project_root / ".ces" / "contracts" / "latest.json"
+    if not path.is_file():
+        raise typer.BadParameter("No intake execution contract found. Run `ces intake ...` first.")
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError) as exc:
+        raise typer.BadParameter("Could not read latest intake execution contract.") from exc
+    spec_path = payload.get("generated_spec_path")
+    if not isinstance(spec_path, str) or not spec_path:
+        raise typer.BadParameter("Latest intake execution contract has no generated spec path.")
+    return Path(spec_path)
 
 
 async def _preview_from_spec(

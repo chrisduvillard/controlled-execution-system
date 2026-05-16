@@ -61,6 +61,35 @@ def _root_json_requested(argv: Sequence[str]) -> bool:
     return False
 
 
+def _rewrite_intake_default(argv: Sequence[str]) -> list[str]:
+    """Rewrite `ces intake SOURCE` to `ces intake create SOURCE`.
+
+    Typer groups require a subcommand token. CES keeps the public beginner UX as
+    `ces intake "..."` by inserting the internal `create` subcommand before
+    Typer dispatches. Stable subcommands are left untouched.
+    """
+
+    rewritten = list(argv)
+    root_options_with_values = {"--config"}
+    index = 0
+    while index < len(rewritten):
+        arg = rewritten[index]
+        if arg == "--":
+            return rewritten
+        if arg == "intake":
+            next_arg = rewritten[index + 1] if index + 1 < len(rewritten) else None
+            stable = {"create", "show", "review", "interview", "--help", "-h"}
+            if next_arg is not None and next_arg not in stable:
+                default_subcommand = "interview" if next_arg in {"1", "2", "3"} else "create"
+                rewritten.insert(index + 1, default_subcommand)
+            return rewritten
+        if arg in root_options_with_values:
+            index += 2
+            continue
+        index += 1
+    return rewritten
+
+
 class JsonAwareTyperGroup(typer.core.TyperGroup):
     """Typer group that preserves machine-readable usage errors under root --json."""
 
@@ -73,7 +102,7 @@ class JsonAwareTyperGroup(typer.core.TyperGroup):
         windows_expand_args: bool = True,
         **extra: Any,
     ) -> Any:
-        argv = list(sys.argv[1:] if args is None else args)
+        argv = _rewrite_intake_default(list(sys.argv[1:] if args is None else args))
         json_requested = _root_json_requested(argv)
         try:
             result = super().main(
@@ -209,7 +238,7 @@ app.command(name="verify", help="Run independent local verification for the curr
 app.command(name="triage", help="Pre-screen evidence with triage color.")(triage_cmd.triage_evidence)
 app.command(name="approve", help="Approve or reject evidence.")(approve_cmd.approve_evidence)
 app.command(name="gate", help="Evaluate a phase gate.")(gate_cmd.evaluate_gate)
-app.command(name="intake", help="Run intake interview for a phase.")(intake_cmd.run_intake)
+app.add_typer(intake_cmd.intake_app, name="intake")
 app.add_typer(vault_cmd.vault_app, name="vault")
 app.add_typer(spec_cmd.spec_app, name="spec")
 app.command(name="status", help="Show builder-first project status. Use --expert for the full expert view.")(
