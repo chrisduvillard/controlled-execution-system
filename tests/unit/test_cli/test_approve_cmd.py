@@ -133,6 +133,77 @@ def _make_review_data(*, unanimous_zero_findings: bool = False) -> dict[str, Any
 class TestApproveWithYesFlag:
     """Tests for ces approve --yes (skip confirmation)."""
 
+    def test_approve_blocks_when_completion_contract_proof_is_unproven(
+        self, ces_project: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Contract-bound approval must fail closed when proof is not proven."""
+        monkeypatch.chdir(ces_project)
+        (ces_project / ".ces").mkdir(exist_ok=True)
+        (ces_project / ".ces" / "completion-contract.json").write_text("{}\n", encoding="utf-8")
+
+        mock_services = _make_mock_services()
+        mock_store = MagicMock()
+        mock_store.get_review_findings.return_value = _make_review_data()
+        mock_services["local_store"] = mock_store
+        proof_card = MagicMock()
+        proof_card.to_dict.return_value = {
+            "objective": "Ship invoice notes",
+            "proof_status": "unproven",
+            "approval_safety": "needs-fresh-verification",
+            "ship_recommendation": "no-ship",
+            "unproven_areas": ["Latest persisted verification run is not fresh."],
+            "missing_required_artifacts": [],
+            "next_command": "ces verify --json",
+        }
+
+        with (
+            _patch_services(mock_services),
+            patch("ces.cli.approve_cmd.build_proof_card", return_value=proof_card),
+            patch("ces.cli.approve_cmd.WorkflowEngine", return_value=AsyncMock()),
+        ):
+            app = _get_app()
+            result = runner.invoke(app, ["approve", "EP-unproven", "--yes"])
+
+        assert result.exit_code == 3, f"stdout={result.stdout}"
+        assert "Approval blocked" in result.stdout
+        assert "proof is unproven" in result.stdout
+        assert "ces verify --json" in result.stdout
+        mock_services["audit_ledger"].record_approval.assert_not_called()
+
+    def test_approve_allows_contract_when_proof_is_proven(
+        self, ces_project: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Contract-bound approval may proceed when proof is proven and safe to review."""
+        monkeypatch.chdir(ces_project)
+        (ces_project / ".ces").mkdir(exist_ok=True)
+        (ces_project / ".ces" / "completion-contract.json").write_text("{}\n", encoding="utf-8")
+
+        mock_services = _make_mock_services()
+        mock_store = MagicMock()
+        mock_store.get_review_findings.return_value = _make_review_data()
+        mock_services["local_store"] = mock_store
+        proof_card = MagicMock()
+        proof_card.to_dict.return_value = {
+            "objective": "Ship invoice notes",
+            "proof_status": "proven",
+            "approval_safety": "safe-to-review",
+            "ship_recommendation": "candidate",
+            "unproven_areas": [],
+            "missing_required_artifacts": [],
+            "next_command": "ces approve",
+        }
+
+        with (
+            _patch_services(mock_services),
+            patch("ces.cli.approve_cmd.build_proof_card", return_value=proof_card),
+            patch("ces.cli.approve_cmd.WorkflowEngine", return_value=AsyncMock()),
+        ):
+            app = _get_app()
+            result = runner.invoke(app, ["approve", "EP-proven", "--yes"])
+
+        assert result.exit_code == 0, f"stdout={result.stdout}"
+        mock_services["audit_ledger"].record_approval.assert_called_once()
+
     def test_approve_with_yes_records_approval(self, ces_project: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """ces approve --yes records approval in audit ledger."""
         monkeypatch.chdir(ces_project)

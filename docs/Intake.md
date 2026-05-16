@@ -96,7 +96,7 @@ The proof card includes the intake contract context when `.ces/contracts/latest.
 - `unproven`: verification is missing, stale, or does not match the current completion contract.
 - `contradicted`: the latest persisted verification failed.
 
-Approval safety is derived from that status. Treat anything other than `proven` as no-ship until the missing or stale evidence is repaired.
+Approval safety is derived from that status. `ces approve` fails closed for contract-bound work unless proof is `proven` and approval safety is `safe-to-review`. Treat anything else as no-ship until the missing or stale evidence is repaired.
 
 ## Legacy interview
 
