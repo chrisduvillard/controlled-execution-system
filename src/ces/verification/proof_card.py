@@ -32,6 +32,8 @@ class ProofCardReport:
     missing_required_artifacts: tuple[str, ...]
     unproven_areas: tuple[str, ...]
     next_command: str
+    execution_contract_id: str | None = None
+    execution_contract_objective: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -48,6 +50,10 @@ class ProofCardReport:
             "missing_required_artifacts": list(self.missing_required_artifacts),
             "unproven_areas": list(self.unproven_areas),
             "next_command": self.next_command,
+            "execution_contract": {
+                "contract_id": self.execution_contract_id,
+                "objective": self.execution_contract_objective,
+            },
         }
 
     def to_json(self) -> str:
@@ -68,6 +74,7 @@ class ProofCardReport:
                     f"Evidence status: **{payload['evidence_status']}**",
                     f"Ship recommendation: **{payload['ship_recommendation']}**",
                     f"Next command: `{payload['next_command']}`",
+                    f"Execution contract: {payload['execution_contract']['contract_id'] or 'None'}",
                     "",
                     "## Changed files",
                     "",
@@ -96,6 +103,7 @@ def build_proof_card(project_root: str | Path) -> ProofCardReport:
     root = Path(project_root).resolve()
     contract_path = root / ".ces" / "completion-contract.json"
     contract = CompletionContract.read(contract_path) if contract_path.is_file() else None
+    execution_contract = _load_execution_contract(root)
     verification = _load_latest_verification(root)
     missing = _missing_required_artifacts(root, contract, verification)
     unproven = _unproven_areas(contract, missing, verification, root=root)
@@ -117,6 +125,8 @@ def build_proof_card(project_root: str | Path) -> ProofCardReport:
         missing_required_artifacts=tuple(missing),
         unproven_areas=tuple(unproven),
         next_command=contract.next_ces_command if contract else "ces ship",
+        execution_contract_id=execution_contract.get("contract_id") if execution_contract else None,
+        execution_contract_objective=execution_contract.get("objective") if execution_contract else None,
     )
 
 
@@ -150,7 +160,10 @@ def _unproven_areas(
     root: Path,
 ) -> list[str]:
     if contract is None:
-        return ["No completion contract found; run `ces build --from-scratch ...` or `ces ship ...` first."]
+        message = "No completion contract found; run `ces build --from-scratch ...` or `ces ship ...` first."
+        if (root / ".ces" / "contracts" / "latest.json").is_file():
+            message = "Execution contract exists but completion contract is missing."
+        return [message]
     areas: list[str] = []
     if missing:
         areas.append("Required beginner handoff artifacts are incomplete.")
@@ -176,6 +189,24 @@ def _load_latest_verification(root: Path) -> dict[str, Any] | None:
     except (json.JSONDecodeError, OSError):
         return None
     return payload if isinstance(payload, dict) else None
+
+
+def _load_execution_contract(root: Path) -> dict[str, str] | None:
+    path = root / ".ces" / "contracts" / "latest.json"
+    if not path.is_file():
+        return None
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return None
+    if not isinstance(payload, dict):
+        return None
+    contract_id = payload.get("contract_id")
+    objective = payload.get("objective")
+    return {
+        "contract_id": contract_id if isinstance(contract_id, str) else "",
+        "objective": objective if isinstance(objective, str) else "",
+    }
 
 
 def _verification_payload(verification: dict[str, Any] | None) -> dict[str, Any] | None:
