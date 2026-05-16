@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any
 
 from ces.execution.secrets import scrub_secrets_recursive
-from ces.verification.completion_contract import BehaviorDelta, CompletionContract, VerificationCommand
+from ces.verification.completion_contract import BehaviorDelta, CompletionContract, RiskTrack, VerificationCommand
 
 _SCHEMA_VERSION = "1.0"
 _VERIFICATION_RESULT_PATH = Path(".ces") / "latest-verification.json"
@@ -32,6 +32,7 @@ class ProofCardReport:
     commands_run: tuple[dict[str, Any], ...]
     verification_commands: tuple[VerificationCommand, ...]
     behavior_delta: BehaviorDelta
+    risk_track: RiskTrack
     missing_required_artifacts: tuple[str, ...]
     unproven_areas: tuple[str, ...]
     review_summary: dict[str, Any]
@@ -54,6 +55,7 @@ class ProofCardReport:
                 _shareable_verification_command(command) for command in self.verification_commands
             ],
             "behavior_delta": _behavior_delta_dict(self.behavior_delta),
+            "risk_track": _risk_track_dict(self.risk_track),
             "missing_required_artifacts": list(self.missing_required_artifacts),
             "unproven_areas": list(self.unproven_areas),
             "review_summary": self.review_summary,
@@ -95,6 +97,8 @@ class ProofCardReport:
                     f"Command coverage: {payload['review_summary']['command_coverage']}",
                     f"Artifact coverage: {payload['review_summary']['artifact_coverage']}",
                     f"Behavior delta coverage: {payload['review_summary']['behavior_delta_coverage']}",
+                    f"Risk track: {payload['review_summary']['risk_track']}",
+                    f"Risk evidence: {payload['review_summary']['risk_evidence']}",
                     "Next steps:",
                     *_bullet(payload["review_summary"]["next_steps"]),
                     "",
@@ -134,6 +138,7 @@ def build_proof_card(project_root: str | Path) -> ProofCardReport:
     verification_fresh = _verification_is_fresh(root, contract_path, verification)
     missing = _missing_required_artifacts(root, contract, verification)
     behavior_delta = _behavior_delta(contract, execution_contract)
+    risk_track = contract.risk_track if contract else RiskTrack()
     unproven = _unproven_areas(contract, missing, verification, root=root, behavior_delta=behavior_delta)
     verification_passed = _verification_passed(verification)
     verification_matches = _verification_matches_contract(contract, verification, root)
@@ -167,6 +172,7 @@ def build_proof_card(project_root: str | Path) -> ProofCardReport:
         missing=missing,
         unproven=unproven,
         behavior_delta=behavior_delta,
+        risk_track=risk_track,
     )
     return ProofCardReport(
         project_root=root,
@@ -179,6 +185,7 @@ def build_proof_card(project_root: str | Path) -> ProofCardReport:
         commands_run=_commands_run(verification),
         verification_commands=contract.inferred_commands if contract else (),
         behavior_delta=behavior_delta,
+        risk_track=risk_track,
         missing_required_artifacts=tuple(missing),
         unproven_areas=tuple(unproven),
         review_summary=review_summary,
@@ -197,7 +204,7 @@ def _missing_required_artifacts(
         return ["completion contract"]
     missing: list[str] = []
     known_artifacts = {"readme.md", "run command", "test command", "verification evidence"}
-    for artifact in contract.required_artifacts:
+    for artifact in _required_artifacts(contract):
         normalized = artifact.strip().lower()
         known_missing = (
             (normalized == "readme.md" and not (root / "README.md").is_file())
@@ -238,6 +245,9 @@ def _unproven_areas(
         areas.append("Latest persisted verification run does not match the current completion contract.")
     if contract.proof_requirements and missing:
         areas.extend(contract.proof_requirements)
+    risk_missing = [item for item in missing if item in contract.risk_track.required_artifacts]
+    if risk_missing:
+        areas.extend(contract.risk_track.proof_requirements)
     for item in behavior_delta.unknown:
         areas.append(f"Unknown behavior delta remains unresolved: {item}")
     return areas
@@ -315,6 +325,7 @@ def _review_summary(
     missing: list[str],
     unproven: list[str],
     behavior_delta: BehaviorDelta,
+    risk_track: RiskTrack,
 ) -> dict[str, Any]:
     """Return reviewer-facing decision metadata for the proof card."""
 
@@ -326,6 +337,8 @@ def _review_summary(
         "command_coverage": _command_coverage(contract, verification),
         "artifact_coverage": _artifact_coverage(contract, missing),
         "behavior_delta_coverage": _behavior_delta_coverage(behavior_delta),
+        "risk_track": risk_track.tier,
+        "risk_evidence": _risk_evidence_coverage(risk_track, missing),
         "next_steps": _review_next_steps(proof_status, approval_safety, behavior_delta=behavior_delta),
     }
 
@@ -378,10 +391,32 @@ def _command_coverage(contract: CompletionContract | None, verification: dict[st
 
 def _artifact_coverage(contract: CompletionContract | None, missing: list[str]) -> str:
     if contract is None:
-        return "0/0 required artifacts present"
-    total = len(contract.required_artifacts)
+        return "0/1 required artifacts present"
+    required = _required_artifacts(contract)
+    total = len(required)
     present = max(total - len(missing), 0)
     return f"{present}/{total} required artifacts present"
+
+
+def _required_artifacts(contract: CompletionContract) -> tuple[str, ...]:
+    return tuple(dict.fromkeys((*contract.required_artifacts, *contract.risk_track.required_artifacts)))
+
+
+def _risk_track_dict(track: RiskTrack) -> dict[str, Any]:
+    return {
+        "tier": track.tier,
+        "required_artifacts": list(track.required_artifacts),
+        "proof_requirements": list(track.proof_requirements),
+        "evidence_requirements": list(track.evidence_requirements),
+    }
+
+
+def _risk_evidence_coverage(track: RiskTrack, missing: list[str]) -> str:
+    if not track.required_artifacts:
+        return "low-risk: no additional risk evidence required"
+    missing_count = sum(1 for item in track.required_artifacts if item in missing)
+    present = max(len(track.required_artifacts) - missing_count, 0)
+    return f"{present}/{len(track.required_artifacts)} risk artifacts present"
 
 
 def _review_next_steps(proof_status: str, approval_safety: str, *, behavior_delta: BehaviorDelta) -> list[str]:

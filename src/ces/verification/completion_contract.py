@@ -7,6 +7,8 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
+from ces.shared.enums import RiskTier
+
 
 @dataclass(frozen=True)
 class AcceptanceCriterion:
@@ -53,6 +55,57 @@ class BehaviorDelta:
 
 
 @dataclass(frozen=True)
+class RiskTrack:
+    """Risk-adaptive evidence requirements attached to a completion contract."""
+
+    tier: str = RiskTier.C.value
+    required_artifacts: tuple[str, ...] = ()
+    proof_requirements: tuple[str, ...] = ()
+    evidence_requirements: tuple[str, ...] = ()
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any] | None) -> RiskTrack:
+        source = payload or {}
+        tier = _risk_tier_value(source.get("tier"))
+        return cls(
+            tier=tier,
+            required_artifacts=_string_tuple(source.get("required_artifacts")),
+            proof_requirements=_string_tuple(source.get("proof_requirements")),
+            evidence_requirements=_string_tuple(source.get("evidence_requirements")),
+        )
+
+
+def infer_risk_track(delta: BehaviorDelta) -> RiskTrack:
+    """Infer a conservative risk track from brownfield behavior deltas."""
+
+    if delta.unknown or delta.removed:
+        return RiskTrack(
+            tier=RiskTier.A.value,
+            required_artifacts=("rollback-plan.md", "reviewer-signoff.md"),
+            proof_requirements=(
+                "Document high-risk behavior evidence.",
+                "Document rollback path before approval.",
+            ),
+            evidence_requirements=(
+                "Fresh verification passed.",
+                "Rollback path documented.",
+                "Reviewer signoff recorded.",
+            ),
+        )
+    if delta.modified or delta.preserved:
+        return RiskTrack(
+            tier=RiskTier.B.value,
+            required_artifacts=("regression-evidence.md",),
+            proof_requirements=("Document regression evidence for modified or preserved behavior.",),
+            evidence_requirements=("Fresh verification passed.", "Regression evidence recorded."),
+        )
+    return RiskTrack(
+        tier=RiskTier.C.value,
+        evidence_requirements=("Fresh verification passed.",),
+    )
+
+
+@dataclass(frozen=True)
 class CompletionContract:
     request: str
     project_type: str
@@ -62,6 +115,7 @@ class CompletionContract:
     required_artifacts: tuple[str, ...] = ()
     proof_requirements: tuple[str, ...] = ()
     behavior_delta: BehaviorDelta = field(default_factory=BehaviorDelta)
+    risk_track: RiskTrack = field(default_factory=RiskTrack)
     next_ces_command: str = "ces verify --json"
     version: int = 1
 
@@ -72,6 +126,8 @@ class CompletionContract:
 
     @classmethod
     def from_dict(cls, payload: dict[str, Any]) -> CompletionContract:
+        behavior_delta = BehaviorDelta.from_dict(_dict_or_none(payload.get("behavior_delta")))
+        risk_track_payload = _dict_or_none(payload.get("risk_track"))
         return cls(
             version=int(payload.get("version", 1)),
             request=str(payload.get("request", "")),
@@ -95,7 +151,10 @@ class CompletionContract:
             runtime=dict(payload.get("runtime", {}) or {}),
             required_artifacts=tuple(str(item) for item in payload.get("required_artifacts", []) or []),
             proof_requirements=tuple(str(item) for item in payload.get("proof_requirements", []) or []),
-            behavior_delta=BehaviorDelta.from_dict(_dict_or_none(payload.get("behavior_delta"))),
+            behavior_delta=behavior_delta,
+            risk_track=RiskTrack.from_dict(risk_track_payload)
+            if risk_track_payload is not None
+            else infer_risk_track(behavior_delta),
             next_ces_command=str(payload.get("next_ces_command", "ces verify --json") or "ces verify --json"),
         )
 
@@ -129,6 +188,13 @@ def _expected_exit_codes(item: dict[str, Any]) -> tuple[int, ...]:
 
 def _dict_or_none(value: Any) -> dict[str, Any] | None:
     return value if isinstance(value, dict) else None
+
+
+def _risk_tier_value(value: Any) -> str:
+    try:
+        return RiskTier(str(value)).value
+    except ValueError:
+        return RiskTier.C.value
 
 
 def _string_tuple(value: Any) -> tuple[str, ...]:

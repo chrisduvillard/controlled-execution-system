@@ -10,6 +10,7 @@ def test_completion_contract_roundtrips_json(tmp_path: Path) -> None:
         AcceptanceCriterion,
         BehaviorDelta,
         CompletionContract,
+        RiskTrack,
         VerificationCommand,
     )
 
@@ -39,6 +40,12 @@ def test_completion_contract_roundtrips_json(tmp_path: Path) -> None:
             preserved=("Existing CSV column order remains stable.",),
             unknown=("Downstream importer tolerance is unverified.",),
         ),
+        risk_track=RiskTrack(
+            tier="A",
+            required_artifacts=("rollback-plan.md", "reviewer-signoff.md"),
+            proof_requirements=("Document high-risk behavior evidence.",),
+            evidence_requirements=("Fresh verification passed.", "Rollback path documented."),
+        ),
     )
     path = tmp_path / ".ces" / "completion-contract.json"
 
@@ -54,7 +61,13 @@ def test_completion_contract_roundtrips_json(tmp_path: Path) -> None:
     assert loaded.inferred_commands[1].expected_exit_codes == (1,)
     assert loaded.runtime["name"] == "codex"
     assert loaded.behavior_delta.preserved == ("Existing CSV column order remains stable.",)
+    assert loaded.risk_track.tier == "A"
+    assert loaded.risk_track.required_artifacts == ("rollback-plan.md", "reviewer-signoff.md")
     assert loaded.to_dict()["behavior_delta"]["unknown"] == ["Downstream importer tolerance is unverified."]
+    assert loaded.to_dict()["risk_track"]["evidence_requirements"] == [
+        "Fresh verification passed.",
+        "Rollback path documented.",
+    ]
 
 
 def test_completion_contract_roundtrip_preserves_acceptance_profile(tmp_path: Path) -> None:
@@ -98,6 +111,8 @@ def test_completion_contract_read_accepts_legacy_payload_without_acceptance_prof
     assert loaded.required_artifacts == ()
     assert loaded.proof_requirements == ()
     assert loaded.behavior_delta.has_signal() is False
+    assert loaded.risk_track.tier == "C"
+    assert loaded.risk_track.required_artifacts == ()
     assert loaded.next_ces_command == "ces verify --json"
 
 
@@ -126,5 +141,7 @@ def test_build_completion_contract_records_greenfield_acceptance_profile(tmp_pat
 
     assert payload["required_artifacts"] == ["README.md", "run command", "test command", "verification evidence"]
     assert payload["behavior_delta"]["preserved"] == ["Existing meal CLI keeps working."]
+    assert payload["risk_track"]["tier"] == "B"
+    assert payload["risk_track"]["required_artifacts"] == ["regression-evidence.md"]
     assert "Document unproven areas or remaining risks" in payload["proof_requirements"]
     assert payload["next_ces_command"] == "ces verify --json"
