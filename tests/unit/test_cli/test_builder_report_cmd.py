@@ -176,6 +176,7 @@ def test_builder_report_redacts_secret_shaped_values_and_home_paths() -> None:
             "packet_id": "EP-secret",
             "triage_color": "red",
             "verification_findings": [f"stdout leaked {secret_value} from /home/alice/private-app"],
+            "content": {"completion_contract_path": "C:/Users/Bob/private-app/.ces/completion-contract.json"},
         },
         approval=SimpleNamespace(decision="reject"),
         session=SimpleNamespace(session_id="BS-secret"),
@@ -194,6 +195,11 @@ def test_builder_report_redacts_secret_shaped_values_and_home_paths() -> None:
     assert "C:\\Users\\Bob" not in combined
     assert "<home>/private-app" in combined
     assert "<home>\\private-app" in combined
+    assert payload_text.count("<project>/.ces/") >= 2
+    assert "<project>/.ces/prl.md" in payload_text
+    assert "<project>/.ces/runtime-transcripts/run.jsonl" in payload_text
+    assert "<project>/.ces/completion-contract.json" in payload_text
+    assert "<project>/.ces/.ces" not in combined
 
 
 def test_builder_report_exposes_entry_level_brownfield_counts_when_item_count_is_inflated() -> None:
@@ -319,7 +325,7 @@ def test_builder_report_labels_builder_auto_preserve_counts_separately_from_manu
     markdown = render_builder_run_report_markdown(report)
     assert "6 build auto-preserve behaviors reviewed" in markdown
     assert "6 behaviors reviewed" not in markdown
-    assert "Runtime transcript: .ces/runtime-transcripts/codex-taskledger.txt" in markdown
+    assert "Runtime transcript: <project>/.ces/runtime-transcripts/codex-taskledger.txt" in markdown
 
 
 def test_builder_report_surfaces_verification_findings_and_manual_supersession(tmp_path: Path, monkeypatch) -> None:
@@ -540,7 +546,7 @@ def test_builder_report_surfaces_completion_contract_and_independent_verificatio
     assert report.completion_contract_path == ".ces/completion-contract.json"
     assert report.independent_verification_passed is True
     markdown = render_builder_run_report_markdown(report)
-    assert "Completion contract: .ces/completion-contract.json" in markdown
+    assert "Completion contract: <project>/.ces/completion-contract.json" in markdown
     assert "Independent verification passed: True" in markdown
 
 
