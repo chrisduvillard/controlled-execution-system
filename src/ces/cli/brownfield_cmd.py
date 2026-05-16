@@ -40,6 +40,11 @@ brownfield_app = typer.Typer(
 )
 
 
+def _resolve_project_root(project_root: Path | None) -> Path:
+    """Resolve an explicit project root or fall back to cwd discovery."""
+    return project_root.resolve() if project_root is not None else find_project_root()
+
+
 @brownfield_app.command(name="register")
 @run_async
 async def register_behavior(
@@ -85,6 +90,11 @@ async def register_behavior(
         "--from-default-scan",
         help="Bulk-register from the default .ces/brownfield/scan.json (no path needed).",
     ),
+    project_root: Path | None = typer.Option(
+        None,
+        "--project-root",
+        help="CES project root to inspect instead of the current working directory.",
+    ),
 ) -> None:
     """Register a newly observed legacy behavior (BROWN-01).
 
@@ -96,22 +106,22 @@ async def register_behavior(
     entry separately with ``ces brownfield review``.
     """
     try:
-        project_root = find_project_root()
-        project_id = get_project_id()
+        resolved_root = _resolve_project_root(project_root)
+        project_id = get_project_id(resolved_root)
 
         if from_scan or from_scan_default:
             if system or description:
                 raise typer.BadParameter("--from-scan cannot be combined with --system or --description.")
-            scan_path = Path(from_scan) if from_scan else project_root / ".ces" / "brownfield" / "scan.json"
+            scan_path = Path(from_scan) if from_scan else resolved_root / ".ces" / "brownfield" / "scan.json"
             if not scan_path.is_file():
                 raise typer.BadParameter(f"Scan file not found: {scan_path}. Run 'ces scan' first.")
-            await _register_from_scan(scan_path, inferred_by=inferred_by)
+            await _register_from_scan(scan_path, inferred_by=inferred_by, project_root=resolved_root)
             return
 
         if not system or not description:
             raise typer.BadParameter("Both --system and --description are required unless --from-scan is used.")
 
-        async with get_services() as services:
+        async with get_services(project_root=resolved_root) as services:
             legacy_service = services.get("legacy_behavior_service")
 
             entry = await legacy_service.register_behavior(
@@ -146,7 +156,7 @@ async def register_behavior(
         handle_error(exc)
 
 
-async def _register_from_scan(scan_path: Path, *, inferred_by: str) -> None:
+async def _register_from_scan(scan_path: Path, *, inferred_by: str, project_root: Path | None = None) -> None:
     """Read ``scan.json`` and draft one register entry per detected module."""
     payload = json.loads(scan_path.read_text(encoding="utf-8"))
     modules = payload.get("modules", [])
@@ -154,7 +164,7 @@ async def _register_from_scan(scan_path: Path, *, inferred_by: str) -> None:
         console.print("[yellow]No modules in scan — nothing to register.[/yellow]")
         return
 
-    async with get_services() as services:
+    async with get_services(project_root=project_root) as services:
         legacy_service = services.get("legacy_behavior_service")
         created: list[tuple[str, str]] = []
         for module in modules:
@@ -200,6 +210,11 @@ async def list_behaviors(
         "-s",
         help="Filter by system name",
     ),
+    project_root: Path | None = typer.Option(
+        None,
+        "--project-root",
+        help="CES project root to inspect instead of the current working directory.",
+    ),
 ) -> None:
     """List pending legacy behaviors.
 
@@ -207,10 +222,10 @@ async def list_behaviors(
     With --system, lists behaviors for that specific system.
     """
     try:
-        find_project_root()
-        project_id = get_project_id()
+        resolved_root = _resolve_project_root(project_root)
+        project_id = get_project_id(resolved_root)
 
-        async with get_services() as services:
+        async with get_services(project_root=resolved_root) as services:
             legacy_service = services.get("legacy_behavior_service")
 
             if system:
@@ -285,13 +300,18 @@ async def review_behavior(
         "-n",
         help="Review notes",
     ),
+    project_root: Path | None = typer.Option(
+        None,
+        "--project-root",
+        help="CES project root to inspect instead of the current working directory.",
+    ),
 ) -> None:
     """Review a pending behavior and set its disposition (BROWN-03).
 
     Validates the disposition value and calls the service.
     """
     try:
-        find_project_root()
+        resolved_root = _resolve_project_root(project_root)
 
         # Validate disposition
         if disposition not in _VALID_DISPOSITIONS:
@@ -301,7 +321,7 @@ async def review_behavior(
 
         disposition_enum = LegacyDisposition(disposition)
 
-        async with get_services() as services:
+        async with get_services(project_root=resolved_root) as services:
             legacy_service = services.get("legacy_behavior_service")
 
             entry = await legacy_service.review_behavior(
@@ -345,6 +365,11 @@ async def promote_behavior(
         "--approver",
         help="Approver identifier",
     ),
+    project_root: Path | None = typer.Option(
+        None,
+        "--project-root",
+        help="CES project root to inspect instead of the current working directory.",
+    ),
 ) -> None:
     """Promote a reviewed behavior to the PRL (BROWN-03).
 
@@ -352,10 +377,10 @@ async def promote_behavior(
     register entry is preserved with a back-reference.
     """
     try:
-        find_project_root()
-        project_id = get_project_id()
+        resolved_root = _resolve_project_root(project_root)
+        project_id = get_project_id(resolved_root)
 
-        async with get_services() as services:
+        async with get_services(project_root=resolved_root) as services:
             legacy_service = services.get("legacy_behavior_service")
 
             updated_entry, prl_item = await legacy_service.promote_to_prl(
@@ -399,16 +424,21 @@ async def discard_behavior(
         "-r",
         help="Reason for discarding",
     ),
+    project_root: Path | None = typer.Option(
+        None,
+        "--project-root",
+        help="CES project root to inspect instead of the current working directory.",
+    ),
 ) -> None:
     """Discard a legacy behavior entry (BROWN-03).
 
     Marks the entry as discarded. Cannot discard an already-promoted entry.
     """
     try:
-        find_project_root()
-        project_id = get_project_id()
+        resolved_root = _resolve_project_root(project_root)
+        project_id = get_project_id(resolved_root)
 
-        async with get_services() as services:
+        async with get_services(project_root=resolved_root) as services:
             legacy_service = services.get("legacy_behavior_service")
 
             entry = await legacy_service.discard_behavior(

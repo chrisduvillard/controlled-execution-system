@@ -30,7 +30,7 @@ def _patch_services(mock_services: dict[str, Any]):
     """Return a patch that replaces get_services with a fake async context manager."""
 
     @asynccontextmanager
-    async def _fake_get_services():
+    async def _fake_get_services(*_args: Any, **_kwargs: Any):
         yield mock_services
 
     return patch("ces.cli.brownfield_cmd.get_services", new=_fake_get_services)
@@ -524,3 +524,119 @@ class TestBrownfieldDiscard:
 
         assert result.exit_code == 0, f"stdout={result.stdout}"
         assert "OLB-abc123def456" in result.stdout
+
+
+class TestBrownfieldProjectRoot:
+    """Tests for source-checkout brownfield commands against another project root."""
+
+    def test_register_accepts_project_root_without_chdir(
+        self, ces_project: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """ces brownfield register --project-root targets another CES project."""
+        monkeypatch.chdir(ces_project.parent)
+        mock_behavior = _make_mock_behavior()
+        mock_service = AsyncMock()
+        mock_service.register_behavior = AsyncMock(return_value=mock_behavior)
+
+        with _patch_services({"legacy_behavior_service": mock_service}):
+            result = runner.invoke(
+                _get_app(),
+                [
+                    "brownfield",
+                    "register",
+                    "--project-root",
+                    str(ces_project),
+                    "--system",
+                    "legacy-billing",
+                    "--description",
+                    "Some behavior",
+                ],
+            )
+
+        assert result.exit_code == 0, f"stdout={result.stdout} stderr={result.stderr}"
+        mock_service.register_behavior.assert_called_once()
+
+    def test_list_accepts_project_root_without_chdir(self, ces_project: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """ces brownfield list --project-root targets another CES project."""
+        monkeypatch.chdir(ces_project.parent)
+        mock_service = AsyncMock()
+        mock_service.get_pending_behaviors = AsyncMock(return_value=[_make_mock_behavior()])
+
+        with _patch_services({"legacy_behavior_service": mock_service}):
+            result = runner.invoke(_get_app(), ["--json", "brownfield", "list", "--project-root", str(ces_project)])
+
+        assert result.exit_code == 0, f"stdout={result.stdout} stderr={result.stderr}"
+        assert json.loads(result.stdout)[0]["entry_id"] == "OLB-abc123def456"
+
+    def test_review_accepts_project_root_without_chdir(
+        self, ces_project: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """ces brownfield review --project-root targets another CES project."""
+        monkeypatch.chdir(ces_project.parent)
+        mock_service = AsyncMock()
+        mock_service.review_behavior = AsyncMock(return_value=_make_mock_behavior(disposition="preserve"))
+
+        with _patch_services({"legacy_behavior_service": mock_service}):
+            result = runner.invoke(
+                _get_app(),
+                [
+                    "brownfield",
+                    "review",
+                    "OLB-abc123def456",
+                    "--project-root",
+                    str(ces_project),
+                    "--disposition",
+                    "preserve",
+                ],
+            )
+
+        assert result.exit_code == 0, f"stdout={result.stdout} stderr={result.stderr}"
+        mock_service.review_behavior.assert_called_once()
+
+    def test_promote_accepts_project_root_without_chdir(
+        self, ces_project: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """ces brownfield promote --project-root targets another CES project."""
+        monkeypatch.chdir(ces_project.parent)
+        mock_service = AsyncMock()
+        mock_service.promote_to_prl = AsyncMock(return_value=(_make_mock_behavior(), _make_mock_prl_item()))
+
+        with _patch_services({"legacy_behavior_service": mock_service}):
+            result = runner.invoke(
+                _get_app(),
+                [
+                    "brownfield",
+                    "promote",
+                    "OLB-abc123def456",
+                    "--project-root",
+                    str(ces_project),
+                ],
+            )
+
+        assert result.exit_code == 0, f"stdout={result.stdout} stderr={result.stderr}"
+        mock_service.promote_to_prl.assert_called_once()
+
+    def test_discard_accepts_project_root_without_chdir(
+        self, ces_project: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """ces brownfield discard --project-root targets another CES project."""
+        monkeypatch.chdir(ces_project.parent)
+        mock_service = AsyncMock()
+        mock_service.discard_behavior = AsyncMock(
+            return_value=_make_mock_behavior(discarded=True, disposition="retire")
+        )
+
+        with _patch_services({"legacy_behavior_service": mock_service}):
+            result = runner.invoke(
+                _get_app(),
+                [
+                    "brownfield",
+                    "discard",
+                    "OLB-abc123def456",
+                    "--project-root",
+                    str(ces_project),
+                ],
+            )
+
+        assert result.exit_code == 0, f"stdout={result.stdout} stderr={result.stderr}"
+        mock_service.discard_behavior.assert_called_once()
