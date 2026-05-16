@@ -98,6 +98,14 @@ The proof card includes the intake contract context when `.ces/contracts/latest.
 
 Approval safety is derived from that status. `ces approve` fails closed for contract-bound work unless proof is `proven` and approval safety is `safe-to-review`. Treat anything else as no-ship until the missing or stale evidence is repaired.
 
+The proof card also includes a `review_summary` object for reviewer triage:
+
+- `decision`: `ready-for-review`, `needs-verification`, `needs-evidence`, or `blocked`.
+- `approval_gate`: `open` only when approval is allowed; otherwise `closed`.
+- `primary_blocker`: the first issue to repair before approval.
+- `freshness`, `command_coverage`, and `artifact_coverage`: compact evidence quality signals.
+- `next_steps`: the next operator commands/actions to unblock review.
+
 ## Legacy interview
 
 The older phase-based interview command remains available under:

@@ -33,6 +33,7 @@ class ProofCardReport:
     verification_commands: tuple[VerificationCommand, ...]
     missing_required_artifacts: tuple[str, ...]
     unproven_areas: tuple[str, ...]
+    review_summary: dict[str, Any]
     next_command: str
     execution_contract_id: str | None = None
     execution_contract_objective: str | None = None
@@ -53,6 +54,7 @@ class ProofCardReport:
             ],
             "missing_required_artifacts": list(self.missing_required_artifacts),
             "unproven_areas": list(self.unproven_areas),
+            "review_summary": self.review_summary,
             "next_command": self.next_command,
             "execution_contract": {
                 "contract_id": self.execution_contract_id,
@@ -81,6 +83,17 @@ class ProofCardReport:
                     f"Ship recommendation: **{payload['ship_recommendation']}**",
                     f"Next command: `{payload['next_command']}`",
                     f"Execution contract: {payload['execution_contract']['contract_id'] or 'None'}",
+                    "",
+                    "## Review decision",
+                    "",
+                    f"Decision: **{payload['review_summary']['decision']}**",
+                    f"Approval gate: **{payload['review_summary']['approval_gate']}**",
+                    f"Primary blocker: {payload['review_summary']['primary_blocker'] or 'None'}",
+                    f"Evidence freshness: {payload['review_summary']['freshness']}",
+                    f"Command coverage: {payload['review_summary']['command_coverage']}",
+                    f"Artifact coverage: {payload['review_summary']['artifact_coverage']}",
+                    "Next steps:",
+                    *_bullet(payload["review_summary"]["next_steps"]),
                     "",
                     "## Changed files",
                     "",
@@ -137,6 +150,15 @@ def build_proof_card(project_root: str | Path) -> ProofCardReport:
     )
     approval_safety = _approval_safety(proof_status, verification=verification, verification_fresh=verification_fresh)
     recommendation = "candidate" if status == "candidate" else "no-ship"
+    review_summary = _review_summary(
+        contract=contract,
+        proof_status=proof_status,
+        approval_safety=approval_safety,
+        verification=verification,
+        verification_fresh=verification_fresh,
+        missing=missing,
+        unproven=unproven,
+    )
     return ProofCardReport(
         project_root=root,
         objective=contract.request if contract else None,
@@ -149,6 +171,7 @@ def build_proof_card(project_root: str | Path) -> ProofCardReport:
         verification_commands=contract.inferred_commands if contract else (),
         missing_required_artifacts=tuple(missing),
         unproven_areas=tuple(unproven),
+        review_summary=review_summary,
         next_command=contract.next_ces_command if contract else "ces ship",
         execution_contract_id=execution_contract.get("contract_id") if execution_contract else None,
         execution_contract_objective=execution_contract.get("objective") if execution_contract else None,
@@ -267,6 +290,96 @@ def _approval_safety(proof_status: str, *, verification: dict[str, Any] | None, 
     if verification is None or not verification_fresh:
         return "needs-fresh-verification"
     return "needs-evidence"
+
+
+def _review_summary(
+    *,
+    contract: CompletionContract | None,
+    proof_status: str,
+    approval_safety: str,
+    verification: dict[str, Any] | None,
+    verification_fresh: bool,
+    missing: list[str],
+    unproven: list[str],
+) -> dict[str, Any]:
+    """Return reviewer-facing decision metadata for the proof card."""
+
+    return {
+        "decision": _review_decision(proof_status, approval_safety),
+        "approval_gate": "open" if proof_status == "proven" and approval_safety == "safe-to-review" else "closed",
+        "primary_blocker": _primary_blocker(proof_status, missing, unproven),
+        "freshness": _freshness_label(contract, verification, verification_fresh),
+        "command_coverage": _command_coverage(contract, verification),
+        "artifact_coverage": _artifact_coverage(contract, missing),
+        "next_steps": _review_next_steps(proof_status, approval_safety),
+    }
+
+
+def _review_decision(proof_status: str, approval_safety: str) -> str:
+    if proof_status == "proven" and approval_safety == "safe-to-review":
+        return "ready-for-review"
+    if proof_status == "contradicted" or approval_safety == "blocked":
+        return "blocked"
+    if approval_safety == "needs-fresh-verification":
+        return "needs-verification"
+    return "needs-evidence"
+
+
+def _primary_blocker(proof_status: str, missing: list[str], unproven: list[str]) -> str | None:
+    if proof_status == "contradicted":
+        for area in unproven:
+            if "verification" in area.lower() and "did not pass" in area.lower():
+                return area
+    return unproven[0] if unproven else (missing[0] if missing else None)
+
+
+def _freshness_label(
+    contract: CompletionContract | None,
+    verification: dict[str, Any] | None,
+    verification_fresh: bool,
+) -> str:
+    if contract is None:
+        return "no-contract"
+    if verification is None:
+        return "missing-verification"
+    return "fresh" if verification_fresh else "stale"
+
+
+def _command_coverage(contract: CompletionContract | None, verification: dict[str, Any] | None) -> str:
+    if contract is None:
+        return "0/0 required commands verified"
+    required = tuple(command for command in contract.inferred_commands if command.required)
+    payload = _verification_payload(verification)
+    commands = payload.get("commands", []) if payload else []
+    verified = 0
+    if isinstance(commands, list):
+        by_id = {command.get("id"): command for command in commands if isinstance(command, dict)}
+        for expected in required:
+            actual = by_id.get(expected.id)
+            if actual and actual.get("passed") is True:
+                verified += 1
+    return f"{verified}/{len(required)} required commands verified"
+
+
+def _artifact_coverage(contract: CompletionContract | None, missing: list[str]) -> str:
+    if contract is None:
+        return "0/0 required artifacts present"
+    total = len(contract.required_artifacts)
+    present = max(total - len(missing), 0)
+    return f"{present}/{total} required artifacts present"
+
+
+def _review_next_steps(proof_status: str, approval_safety: str) -> list[str]:
+    if proof_status == "proven" and approval_safety == "safe-to-review":
+        return ["Review changed files and evidence, then run `ces approve` if satisfied."]
+    if proof_status == "contradicted" or approval_safety == "blocked":
+        return ["Fix the failing verification, rerun `ces verify --json`, then regenerate `ces proof`."]
+    if approval_safety == "needs-fresh-verification":
+        return ["Run `ces verify --json` against the current contract, then regenerate `ces proof`."]
+    return [
+        "Repair missing evidence/artifacts, then rerun `ces verify --json`.",
+        "Regenerate `ces proof` before approval.",
+    ]
 
 
 def _load_execution_contract(root: Path) -> dict[str, str] | None:
