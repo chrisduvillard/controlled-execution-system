@@ -113,6 +113,44 @@ python_version = "3.12"
     assert any(signal.name == "ces-runtime-declaration" for signal in report.signals)
 
 
+def test_project_mri_treats_node_ces_runtime_declaration_as_runtime_signal(tmp_path: Path) -> None:
+    from ces.verification.mri import scan_project_mri
+
+    (tmp_path / "package.json").write_text(
+        json.dumps(
+            {
+                "scripts": {"test": "vitest run", "typecheck": "tsc --noEmit", "desktop": "electron ."},
+                "devDependencies": {"typescript": "latest"},
+                "ces": {
+                    "runtime_declaration": {
+                        "kind": "electron-desktop",
+                        "entrypoint": "npm run desktop",
+                        "smoke_test": "npm run desktop:check",
+                    }
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    (tmp_path / "README.md").write_text("# Ready\n", encoding="utf-8")
+    (tmp_path / ".github" / "workflows").mkdir(parents=True)
+    (tmp_path / ".github" / "workflows" / "ci.yml").write_text("name: CI\n", encoding="utf-8")
+    (tmp_path / ".ces").mkdir()
+    (tmp_path / ".ces" / "completion-contract.json").write_text(
+        json.dumps({"inferred_commands": [{"command": "npm test", "required": True}]}),
+        encoding="utf-8",
+    )
+
+    report = scan_project_mri(tmp_path)
+
+    assert "runtime" in report.readiness_score["passed"]
+    assert "ces" in report.readiness_score["passed"]
+    assert "deployment/runtime declaration" not in report.missing_readiness_signals
+    assert "CES verification profile" not in report.missing_readiness_signals
+    assert any(signal.name == "ces-runtime-declaration" for signal in report.signals)
+    assert any(signal.name == ".ces/completion-contract.json" for signal in report.signals)
+
+
 def test_project_mri_json_shape_is_stable(tmp_path: Path) -> None:
     from ces.verification.mri import scan_project_mri
 
