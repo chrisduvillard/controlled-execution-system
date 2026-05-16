@@ -137,6 +137,8 @@ def test_proof_card_marks_candidate_when_required_beginner_artifacts_exist(tmp_p
         "command_coverage": "2/2 required commands verified",
         "artifact_coverage": "4/4 required artifacts present",
         "behavior_delta_coverage": "0 recorded / 0 unknown",
+        "risk_track": "C",
+        "risk_evidence": "low-risk: no additional risk evidence required",
         "next_steps": ["Review changed files and evidence, then run `ces approve` if satisfied."],
     }
     assert payload["missing_required_artifacts"] == []
@@ -147,6 +149,8 @@ def test_proof_card_marks_candidate_when_required_beginner_artifacts_exist(tmp_p
     assert "Approval gate: **open**" in markdown
     assert "Command coverage: 2/2 required commands verified" in markdown
     assert "Behavior delta coverage: 0 recorded / 0 unknown" in markdown
+    assert "Risk track: C" in markdown
+    assert "Risk evidence: low-risk: no additional risk evidence required" in markdown
     assert "Proof status: **proven**" in markdown
     assert "Ship recommendation: **candidate**" in markdown
     assert "python app.py --help" in markdown
@@ -165,6 +169,12 @@ def test_proof_card_surfaces_behavior_delta_and_blocks_unknowns(tmp_path: Path) 
         "preserved": ["Existing CSV column order remains stable."],
         "unknown": ["Downstream importers are not yet checked."],
     }
+    payload["risk_track"] = {
+        "tier": "A",
+        "required_artifacts": ["rollback-plan.md", "reviewer-signoff.md"],
+        "proof_requirements": ["Document high-risk behavior evidence."],
+        "evidence_requirements": ["Fresh verification passed.", "Rollback path documented."],
+    }
     contract_path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
     _write_latest_verification(tmp_path)
     (tmp_path / "README.md").write_text(
@@ -178,9 +188,14 @@ def test_proof_card_surfaces_behavior_delta_and_blocks_unknowns(tmp_path: Path) 
     assert result["approval_safety"] == "needs-evidence"
     assert result["behavior_delta"] == payload["behavior_delta"]
     assert result["review_summary"]["behavior_delta_coverage"] == "4 recorded / 1 unknown"
-    assert (
-        result["review_summary"]["primary_blocker"]
-        == "Unknown behavior delta remains unresolved: Downstream importers are not yet checked."
+    assert result["review_summary"]["risk_track"] == "A"
+    assert result["review_summary"]["risk_evidence"] == "0/2 risk artifacts present"
+    assert "rollback-plan.md" in result["missing_required_artifacts"]
+    assert "reviewer-signoff.md" in result["missing_required_artifacts"]
+    assert result["review_summary"]["primary_blocker"] == "Required beginner handoff artifacts are incomplete."
+    assert any(
+        item == "Unknown behavior delta remains unresolved: Downstream importers are not yet checked."
+        for item in result["unproven_areas"]
     )
     assert any("Unknown behavior delta" in item for item in result["unproven_areas"])
     markdown = build_proof_card(tmp_path).to_markdown()
