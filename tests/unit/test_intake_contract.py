@@ -337,3 +337,4 @@ def test_proof_card_includes_execution_contract_context(tmp_path: Path) -> None:
     assert "Execution contract exists but completion contract is missing." in report.unproven_areas
     payload = report.to_dict()
     assert payload["execution_contract"]["contract_id"] == contract.contract_id
+    assert payload["behavior_delta"]["preserved"] == ["Preserve existing behavior unless explicitly changed."]

@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any
 
 from ces.execution.secrets import scrub_secrets_recursive
-from ces.verification.completion_contract import CompletionContract, VerificationCommand
+from ces.verification.completion_contract import BehaviorDelta, CompletionContract, VerificationCommand
 
 _SCHEMA_VERSION = "1.0"
 _VERIFICATION_RESULT_PATH = Path(".ces") / "latest-verification.json"
@@ -31,6 +31,7 @@ class ProofCardReport:
     changed_files: tuple[str, ...]
     commands_run: tuple[dict[str, Any], ...]
     verification_commands: tuple[VerificationCommand, ...]
+    behavior_delta: BehaviorDelta
     missing_required_artifacts: tuple[str, ...]
     unproven_areas: tuple[str, ...]
     review_summary: dict[str, Any]
@@ -52,6 +53,7 @@ class ProofCardReport:
             "verification_commands": [
                 _shareable_verification_command(command) for command in self.verification_commands
             ],
+            "behavior_delta": _behavior_delta_dict(self.behavior_delta),
             "missing_required_artifacts": list(self.missing_required_artifacts),
             "unproven_areas": list(self.unproven_areas),
             "review_summary": self.review_summary,
@@ -92,6 +94,7 @@ class ProofCardReport:
                     f"Evidence freshness: {payload['review_summary']['freshness']}",
                     f"Command coverage: {payload['review_summary']['command_coverage']}",
                     f"Artifact coverage: {payload['review_summary']['artifact_coverage']}",
+                    f"Behavior delta coverage: {payload['review_summary']['behavior_delta_coverage']}",
                     "Next steps:",
                     *_bullet(payload["review_summary"]["next_steps"]),
                     "",
@@ -102,6 +105,10 @@ class ProofCardReport:
                     "## Commands / evidence",
                     "",
                     *command_lines,
+                    "",
+                    "## Behavior delta",
+                    "",
+                    *_behavior_delta_markdown(self.behavior_delta),
                     "",
                     "## Missing required artifacts",
                     "",
@@ -126,7 +133,8 @@ def build_proof_card(project_root: str | Path) -> ProofCardReport:
     verification = _load_latest_verification(root)
     verification_fresh = _verification_is_fresh(root, contract_path, verification)
     missing = _missing_required_artifacts(root, contract, verification)
-    unproven = _unproven_areas(contract, missing, verification, root=root)
+    behavior_delta = _behavior_delta(contract, execution_contract)
+    unproven = _unproven_areas(contract, missing, verification, root=root, behavior_delta=behavior_delta)
     verification_passed = _verification_passed(verification)
     verification_matches = _verification_matches_contract(contract, verification, root)
     status = (
@@ -158,6 +166,7 @@ def build_proof_card(project_root: str | Path) -> ProofCardReport:
         verification_fresh=verification_fresh,
         missing=missing,
         unproven=unproven,
+        behavior_delta=behavior_delta,
     )
     return ProofCardReport(
         project_root=root,
@@ -169,6 +178,7 @@ def build_proof_card(project_root: str | Path) -> ProofCardReport:
         changed_files=_changed_files(root),
         commands_run=_commands_run(verification),
         verification_commands=contract.inferred_commands if contract else (),
+        behavior_delta=behavior_delta,
         missing_required_artifacts=tuple(missing),
         unproven_areas=tuple(unproven),
         review_summary=review_summary,
@@ -206,6 +216,7 @@ def _unproven_areas(
     verification: dict[str, Any] | None,
     *,
     root: Path,
+    behavior_delta: BehaviorDelta,
 ) -> list[str]:
     if contract is None:
         message = "No completion contract found; run `ces build --from-scratch ...` or `ces ship ...` first."
@@ -227,6 +238,8 @@ def _unproven_areas(
         areas.append("Latest persisted verification run does not match the current completion contract.")
     if contract.proof_requirements and missing:
         areas.extend(contract.proof_requirements)
+    for item in behavior_delta.unknown:
+        areas.append(f"Unknown behavior delta remains unresolved: {item}")
     return areas
 
 
@@ -301,6 +314,7 @@ def _review_summary(
     verification_fresh: bool,
     missing: list[str],
     unproven: list[str],
+    behavior_delta: BehaviorDelta,
 ) -> dict[str, Any]:
     """Return reviewer-facing decision metadata for the proof card."""
 
@@ -311,7 +325,8 @@ def _review_summary(
         "freshness": _freshness_label(contract, verification, verification_fresh),
         "command_coverage": _command_coverage(contract, verification),
         "artifact_coverage": _artifact_coverage(contract, missing),
-        "next_steps": _review_next_steps(proof_status, approval_safety),
+        "behavior_delta_coverage": _behavior_delta_coverage(behavior_delta),
+        "next_steps": _review_next_steps(proof_status, approval_safety, behavior_delta=behavior_delta),
     }
 
 
@@ -369,7 +384,12 @@ def _artifact_coverage(contract: CompletionContract | None, missing: list[str]) 
     return f"{present}/{total} required artifacts present"
 
 
-def _review_next_steps(proof_status: str, approval_safety: str) -> list[str]:
+def _review_next_steps(proof_status: str, approval_safety: str, *, behavior_delta: BehaviorDelta) -> list[str]:
+    if behavior_delta.unknown:
+        return [
+            "Resolve unknown behavior deltas or attach explicit evidence for them, then rerun `ces verify --json`.",
+            "Regenerate `ces proof` before approval.",
+        ]
     if proof_status == "proven" and approval_safety == "safe-to-review":
         return ["Review changed files and evidence, then run `ces approve` if satisfied."]
     if proof_status == "contradicted" or approval_safety == "blocked":
@@ -382,7 +402,7 @@ def _review_next_steps(proof_status: str, approval_safety: str) -> list[str]:
     ]
 
 
-def _load_execution_contract(root: Path) -> dict[str, str] | None:
+def _load_execution_contract(root: Path) -> dict[str, Any] | None:
     path = root / ".ces" / "contracts" / "latest.json"
     if not path.is_file():
         return None
@@ -394,10 +414,53 @@ def _load_execution_contract(root: Path) -> dict[str, str] | None:
         return None
     contract_id = payload.get("contract_id")
     objective = payload.get("objective")
+    behavior_delta = payload.get("behavior_delta")
     return {
         "contract_id": contract_id if isinstance(contract_id, str) else "",
         "objective": objective if isinstance(objective, str) else "",
+        "behavior_delta": behavior_delta if isinstance(behavior_delta, dict) else {},
     }
+
+
+def _behavior_delta(contract: CompletionContract | None, execution_contract: dict[str, Any] | None) -> BehaviorDelta:
+    if contract is not None and contract.behavior_delta.has_signal():
+        return contract.behavior_delta
+    if execution_contract:
+        return BehaviorDelta.from_dict(_dict_or_none(execution_contract.get("behavior_delta")))
+    return BehaviorDelta()
+
+
+def _behavior_delta_dict(delta: BehaviorDelta) -> dict[str, list[str]]:
+    return {
+        "added": list(delta.added),
+        "modified": list(delta.modified),
+        "removed": list(delta.removed),
+        "preserved": list(delta.preserved),
+        "unknown": list(delta.unknown),
+    }
+
+
+def _behavior_delta_coverage(delta: BehaviorDelta) -> str:
+    recorded = len(delta.added) + len(delta.modified) + len(delta.removed) + len(delta.preserved) + len(delta.unknown)
+    return f"{recorded} recorded / {len(delta.unknown)} unknown"
+
+
+def _behavior_delta_markdown(delta: BehaviorDelta) -> list[str]:
+    rows: list[str] = []
+    for label, values in (
+        ("Added", delta.added),
+        ("Modified", delta.modified),
+        ("Removed", delta.removed),
+        ("Preserved", delta.preserved),
+        ("Unknown", delta.unknown),
+    ):
+        if values:
+            rows.append(f"- {label}: " + "; ".join(values))
+    return rows or ["- None recorded."]
+
+
+def _dict_or_none(value: Any) -> dict[str, Any] | None:
+    return value if isinstance(value, dict) else None
 
 
 def _verification_payload(verification: dict[str, Any] | None) -> dict[str, Any] | None:

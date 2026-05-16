@@ -87,7 +87,7 @@ Users cannot export invoice notes.
 - Regression test for invoices without notes.
 ```
 
-The proof card includes the intake contract context when `.ces/contracts/latest.json` exists, so reviewers can see whether a completion contract and verification evidence have caught up to the original intent.
+The proof card includes the intake contract context when `.ces/contracts/latest.json` exists, so reviewers can see whether a completion contract and verification evidence have caught up to the original intent. Brownfield behavior deltas are carried into completion contracts and proof cards as `added`, `modified`, `removed`, `preserved`, and `unknown`. Treat `unknown` as approval-blocking until it is clarified or backed by explicit evidence.
 
 `ces proof` also reports an operator-facing proof status:
 
@@ -103,7 +103,7 @@ The proof card also includes a `review_summary` object for reviewer triage:
 - `decision`: `ready-for-review`, `needs-verification`, `needs-evidence`, or `blocked`.
 - `approval_gate`: `open` only when approval is allowed; otherwise `closed`.
 - `primary_blocker`: the first issue to repair before approval.
-- `freshness`, `command_coverage`, and `artifact_coverage`: compact evidence quality signals.
+- `freshness`, `command_coverage`, `artifact_coverage`, and `behavior_delta_coverage`: compact evidence quality signals.
 - `next_steps`: the next operator commands/actions to unblock review.
 
 ## Legacy interview
