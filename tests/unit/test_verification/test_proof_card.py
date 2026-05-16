@@ -129,9 +129,22 @@ def test_proof_card_marks_candidate_when_required_beginner_artifacts_exist(tmp_p
     assert payload["approval_safety"] == "safe-to-review"
     assert payload["evidence_status"] == "candidate"
     assert payload["ship_recommendation"] == "candidate"
+    assert payload["review_summary"] == {
+        "decision": "ready-for-review",
+        "approval_gate": "open",
+        "primary_blocker": None,
+        "freshness": "fresh",
+        "command_coverage": "2/2 required commands verified",
+        "artifact_coverage": "4/4 required artifacts present",
+        "next_steps": ["Review changed files and evidence, then run `ces approve` if satisfied."],
+    }
     assert payload["missing_required_artifacts"] == []
     markdown = card.to_markdown()
     assert "# CES Proof Card" in markdown
+    assert "## Review decision" in markdown
+    assert "Decision: **ready-for-review**" in markdown
+    assert "Approval gate: **open**" in markdown
+    assert "Command coverage: 2/2 required commands verified" in markdown
     assert "Proof status: **proven**" in markdown
     assert "Ship recommendation: **candidate**" in markdown
     assert "python app.py --help" in markdown
@@ -149,6 +162,12 @@ def test_proof_card_marks_partial_when_verification_passes_but_artifacts_are_mis
     assert payload["proof_status"] == "partially_proven"
     assert payload["approval_safety"] == "needs-evidence"
     assert payload["ship_recommendation"] == "no-ship"
+    assert payload["review_summary"]["decision"] == "needs-evidence"
+    assert payload["review_summary"]["approval_gate"] == "closed"
+    assert payload["review_summary"]["primary_blocker"] == "Required beginner handoff artifacts are incomplete."
+    assert (
+        "Repair missing evidence/artifacts, then rerun `ces verify --json`." in payload["review_summary"]["next_steps"]
+    )
 
 
 def test_proof_card_marks_contradicted_when_latest_verification_failed(tmp_path: Path) -> None:
@@ -166,6 +185,8 @@ def test_proof_card_marks_contradicted_when_latest_verification_failed(tmp_path:
     assert payload["proof_status"] == "contradicted"
     assert payload["approval_safety"] == "blocked"
     assert payload["ship_recommendation"] == "no-ship"
+    assert payload["review_summary"]["decision"] == "blocked"
+    assert payload["review_summary"]["primary_blocker"] == "Latest persisted verification run did not pass."
 
 
 def test_proof_card_rejects_stale_verification_older_than_completion_contract(tmp_path: Path) -> None:

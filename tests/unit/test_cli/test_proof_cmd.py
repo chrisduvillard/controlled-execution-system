@@ -91,6 +91,8 @@ def test_proof_json_command_outputs_shareable_payload(tmp_path: Path) -> None:
     assert payload["objective"] == "Create a tiny CLI calculator"
     assert payload["ship_recommendation"] == "candidate"
     assert payload["next_command"] == "ces verify --json"
+    assert payload["review_summary"]["decision"] == "ready-for-review"
+    assert payload["review_summary"]["approval_gate"] == "open"
 
 
 def test_proof_honors_root_json_mode(tmp_path: Path) -> None:
