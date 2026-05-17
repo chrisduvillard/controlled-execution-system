@@ -36,7 +36,7 @@ Purpose: show likely bounded contexts and dependencies so future agents keep cha
 | Brownfield Governance | Control Plane | Published Language | OLB dispositions and PRL promotion | Docs/code vocabulary mismatch (`migrate/remove` vs `change/retire`) can become a compatibility bug. |
 | Packaging / Release / CI | CLI / Execution | Open Host Service | Console script and generated CI templates invoke `ces doctor` and `ces dogfood` | Tightening generated gates can break user CI. |
 | Compatibility Test Infrastructure | Product Runtime | Separate Ways | Root `alembic.ini` is a compatibility-test helper | Agents may copy Postgres paths into supported docs/code by mistake. |
-| Examples | Tests / Compatibility | Boundary smell | `examples/freshcart/seed_data.py` imports test compatibility DB modules | Treat this as demo/test coupling, not a production dependency pattern. |
+| Historical Examples | Tests / Compatibility | Archived | FreshCart operating-model material lives under `docs/historical/`; no active `examples/freshcart` package is shipped or imported. | Treat FreshCart as design history, not a production dependency pattern. |
 
 ## Allowed Dependencies
 

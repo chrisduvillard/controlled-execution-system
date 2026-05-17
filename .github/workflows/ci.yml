@@ -37,6 +37,18 @@ jobs:
       - run: uv sync --frozen --group ci
       - run: uv run mypy src/ces/ --ignore-missing-imports
 
+
+  quality-ratchets:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v7
+        with:
+          version: ${{ env.UV_VERSION }}
+      - run: uv sync --frozen --group ci
+      - name: Fail on high-confidence dead code
+        run: uv run --no-sync vulture src tests --min-confidence 80
+
   audit:
     runs-on: ubuntu-latest
     steps:

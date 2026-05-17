@@ -332,6 +332,7 @@ def test_freshcart_operating_model_example_is_archived_not_active_public_contrac
     assert "not a sandbox" in active_stub
     assert "local control, evidence, review, and recovery layer" in active_stub
     assert "historical/FreshCart_Worked_Example.md" in active_stub
+    assert not (ROOT / "examples" / "freshcart").exists()
 
     active_stub_lower = active_stub.lower()
     for overclaim in (

@@ -29,6 +29,14 @@ def test_ci_pytest_step_treats_warnings_as_errors() -> None:
     assert "--cov-fail-under=" in workflow_text, "ci.yml must enforce a coverage gate"
 
 
+def test_ci_runs_high_confidence_dead_code_ratchet() -> None:
+    workflow_text = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+
+    assert "quality-ratchets:" in workflow_text
+    assert "Fail on high-confidence dead code" in workflow_text
+    assert "uv run --no-sync vulture src tests --min-confidence 80" in workflow_text
+
+
 def test_ci_builds_distribution_and_checks_package_metadata() -> None:
     """CI must verify the built distribution metadata before publication."""
     repo_root = Path(__file__).resolve().parents[3]
