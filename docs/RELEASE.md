@@ -78,7 +78,7 @@ grep '^## \[' CHANGELOG.md | head -3
 ### 3. Commit and push
 
 ```bash
-git add pyproject.toml CHANGELOG.md uv.lock
+git add pyproject.toml src/ces/__init__.py uv.lock CHANGELOG.md README.md tests/unit/test_docs/test_package_contract.py
 git commit -m "Bump version 0.1.X -> 0.1.Y"
 git push
 gh run watch --exit-status   # CI must go green
@@ -168,6 +168,13 @@ The canonical way to make the release discoverable on the repo sidebar
 and downstream tooling (Dependabot, mise, pip changelog viewers):
 
 ```bash
+# Rebuild local artifacts from the exact tagged commit, or download/upload the
+# CI-built artifacts from the successful publish workflow. Never upload stale
+# ignored `dist/*` files left over from an earlier HEAD.
+rm -rf dist
+uv build
+uvx twine check dist/*
+
 # Extract the 0.1.Y section from the CHANGELOG as the Release body:
 awk '/^## \[0\.1\.Y\]/{flag=1; next} /^## \[/{flag=0} flag' CHANGELOG.md \
   > /tmp/release-body.md

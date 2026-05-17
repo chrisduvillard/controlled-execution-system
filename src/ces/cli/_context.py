@@ -16,6 +16,7 @@ from pathlib import Path
 import typer
 
 from ces.cli._project_config import load_project_config_dict
+from ces.cli._state_path import has_safe_ces_state_dir
 
 
 def find_project_root(start: Path | None = None) -> Path:
@@ -39,8 +40,11 @@ def find_project_root(start: Path | None = None) -> Path:
     current = (start or Path.cwd()).resolve()
 
     for directory in [current, *current.parents]:
-        if (directory / ".ces").is_dir():
-            return directory
+        try:
+            if has_safe_ces_state_dir(directory):
+                return directory
+        except ValueError as exc:
+            raise typer.BadParameter(str(exc)) from exc
 
     raise typer.BadParameter("Not inside a CES project. Run 'ces init' first.")
 

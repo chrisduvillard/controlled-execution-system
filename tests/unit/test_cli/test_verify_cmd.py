@@ -129,4 +129,5 @@ def test_verify_write_contract_refuses_symlinked_ces_dir_before_contract_write(t
 
     assert result.exit_code != 0
     assert not (outside / "completion-contract.json").exists()
-    assert "project root" in result.stdout or "project root" in result.stderr or "symlinked" in result.stdout
+    combined_output = f"{result.stdout}\n{result.stderr}"
+    assert "project root" in combined_output or "symlinked" in combined_output

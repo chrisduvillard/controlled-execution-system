@@ -652,6 +652,21 @@ class TestRunCommand:
         assert (ces_dir / "keys").is_dir()
         assert ".ces/" in (tmp_path / ".gitignore").read_text(encoding="utf-8")
 
+    def test_build_auto_bootstrap_rejects_symlinked_ces_dir(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        outside = tmp_path / "outside-state"
+        outside.mkdir()
+        project = tmp_path / "project"
+        project.mkdir()
+        (project / ".ces").symlink_to(outside, target_is_directory=True)
+        monkeypatch.chdir(project)
+
+        from ces.cli.run_cmd import _ensure_builder_project
+
+        with pytest.raises(ValueError, match="symlinked .ces"):
+            _ensure_builder_project()
+
     def test_build_without_description_prompts_and_persists_builder_brief(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:

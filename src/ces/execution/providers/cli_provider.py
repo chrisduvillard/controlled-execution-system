@@ -20,8 +20,9 @@ from ces.execution.processes import ProcessTimeoutError, run_async_command
 from ces.execution.providers.protocol import LLMError, LLMResponse
 from ces.execution.secrets import scrub_secrets_from_text
 
-# Per-tool env-var needs. Matches the runtime adapters' ``runtime_env_keys``
-# so the inline provider path gets the same allowlist behaviour.
+# Per-tool env-var needs. Keep the inline Codex helper stricter than the full
+# runtime adapter: it hard-pins ``--sandbox read-only`` before runtime consent,
+# so do not pass sandbox override env vars that could weaken that boundary.
 _CLI_TOOL_EXTRA_ENV_KEYS: dict[str, tuple[str, ...]] = {
     "claude": (
         "ANTHROPIC_API_KEY",
@@ -31,7 +32,6 @@ _CLI_TOOL_EXTRA_ENV_KEYS: dict[str, tuple[str, ...]] = {
     ),
     "codex": (
         "CODEX_HOME",
-        "CODEX_SANDBOX",
         "OPENAI_API_KEY",
         "OPENAI_BASE_URL",
         "OPENAI_API_BASE",
@@ -105,6 +105,8 @@ class CLILLMProvider:
         return [
             self._cli_path,
             "exec",
+            "--sandbox",
+            "read-only",
         ]
 
     def _parse_output(self, stdout: str) -> tuple[str, str]:

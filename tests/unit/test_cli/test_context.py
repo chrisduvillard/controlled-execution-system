@@ -57,6 +57,29 @@ class TestFindProjectRoot:
         result = find_project_root(start=deep)
         assert result == ces_project
 
+    def test_rejects_symlinked_ces_directory(self, tmp_path: Path) -> None:
+        """Existing .ces symlinks must not establish a trusted project root."""
+        outside = tmp_path / "outside-state"
+        outside.mkdir()
+        project = tmp_path / "project"
+        project.mkdir()
+        (project / ".ces").symlink_to(outside, target_is_directory=True)
+
+        with pytest.raises(typer.BadParameter, match="symlinked .ces"):
+            find_project_root(start=project)
+
+    def test_get_project_config_rejects_symlinked_ces_directory(self, tmp_path: Path) -> None:
+        """Config loading must not follow .ces symlinks outside the project."""
+        outside = tmp_path / "outside-state"
+        outside.mkdir()
+        (outside / "config.yaml").write_text("project_id: attacker\n", encoding="utf-8")
+        project = tmp_path / "project"
+        project.mkdir()
+        (project / ".ces").symlink_to(outside, target_is_directory=True)
+
+        with pytest.raises(typer.BadParameter, match="symlinked .ces"):
+            get_project_config(start=project)
+
 
 class TestProjectConfigYamlErrors:
     """get_project_id / get_project_config swallow malformed YAML and fall back."""
