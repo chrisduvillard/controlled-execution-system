@@ -78,3 +78,14 @@ def test_publish_workflows_upload_checked_distribution_artifacts() -> None:
     assert "controlled-execution-system-${{ github.ref_name }}-dist" in publish
     assert "actions/upload-artifact@v4" in testpypi
     assert "controlled-execution-system-${{ inputs.package-version }}-testpypi-dist" in testpypi
+
+
+def test_release_runbook_uses_pip_for_published_index_smoke_tests() -> None:
+    release_doc = (ROOT / "docs" / "RELEASE.md").read_text(encoding="utf-8")
+
+    smoke_python = "/tmp/ces-testpypi-smoke/bin/python"  # noqa: S108 - docs contract only
+    assert f"{smoke_python} -m pip install --no-cache-dir" in release_doc
+    assert "--index-url https://test.pypi.org/simple/" in release_doc
+    assert "--extra-index-url https://pypi.org/simple/" in release_doc
+    assert "uv pip install" not in release_doc
+    assert "uv's resolver can report false `No matching distribution`" in release_doc

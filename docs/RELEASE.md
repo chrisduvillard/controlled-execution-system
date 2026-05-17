@@ -99,12 +99,16 @@ Then fresh-install from TestPyPI before touching real PyPI:
 
 ```bash
 uv venv --python 3.13 /tmp/ces-testpypi-smoke
-uv pip install --python /tmp/ces-testpypi-smoke/bin/python --refresh --no-cache \
+/tmp/ces-testpypi-smoke/bin/python -m ensurepip --upgrade
+/tmp/ces-testpypi-smoke/bin/python -m pip install --upgrade pip
+/tmp/ces-testpypi-smoke/bin/python -m pip install --no-cache-dir \
   --index-url https://test.pypi.org/simple/ \
   --extra-index-url https://pypi.org/simple/ \
   controlled-execution-system==0.1.Y
 /tmp/ces-testpypi-smoke/bin/ces --help
 ```
+
+Use `pip` rather than `uv pip` for this post-upload smoke. uv's resolver can report false `No matching distribution` failures when the same package exists on PyPI and TestPyPI or immediately after a just-published version appears, even though the package JSON and plain `pip` install are already healthy. This smoke is checking the published artifact, not uv's multi-index resolver policy.
 
 ### 5. Tag
 
