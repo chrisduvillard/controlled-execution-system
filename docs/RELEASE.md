@@ -168,12 +168,17 @@ The canonical way to make the release discoverable on the repo sidebar
 and downstream tooling (Dependabot, mise, pip changelog viewers):
 
 ```bash
-# Rebuild local artifacts from the exact tagged commit, or download/upload the
-# CI-built artifacts from the successful publish workflow. Never upload stale
+# Preferred: download the exact CI-built artifacts from the successful publish workflow.
+gh run download --repo chrisduvillard/controlled-execution-system \
+  --name controlled-execution-system-v0.1.Y-dist \
+  --dir dist
+
+# Fallback: rebuild locally from the exact tagged commit. Never upload stale
 # ignored `dist/*` files left over from an earlier HEAD.
 rm -rf dist
 uv build
 uvx twine check dist/*
+test "$(find dist -maxdepth 1 -type f ! -name .gitignore | wc -l)" -eq 2
 
 # Extract the 0.1.Y section from the CHANGELOG as the Release body:
 awk '/^## \[0\.1\.Y\]/{flag=1; next} /^## \[/{flag=0} flag' CHANGELOG.md \
