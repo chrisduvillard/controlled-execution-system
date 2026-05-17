@@ -79,8 +79,8 @@ enforcement before the agent starts.
 For a brand-new idea with no folder yet, start with `ces create`. It prints the project folder and the exact plan/build/verify/prove sequence without touching the filesystem:
 
 ```bash
-ces create
-# prompts: Project name / What do you want it to do?
+ces create "Create a small task tracker app with add/list/complete tasks, tests, and a README"
+# infers a short project name; add --name "Task Tracker" if you want to choose it
 ```
 
 If you are already inside an idea folder or an existing/uncertain repo, use the read-only guided front door:
@@ -94,7 +94,7 @@ ces start
 For copy/paste or automation, pass the objective directly:
 
 ```bash
-ces create "Task Tracker" "Create a small task tracker app with add/list/complete tasks, tests, and a README"
+ces create "Create a small task tracker app with add/list/complete tasks, tests, and a README" --name "Task Tracker"
 ces start "Create a small task tracker app with add/list/complete tasks, tests, and a README"
 ces ship "Create a small task tracker app with add/list/complete tasks, tests, and a README"
 ```

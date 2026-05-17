@@ -222,6 +222,28 @@ def test_create_interactive_collects_project_details_and_stays_read_only(tmp_pat
     assert "ces build --from-scratch 'Create a tiny local notes app'" in result.stdout
 
 
+def test_create_single_argument_treats_text_as_objective_and_infers_name(tmp_path: Path) -> None:
+    result = runner.invoke(
+        _get_app(),
+        [
+            "create",
+            "Build a minimalist habit tracker",
+            "--project-root",
+            str(tmp_path),
+            "--format",
+            "json",
+        ],
+    )
+
+    assert result.exit_code == 0, result.stdout
+    payload = json.loads(result.stdout)
+    assert payload["objective"] == "Build a minimalist habit tracker"
+    assert payload["project_name"] == "Habit Tracker"
+    assert payload["project_slug"] == "habit-tracker"
+    assert payload["target_directory"] == str(tmp_path / "habit-tracker")
+    assert not (tmp_path / "habit-tracker").exists()
+
+
 def test_create_json_outputs_copy_paste_greenfield_sequence(tmp_path: Path) -> None:
     result = runner.invoke(
         _get_app(),
@@ -253,11 +275,60 @@ def test_create_json_outputs_copy_paste_greenfield_sequence(tmp_path: Path) -> N
     assert payload["safety_notes"][0].startswith("`ces create` is read-only")
 
 
-def test_create_honors_root_json_and_requires_objective(tmp_path: Path) -> None:
-    result = runner.invoke(_get_app(), ["--json", "create", "Calm Notes", "--project-root", str(tmp_path)])
+def test_create_honors_root_json_with_single_objective_argument(tmp_path: Path) -> None:
+    result = runner.invoke(_get_app(), ["--json", "create", "Create calm notes", "--project-root", str(tmp_path)])
+
+    assert result.exit_code == 0, result.stdout
+    payload = json.loads(result.stdout)
+    assert payload["project_name"] == "Calm Notes"
+    assert payload["objective"] == "Create calm notes"
+
+
+def test_create_json_requires_objective_when_no_argument(tmp_path: Path) -> None:
+    result = runner.invoke(_get_app(), ["--json", "create", "--project-root", str(tmp_path)])
 
     assert result.exit_code != 0
     assert "objective is required" in result.stderr
+
+
+def test_create_infers_clean_names_for_documented_examples(tmp_path: Path) -> None:
+    examples = {
+        "Create a small project-management app with tests and run instructions": "Project Management App",
+        "Create a small task tracker app with add/list/complete tasks, tests, and a README": "Task Tracker App",
+        "Build a minimalist habit tracker": "Habit Tracker",
+    }
+
+    for objective, expected_name in examples.items():
+        result = runner.invoke(
+            _get_app(),
+            ["create", objective, "--project-root", str(tmp_path), "--format", "json"],
+        )
+
+        assert result.exit_code == 0, result.stdout
+        payload = json.loads(result.stdout)
+        assert payload["project_name"] == expected_name
+
+
+def test_create_supports_explicit_name_with_single_objective_argument(tmp_path: Path) -> None:
+    result = runner.invoke(
+        _get_app(),
+        [
+            "create",
+            "Create a tiny local notes app",
+            "--name",
+            "Calm Notes",
+            "--project-root",
+            str(tmp_path),
+            "--format",
+            "json",
+        ],
+    )
+
+    assert result.exit_code == 0, result.stdout
+    payload = json.loads(result.stdout)
+    assert payload["project_name"] == "Calm Notes"
+    assert payload["objective"] == "Create a tiny local notes app"
+    assert payload["project_slug"] == "calm-notes"
 
 
 def test_create_quotes_shell_metacharacters_in_objective(tmp_path: Path) -> None:

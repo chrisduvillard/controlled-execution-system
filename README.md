@@ -96,17 +96,17 @@ ces doctor
 
 ### First command: guided start before runtime
 
-If you are starting a brand-new project from an idea, use the interactive creation wizard first:
+If you are starting a brand-new project from an idea, use the read-only creation plan first:
 
 ```bash
-ces create
-# prompts: Project name / What do you want it to do?
+ces create "Create a small project-management app with tests and run instructions"
+# infers a short project name; add --name "Task Tracker" if you want to choose it
 ```
 
 For automation or copy/paste use:
 
 ```bash
-ces create "Task Tracker" "Create a small project-management app with tests and run instructions"
+ces create "Create a small project-management app with tests and run instructions" --name "Task Tracker"
 ```
 
 `ces create` is read-only: it prints the `mkdir`, `ces ship`, `ces build --from-scratch`, `ces verify`, and `ces proof` sequence without creating folders, initializing `.ces/`, editing files, or launching a runtime.
