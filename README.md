@@ -431,9 +431,9 @@ Unattended `--yes` runs remain evidence-gated. CES should block auto-approval wh
 | `ces execute M-<manifest-id>` | Execute a manifest-bound task locally. |
 | `ces review` / `ces triage` / `ces approve` | Review, screen, and decide on evidence. |
 | `ces scan --dry-run` | Preview repository inventory without mutation. |
-| `audit` | Expert operations audit inspection; use `ces audit --limit 20` to inspect recent ledger events. |
-| `emergency declare` | Expert operations emergency declaration; for example `ces emergency declare "Security incident detected"`. |
-| `brownfield ...` | Expert legacy behavior capture, review, and promotion. Use `ces brownfield review OLB-<entry-id> --disposition preserve` for a named legacy-behavior decision. |
+| `ces audit` | Expert operations audit inspection; use `ces audit --limit 20` to inspect recent ledger events. |
+| `ces emergency declare` | Expert operations emergency declaration; for example `ces emergency declare "Security incident detected"`. |
+| `ces brownfield ...` | Expert legacy behavior capture, review, and promotion. Use `ces brownfield review OLB-<entry-id> --disposition preserve` for a named legacy-behavior decision. |
 | `ces spec ...` | Work with governed specs and manifest drafts. |
 
 For the complete command boundary, use the [Quick Reference Card](https://github.com/chrisduvillard/controlled-execution-system/blob/master/docs/Quick_Reference_Card.md) and [Operator Playbook](https://github.com/chrisduvillard/controlled-execution-system/blob/master/docs/Operator_Playbook.md).

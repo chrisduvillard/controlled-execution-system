@@ -360,3 +360,15 @@ def test_postgres_compatibility_dependencies_are_not_a_public_extra() -> None:
     assert "controlled-execution-system[compat-tests]" not in ci_deps
     assert "asyncpg>=0.31.0" in ci_deps
     assert "psycopg[binary]>=3.2" in ci_deps
+
+
+def test_beginner_docs_are_consistent_about_read_only_front_doors() -> None:
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    quickstart = (ROOT / "docs" / "Quickstart.md").read_text(encoding="utf-8")
+
+    assert "| `ces audit` |" in readme
+    assert "| `ces emergency declare` |" in readme
+    assert "| `ces brownfield ...` |" in readme
+    assert "For a brand-new idea with no folder yet, start with `ces create`" in quickstart
+    assert "After `ces create`, `ces start`, or `ces ship`, nothing was changed" in quickstart
+    assert "CES created a `.ces/` directory" not in quickstart
