@@ -54,14 +54,14 @@ If CES is installed as a tool instead, the normal pattern is shorter:
 
 ```bash
 uv tool install controlled-execution-system
-ces create
-# prompts: Project name / What do you want it to do?
+ces create "Create a small project-management app with tests and run instructions"
+# infers a short project name; add --name "Task Tracker" if you want to choose it
 ```
 
 For copy/paste automation:
 
 ```bash
-ces create "Freshcart" "Create the project I want, including tests, README, and run instructions"
+ces create "Create the project I want, including tests, README, and run instructions" --name "Freshcart"
 mkdir -p freshcart && cd freshcart
 ces ship "Create the project I want, including tests, README, and run instructions"
 ces build --from-scratch "Create the project I want, including tests, README, and run instructions"

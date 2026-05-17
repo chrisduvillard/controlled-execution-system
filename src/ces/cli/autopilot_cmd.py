@@ -154,6 +154,47 @@ def _project_slug(project_name: str) -> str:
     return slug or "new-project"
 
 
+def _project_name_from_objective(objective: str) -> str:
+    """Infer a short project name from a one-argument beginner objective."""
+
+    words = re.findall(r"[A-Za-z0-9]+", objective)
+    drop_prefix = {
+        "build",
+        "create",
+        "make",
+        "develop",
+        "implement",
+        "write",
+        "add",
+        "an",
+        "a",
+        "the",
+        "small",
+        "simple",
+        "tiny",
+        "minimal",
+        "minimalist",
+    }
+    stop_words = {
+        "with",
+        "including",
+        "include",
+        "that",
+        "which",
+        "where",
+        "using",
+        "for",
+    }
+    while words and words[0].lower() in drop_prefix:
+        words.pop(0)
+    headline: list[str] = []
+    for word in words:
+        if word.lower() in stop_words:
+            break
+        headline.append(word)
+    return " ".join(word.capitalize() for word in headline[:5]) or "New Project"
+
+
 def _create_payload(project_root: Path, project_name: str, objective: str) -> dict:
     slug = _project_slug(project_name)
     target_directory = project_root / slug
@@ -222,11 +263,13 @@ def _create_markdown(payload: dict) -> str:
 def create(
     project_name: str | None = typer.Argument(
         None,
-        help="Project name, e.g. 'Calm Notes'. Prompts if omitted in markdown mode.",
+        metavar="OBJECTIVE_OR_NAME",
+        help="Objective when given alone, or project name when followed by an objective.",
     ),
     objective: str | None = typer.Argument(
         None,
-        help="What the new project should do. Prompts if omitted in markdown mode.",
+        metavar="OBJECTIVE",
+        help="Optional objective. If omitted, CES treats the first argument as the objective and infers a project name.",
     ),
     project_root: Path | None = typer.Option(
         None,
@@ -234,21 +277,36 @@ def create(
         help="Parent directory used when printing the planned project path; no files are created.",
     ),
     output_format: str = typer.Option("markdown", "--format", help="Output format: markdown or json."),
+    explicit_name: str | None = typer.Option(
+        None,
+        "--name",
+        help="Project name to use when the positional argument is the objective.",
+    ),
 ) -> None:
     """Print a read-only new-project creation plan."""
 
     format_name = _format_option(output_format)
     json_requested = _output_mod._json_mode or format_name == "json"
-    project_name_text = project_name.strip() if project_name and project_name.strip() else None
+    first_arg_text = project_name.strip() if project_name and project_name.strip() else None
     objective_text = objective.strip() if objective and objective.strip() else None
+    explicit_name_text = explicit_name.strip() if explicit_name and explicit_name.strip() else None
+
+    if objective_text:
+        project_name_text = explicit_name_text or first_arg_text
+    elif first_arg_text:
+        objective_text = first_arg_text
+        project_name_text = explicit_name_text or _project_name_from_objective(objective_text)
+    else:
+        project_name_text = explicit_name_text
+
     if project_name_text is None and not json_requested:
         project_name_text = typer.prompt("Project name").strip()
     if objective_text is None and not json_requested:
         objective_text = typer.prompt("What do you want it to do?").strip()
-    if not project_name_text:
-        raise typer.BadParameter("project name is required; pass it as an argument or run interactive markdown mode")
     if not objective_text:
         raise typer.BadParameter("objective is required; pass it as an argument or run interactive markdown mode")
+    if not project_name_text:
+        project_name_text = _project_name_from_objective(objective_text)
     payload = _create_payload((project_root or Path.cwd()).resolve(), project_name_text, objective_text)
     if json_requested:
         typer.echo(json.dumps(payload, indent=2) + "\n", nl=False)

@@ -371,5 +371,9 @@ def test_beginner_docs_are_consistent_about_read_only_front_doors() -> None:
     assert "| `ces emergency declare` |" in readme
     assert "| `ces brownfield ...` |" in readme
     assert "For a brand-new idea with no folder yet, start with `ces create`" in quickstart
+    assert (
+        'ces create "Create a small task tracker app with add/list/complete tasks, tests, and a README" --name "Task Tracker"'
+        in quickstart
+    )
     assert "After `ces create`, `ces start`, or `ces ship`, nothing was changed" in quickstart
     assert "CES created a `.ces/` directory" not in quickstart
