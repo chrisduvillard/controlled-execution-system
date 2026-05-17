@@ -349,3 +349,14 @@ def test_freshcart_operating_model_example_is_archived_not_active_public_contrac
     ):
         assert overclaim not in active_stub
         assert overclaim.lower() not in active_stub_lower
+
+
+def test_postgres_compatibility_dependencies_are_not_a_public_extra() -> None:
+    pyproject = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+
+    optional_deps = pyproject["project"].get("optional-dependencies", {})
+    ci_deps = pyproject["dependency-groups"]["ci"]
+    assert "compat-tests" not in optional_deps
+    assert "controlled-execution-system[compat-tests]" not in ci_deps
+    assert "asyncpg>=0.31.0" in ci_deps
+    assert "psycopg[binary]>=3.2" in ci_deps

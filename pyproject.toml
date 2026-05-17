@@ -51,16 +51,6 @@ observability = [
 all = [
     "controlled-execution-system[observability]",
 ]
-# Compat-tests extras pin the SQLAlchemy/Postgres stack used only by the
-# integration test compatibility suite under ``tests/integration/_compat``.
-# These are not part of the published runtime — they're only installed when
-# running the legacy SQL-backed integration tests against a Postgres service.
-compat-tests = [
-    "alembic>=1.18.4",
-    "asyncpg>=0.31.0",
-    "psycopg[binary]>=3.2",
-]
-
 [project.scripts]
 ces = "ces.cli:app"
 
@@ -79,9 +69,15 @@ dev = [
     "pip-audit>=2.8",
     "vulture>=2.14",
 ]
+# CI-only dependencies include the SQLAlchemy/Postgres stack used by the
+# legacy compatibility tests under ``tests/integration/_compat``. Keep them
+# out of ``project.optional-dependencies`` so they are not advertised as a
+# public install extra on PyPI.
 ci = [
     { include-group = "dev" },
-    "controlled-execution-system[compat-tests]",
+    "alembic>=1.18.4",
+    "asyncpg>=0.31.0",
+    "psycopg[binary]>=3.2",
 ]
 
 [build-system]

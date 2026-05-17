@@ -79,11 +79,35 @@ jobs:
             exit 1
           fi
 
+      - name: Remove stale distributions
+        run: rm -rf dist
+
       - name: Build distributions
         run: uv build
 
       - name: Check distribution metadata
         run: uvx twine check dist/*
+
+      - name: Assert distribution artifact set
+        shell: bash
+        run: |
+          set -euo pipefail
+          project_version="$(uv run python - <<'PY'
+          import tomllib
+          from pathlib import Path
+          print(tomllib.loads(Path("pyproject.toml").read_text())["project"]["version"])
+          PY
+          )"
+          test -f "dist/controlled_execution_system-${project_version}-py3-none-any.whl"
+          test -f "dist/controlled_execution_system-${project_version}.tar.gz"
+          test "$(find dist -maxdepth 1 -type f ! -name .gitignore | wc -l)" -eq 2
+
+      - name: Upload checked distributions
+        uses: actions/upload-artifact@v4
+        with:
+          name: controlled-execution-system-${{ inputs.package-version }}-testpypi-dist
+          path: dist/*
+          if-no-files-found: error
 
       - name: Smoke test installed CLI
         shell: bash
