@@ -17,6 +17,7 @@ collect evidence, review the result, and make approval explicit.
 
 [5-Minute Quickstart](https://github.com/chrisduvillard/controlled-execution-system/blob/master/docs/Quickstart.md) ·
 [Getting Started](https://github.com/chrisduvillard/controlled-execution-system/blob/master/docs/Getting_Started.md) ·
+[Positioning](https://github.com/chrisduvillard/controlled-execution-system/blob/master/docs/Positioning.md) ·
 [Operator Playbook](https://github.com/chrisduvillard/controlled-execution-system/blob/master/docs/Operator_Playbook.md) ·
 [Quick Reference](https://github.com/chrisduvillard/controlled-execution-system/blob/master/docs/Quick_Reference_Card.md) ·
 [Verification Profile](https://github.com/chrisduvillard/controlled-execution-system/blob/master/docs/Verification_Profile.md) ·
@@ -37,6 +38,8 @@ collect evidence, review the result, and make approval explicit.
 ## What CES is
 
 CES is a safety and evidence layer around local AI coding tools.
+
+More precisely, CES is the accountability layer for AI execution: it turns intent into an execution contract, runs a local coding agent under explicit governance, collects verification evidence, generates proof, and makes approval explicit.
 
 You describe the change. CES turns that request into a governed work order, runs the work through a supported local runtime, checks what changed, asks for evidence, records the audit trail, and helps you decide whether to approve the result.
 
@@ -185,7 +188,7 @@ ces proof
 ces approve
 ```
 
-`ces proof` is the approval checkpoint. It reports `proven`, `partially_proven`, `unproven`, or `contradicted`, and keeps the recommendation at no-ship unless fresh verification matches the current completion contract and required evidence is present. It also includes a review summary with the decision, approval gate, primary blocker, evidence freshness, command coverage, artifact coverage, behavior-delta coverage, risk-track coverage, and next steps. For brownfield work, proof cards carry OpenSpec-style behavior deltas (`added`, `modified`, `removed`, `preserved`, `unknown`) and infer risk tracks: Tier C for low-risk additive work, Tier B when modified/preserved behavior needs regression evidence, and Tier A when removed or unknown behavior requires rollback/reviewer artifacts. Unresolved `unknown` behavior or missing risk artifacts block approval as `partially_proven` until evidence or clarification resolves them. For contract-bound work, `ces approve` now fails closed unless proof is `proven` and approval safety is `safe-to-review`.
+`ces proof` is the approval checkpoint and the proof is the hero artifact. It reports what was requested, what changed, tests/evidence, policy gates, behavior-delta coverage, risk-track evidence, approval status, and the next operator action. The proof status is `proven`, `partially_proven`, `unproven`, or `contradicted`, and the recommendation stays at no-ship unless fresh verification matches the current completion contract and required evidence is present. It also includes a review summary with the decision, approval gate, primary blocker, evidence freshness, command coverage, artifact coverage, behavior-delta coverage, risk-track coverage, and next steps. For brownfield work, proof cards carry CES-native behavior deltas (`added`, `modified`, `removed`, `preserved`, `unknown`) where `unknown` means unresolved ambiguity. CES infers risk tracks: Tier C for low-risk additive work, Tier B when modified/preserved behavior needs regression evidence, and Tier A when removed or unknown behavior requires rollback/reviewer artifacts. Unresolved ambiguity or missing risk artifacts block approval as `partially_proven` until evidence or clarification resolves them. For contract-bound work, `ces approve` now fails closed unless proof is `proven` and approval safety is `safe-to-review`.
 
 The legacy phase interview remains available as:
 

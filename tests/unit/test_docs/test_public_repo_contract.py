@@ -234,6 +234,46 @@ def test_public_docs_surface_launch_trust_and_boundaries() -> None:
     assert "untracked unless you intentionally share" in quickstart
 
 
+def test_positioning_doc_defines_ces_accountability_layer_without_import_roadmap() -> None:
+    positioning_path = ROOT / "docs" / "Positioning.md"
+    assert positioning_path.is_file()
+    positioning = positioning_path.read_text(encoding="utf-8")
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+
+    assert "accountability layer for AI execution" in positioning
+    assert "intent → execution contract → governed run → verification evidence → proof → approval" in positioning
+    assert "not a spec-framework compatibility layer" in positioning
+    assert "Do not build import adapters for spec-kit, BMAD, or OpenSpec now." in positioning
+    assert "copy or export the stable human-facing result into Markdown or a GitHub issue" in positioning
+    assert "Positioning" in readme
+
+
+def test_docs_make_behavior_delta_and_proof_the_native_control_surface() -> None:
+    positioning = (ROOT / "docs" / "Positioning.md").read_text(encoding="utf-8")
+    intake = (ROOT / "docs" / "Intake.md").read_text(encoding="utf-8")
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    combined = f"{positioning}\n{intake}\n{readme}"
+
+    for phrase in (
+        "added behavior",
+        "modified behavior",
+        "removed behavior",
+        "preserved behavior",
+        "unresolved ambiguity",
+        "proof is the hero artifact",
+        "what changed",
+        "tests/evidence",
+        "policy gates",
+        "approval status",
+    ):
+        assert phrase in combined
+
+    assert "external importer roadmap" not in positioning.lower()
+    assert "spec-kit → CES" not in combined
+    assert "OpenSpec → CES" not in combined
+    assert "BMAD/story docs" not in combined
+
+
 def test_project_version_surfaces_are_launch_consistent() -> None:
     project = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))["project"]
     readme = (ROOT / "README.md").read_text(encoding="utf-8")

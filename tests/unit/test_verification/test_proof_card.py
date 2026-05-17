@@ -136,7 +136,7 @@ def test_proof_card_marks_candidate_when_required_beginner_artifacts_exist(tmp_p
         "freshness": "fresh",
         "command_coverage": "2/2 required commands verified",
         "artifact_coverage": "4/4 required artifacts present",
-        "behavior_delta_coverage": "0 recorded / 0 unknown",
+        "behavior_delta_coverage": "0 recorded / 0 unresolved ambiguity",
         "risk_track": "C",
         "risk_evidence": "low-risk: no additional risk evidence required",
         "next_steps": ["Review changed files and evidence, then run `ces approve` if satisfied."],
@@ -148,7 +148,7 @@ def test_proof_card_marks_candidate_when_required_beginner_artifacts_exist(tmp_p
     assert "Decision: **ready-for-review**" in markdown
     assert "Approval gate: **open**" in markdown
     assert "Command coverage: 2/2 required commands verified" in markdown
-    assert "Behavior delta coverage: 0 recorded / 0 unknown" in markdown
+    assert "Behavior delta coverage: 0 recorded / 0 unresolved ambiguity" in markdown
     assert "Risk track: C" in markdown
     assert "Risk evidence: low-risk: no additional risk evidence required" in markdown
     assert "Proof status: **proven**" in markdown
@@ -187,21 +187,25 @@ def test_proof_card_surfaces_behavior_delta_and_blocks_unknowns(tmp_path: Path) 
     assert result["proof_status"] == "partially_proven"
     assert result["approval_safety"] == "needs-evidence"
     assert result["behavior_delta"] == payload["behavior_delta"]
-    assert result["review_summary"]["behavior_delta_coverage"] == "4 recorded / 1 unknown"
+    assert result["review_summary"]["behavior_delta_coverage"] == "4 recorded / 1 unresolved ambiguity"
     assert result["review_summary"]["risk_track"] == "A"
     assert result["review_summary"]["risk_evidence"] == "0/2 risk artifacts present"
     assert "rollback-plan.md" in result["missing_required_artifacts"]
     assert "reviewer-signoff.md" in result["missing_required_artifacts"]
     assert result["review_summary"]["primary_blocker"] == "Required beginner handoff artifacts are incomplete."
     assert any(
-        item == "Unknown behavior delta remains unresolved: Downstream importers are not yet checked."
+        item == "Unresolved behavior ambiguity remains: Downstream importers are not yet checked."
         for item in result["unproven_areas"]
     )
-    assert any("Unknown behavior delta" in item for item in result["unproven_areas"])
+    assert any("Unresolved behavior ambiguity" in item for item in result["unproven_areas"])
+    assert result["review_summary"]["next_steps"][0] == (
+        "Resolve unresolved behavior ambiguity or attach explicit evidence for it, then rerun `ces verify --json`."
+    )
     markdown = build_proof_card(tmp_path).to_markdown()
     assert "## Behavior delta" in markdown
     assert "Added:" in markdown
-    assert "Unknown:" in markdown
+    assert "Unresolved ambiguity:" in markdown
+    assert "Unknown:" not in markdown
 
 
 def test_proof_card_marks_partial_when_verification_passes_but_artifacts_are_missing(tmp_path: Path) -> None:

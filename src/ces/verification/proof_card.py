@@ -249,7 +249,7 @@ def _unproven_areas(
     if risk_missing:
         areas.extend(contract.risk_track.proof_requirements)
     for item in behavior_delta.unknown:
-        areas.append(f"Unknown behavior delta remains unresolved: {item}")
+        areas.append(f"Unresolved behavior ambiguity remains: {item}")
     return areas
 
 
@@ -422,7 +422,7 @@ def _risk_evidence_coverage(track: RiskTrack, missing: list[str]) -> str:
 def _review_next_steps(proof_status: str, approval_safety: str, *, behavior_delta: BehaviorDelta) -> list[str]:
     if behavior_delta.unknown:
         return [
-            "Resolve unknown behavior deltas or attach explicit evidence for them, then rerun `ces verify --json`.",
+            "Resolve unresolved behavior ambiguity or attach explicit evidence for it, then rerun `ces verify --json`.",
             "Regenerate `ces proof` before approval.",
         ]
     if proof_status == "proven" and approval_safety == "safe-to-review":
@@ -477,7 +477,7 @@ def _behavior_delta_dict(delta: BehaviorDelta) -> dict[str, list[str]]:
 
 def _behavior_delta_coverage(delta: BehaviorDelta) -> str:
     recorded = len(delta.added) + len(delta.modified) + len(delta.removed) + len(delta.preserved) + len(delta.unknown)
-    return f"{recorded} recorded / {len(delta.unknown)} unknown"
+    return f"{recorded} recorded / {len(delta.unknown)} unresolved ambiguity"
 
 
 def _behavior_delta_markdown(delta: BehaviorDelta) -> list[str]:
@@ -487,7 +487,7 @@ def _behavior_delta_markdown(delta: BehaviorDelta) -> list[str]:
         ("Modified", delta.modified),
         ("Removed", delta.removed),
         ("Preserved", delta.preserved),
-        ("Unknown", delta.unknown),
+        ("Unresolved ambiguity", delta.unknown),
     ):
         if values:
             rows.append(f"- {label}: " + "; ".join(values))

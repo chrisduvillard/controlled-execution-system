@@ -49,7 +49,7 @@ Behavior deltas are split into:
 - modified behavior
 - removed behavior
 - preserved behavior
-- unknown or unverified behavior
+- unresolved ambiguity (`unknown` in JSON)
 
 For brownfield work, preserved behavior is part of the contract because approval safety depends on knowing what must not regress.
 
@@ -87,7 +87,9 @@ Users cannot export invoice notes.
 - Regression test for invoices without notes.
 ```
 
-The proof card includes the intake contract context when `.ces/contracts/latest.json` exists, so reviewers can see whether a completion contract and verification evidence have caught up to the original intent. Brownfield behavior deltas are carried into completion contracts and proof cards as `added`, `modified`, `removed`, `preserved`, and `unknown`. CES also attaches a risk track to the completion contract: Tier C has no extra risk artifact, Tier B requires `regression-evidence.md`, and Tier A requires `rollback-plan.md` plus `reviewer-signoff.md`. Treat `unknown` behavior or missing risk artifacts as approval-blocking until they are clarified or backed by explicit evidence.
+The proof card includes the intake contract context when `.ces/contracts/latest.json` exists, so reviewers can see whether a completion contract and verification evidence have caught up to the original intent. Brownfield behavior deltas are carried into completion contracts and proof cards as `added`, `modified`, `removed`, `preserved`, and `unknown` where `unknown` means unresolved ambiguity. CES also attaches a risk track to the completion contract: Tier C has no extra risk artifact, Tier B requires `regression-evidence.md`, and Tier A requires `rollback-plan.md` plus `reviewer-signoff.md`. Treat unresolved ambiguity or missing risk artifacts as approval-blocking until they are clarified or backed by explicit evidence.
+
+The proof is the hero artifact for approval. A reviewer should be able to answer what was requested, what changed, which tests/evidence ran, which policy gates are still closed, and the current approval status from `ces proof` before running `ces approve`.
 
 `ces proof` also reports an operator-facing proof status:
 
