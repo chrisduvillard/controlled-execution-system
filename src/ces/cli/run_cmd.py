@@ -30,6 +30,10 @@ from ces.cli._errors import handle_error
 from ces.cli._factory import get_services, get_settings
 from ces.cli._legacy_config import reject_server_mode
 from ces.cli._output import console
+from ces.cli._run_completion_reporting import (
+    acceptance_verified_from_auto_blockers as _acceptance_verified_from_auto_blockers,
+)
+from ces.cli._run_completion_reporting import build_completion_summary as _build_completion_summary
 from ces.cli._run_prompting import BUILDER_COMPLETION_SENSORS
 from ces.cli._run_prompting import build_prompt_pack as _prompt_pack
 from ces.cli._runtime_diagnostics import summarize_runtime_failure, write_runtime_diagnostics
@@ -57,7 +61,6 @@ from ces.execution.runtime_safety import (
 )
 from ces.execution.secrets import scrub_secrets_from_text
 from ces.execution.workspace_delta import WorkspaceDelta, WorkspaceSnapshot
-from ces.harness.models.control_plane_status import ControlPlaneStatus
 from ces.harness.sensors.security import SecuritySensor
 from ces.harness.services.control_plane_status import build_control_plane_status
 from ces.harness.services.framework_reminders import (
@@ -729,100 +732,6 @@ def _build_request_preview(
         if manifest is not None:
             lines.insert(-3, f"Manifest: {manifest.manifest_id}")
     return "\n".join(lines)
-
-
-def _acceptance_verified_from_auto_blockers(auto_blockers: list[str]) -> bool:
-    """Return whether automatic blockers include acceptance/evidence failures."""
-
-    acceptance_keywords = ("verification", "evidence", "completion")
-    return not any(keyword in item.lower() for item in auto_blockers for keyword in acceptance_keywords)
-
-
-def _build_completion_summary(
-    brief: BuilderBriefDraft,
-    *,
-    runtime_name: str,
-    decision: str,
-    merge_allowed: bool | None,
-    triage_color: str,
-    governance: bool,
-    manifest_id: str,
-    auto_blockers: list[str] | None = None,
-    prl_draft_path: str | None = None,
-    merge_not_applied: bool = False,
-    control_status: ControlPlaneStatus | None = None,
-    completion_contract: CompletionContract | None = None,
-) -> str:
-    blockers = list(auto_blockers or [])
-    if control_status is None:
-        control_status = build_control_plane_status(
-            code_completed=True,
-            governance_enabled=governance,
-            triage_color=triage_color,
-            sensor_policy_blocking=any("sensor policy" in item.lower() for item in blockers),
-            approval_decision=decision,
-            merge_allowed=merge_allowed,
-            merge_not_applied=merge_not_applied,
-            auto_blockers=blockers,
-            acceptance_verified=_acceptance_verified_from_auto_blockers(blockers),
-        )
-    outcome = control_status.summary_outcome
-    lines = [
-        f"Request: {brief.request}",
-        f"Mode: {brief.project_mode}",
-        f"Runtime: {runtime_name}",
-        f"Outcome: {outcome}",
-    ]
-    if governance:
-        lines.extend(
-            [
-                f"Manifest: {manifest_id}",
-                f"Triage: {triage_color}",
-                f"Governance: {control_status.governance_state.value}",
-                f"Ready to ship: {'yes' if control_status.ready_to_ship else 'no'}",
-            ]
-        )
-    else:
-        lines.append("Need deeper CES details? Re-run with `--governance` or use `ces review`.")
-    if brief.project_mode == "greenfield":
-        lines.extend(_greenfield_handoff_lines(completion_contract))
-    if auto_blockers:
-        lines.append("Blocking reasons:")
-        lines.extend(f"- {item}" for item in auto_blockers)
-        lines.append("Next: ces why")
-        if any("evidence" in item.lower() or "verification" in item.lower() for item in auto_blockers):
-            lines.append("Next: ces recover --dry-run")
-    elif decision != "approve":
-        lines.append("Next: ces why")
-    elif merge_allowed is False:
-        lines.append("Next: ces report builder" if merge_not_applied else "Next: ces why")
-    else:
-        lines.append("Next: ces report builder")
-    if prl_draft_path:
-        lines.append(f"PRL draft: {prl_draft_path}")
-    return "\n".join(lines)
-
-
-def _greenfield_handoff_lines(completion_contract: CompletionContract | None) -> list[str]:
-    commands = list(completion_contract.inferred_commands if completion_contract is not None else ())
-    test_commands = [
-        command.command for command in commands if command.kind in {"test", "typecheck", "lint", "build", "compile"}
-    ]
-    run_commands = [command.command for command in commands if command.kind in {"smoke", "serve", "run"}]
-    next_command = completion_contract.next_ces_command if completion_contract is not None else "ces verify --json"
-    lines = [
-        "How to run: see README.md and run the app's documented local command.",
-        "How to test: " + ("; ".join(test_commands) if test_commands else "run the README's documented test command"),
-    ]
-    if run_commands:
-        lines.append("Runnable smoke: " + "; ".join(run_commands))
-    lines.extend(
-        [
-            "Unproven / remaining risks: review open_questions, scope_deviations, skipped verification, and any manual-only evidence before shipping.",
-            f"Next CES command: {next_command}",
-        ]
-    )
-    return lines
 
 
 def _brief_from_record(record: Any) -> BuilderBriefDraft:
