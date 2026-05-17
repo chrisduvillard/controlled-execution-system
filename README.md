@@ -86,6 +86,14 @@ The boundary is intentionally narrow. CES is not a hosted control plane, not a s
 | Package tool | [`uv`](https://docs.astral.sh/uv/) |
 | Local runtime | Codex CLI or Claude Code installed, authenticated, and on `PATH` |
 
+Run `ces` with no arguments to print the Start Here guide. Use `ces --help` when you want the full command reference.
+
+```bash
+ces
+ces --help
+ces doctor
+```
+
 ### First command: guided start before runtime
 
 If you are starting a brand-new project from an idea, use the interactive creation wizard first:

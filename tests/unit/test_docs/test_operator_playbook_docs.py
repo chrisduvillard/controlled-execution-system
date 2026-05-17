@@ -117,3 +117,12 @@ def test_agent_contract_docs_explain_next_prompt_positioning_and_examples() -> N
         assert "thin/vibe-coded" in text or "thin/born-thin" in text
         assert "Create a small task tracker with tests and run instructions" in text
         assert "Add invoice notes to CSV exports" in text
+
+
+def test_entry_docs_explain_zero_argument_help_front_door() -> None:
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    quickstart = (ROOT / "docs" / "Quickstart.md").read_text(encoding="utf-8")
+
+    for text in (readme, quickstart):
+        assert "Run `ces` with no arguments to print the Start Here guide" in text
+        assert "ces --help" in text

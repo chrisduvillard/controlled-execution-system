@@ -45,7 +45,11 @@ untracked unless you intentionally share an exported report.
 
 ## 2. Verify your runtime
 
+Run `ces` with no arguments to print the Start Here guide. Use `ces --help` when you want the full command reference.
+
 ```bash
+ces
+ces --help
 ces doctor
 ces doctor --runtime-safety
 # Optional: may contact the runtime provider and consume a small request.
