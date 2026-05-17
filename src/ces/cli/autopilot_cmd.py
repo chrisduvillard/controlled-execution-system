@@ -11,6 +11,7 @@ import typer
 
 from ces.cli import _output as _output_mod
 from ces.verification.mri import (
+    ShipPlanReport,
     build_launch_rehearsal,
     build_next_action,
     build_next_prompt,
@@ -30,6 +31,82 @@ def _format_option(value: str) -> str:
     if normalized not in {"markdown", "json"}:
         raise typer.BadParameter("format must be 'markdown' or 'json'")
     return normalized
+
+
+def _goal_sequence(ship_plan: ShipPlanReport, project_root: Path) -> list[str]:
+    commands = list(ship_plan.recommended_commands)
+    essentials: list[str] = [f"cd {shlex.quote(str(project_root))}"]
+    for command in commands:
+        if command in {"ces passport", "ces launch rehearsal"}:
+            continue
+        if command not in essentials:
+            essentials.append(command)
+    if "ces proof" in essentials:
+        proof_index = essentials.index("ces proof")
+        essentials = essentials[: proof_index + 1]
+    return essentials
+
+
+def _goal_payload(project_root: Path, objective: str) -> dict:
+    ship_plan = build_ship_plan(project_root, objective=objective)
+    project_mode = "greenfield" if "--from-scratch" in ship_plan.recommended_command else "brownfield"
+    if project_mode == "greenfield":
+        route_reason = (
+            "The target directory has no durable project signals, so CES routes the goal to a new-project build."
+        )
+    else:
+        route_reason = "The target directory looks like an existing project, so CES routes the goal through diagnosis before build work."
+    next_command = f"cd {shlex.quote(str(project_root))} && {ship_plan.recommended_command}"
+    return {
+        "schema_version": 1,
+        "command": "goal",
+        "project_root": str(project_root),
+        "objective": objective,
+        "execution_mode": "read-only-goal-router",
+        "decision": {
+            "project_mode": project_mode,
+            "reason": route_reason,
+            "current_maturity": ship_plan.current_maturity,
+            "target_maturity": ship_plan.target_maturity,
+        },
+        "next_command": next_command,
+        "recommended_command": ship_plan.recommended_command,
+        "copy_paste_sequence": _goal_sequence(ship_plan, project_root),
+        "blockers": list(ship_plan.blockers),
+        "safety_notes": [
+            "`ces goal` is read-only; it does not create `.ces/`, edit files, or launch Codex or Claude Code.",
+            "It chooses the first safe command: `--from-scratch` only for empty/new folders, diagnostics first for existing projects.",
+            "Only runtime commands such as `ces build` may launch an AI runtime, and existing consent gates still apply.",
+            "Keep secrets out of goals; describe secret names or categories, not values.",
+        ],
+    }
+
+
+def _goal_markdown(payload: dict) -> str:
+    lines = [
+        "# CES Goal",
+        "",
+        f"Project root: `{payload['project_root']}`",
+        f"Goal: {payload['objective']}",
+        f"Execution mode: **{payload['execution_mode']}**",
+        f"Project mode: **{payload['decision']['project_mode']}**",
+        f"Next command: `{payload['next_command']}`",
+        "",
+        "## What this command does",
+        "",
+        "This is the simplest CES front door: say the goal, get the safest next command. It is read-only and does not create `.ces/`, edit files, or launch Codex or Claude Code.",
+        "",
+        "## Why this route",
+        "",
+        payload["decision"]["reason"],
+        "",
+        "## Copy-paste sequence",
+        "",
+    ]
+    lines.extend(_bullet([f"`{command}`" for command in payload["copy_paste_sequence"]]))
+    lines.extend(["", "## Current blockers", "", *_bullet(payload["blockers"]), "", "## Safety notes", ""])
+    lines.extend(_bullet(payload["safety_notes"]))
+    return "\n".join(lines).rstrip() + "\n"
 
 
 def _guided_start_payload(project_root: Path, objective: str) -> dict:
@@ -217,6 +294,34 @@ def _create_markdown(payload: dict) -> str:
         lines.extend([f"{index}. `{command}`", ""])
     lines.extend(["## Safety notes", "", *_bullet(payload["safety_notes"])])
     return "\n".join(lines).rstrip() + "\n"
+
+
+def goal(
+    objective: str | None = typer.Argument(
+        None,
+        help="What you want CES to accomplish. Prompts if omitted in markdown mode.",
+    ),
+    project_root: Path | None = typer.Option(
+        None,
+        "--project-root",
+        help="Repo/project root to route; defaults to the current working directory.",
+    ),
+    output_format: str = typer.Option("markdown", "--format", help="Output format: markdown or json."),
+) -> None:
+    """One-command read-only goal router: say the goal, get the safest next step."""
+
+    format_name = _format_option(output_format)
+    json_requested = _output_mod._json_mode or format_name == "json"
+    objective_text = objective.strip() if objective and objective.strip() else None
+    if objective_text is None and not json_requested:
+        objective_text = typer.prompt("What do you want CES to accomplish?").strip()
+    if not objective_text:
+        raise typer.BadParameter("goal is required; pass it as an argument or run interactive markdown mode")
+    payload = _goal_payload((project_root or Path.cwd()).resolve(), objective_text)
+    if json_requested:
+        typer.echo(json.dumps(payload, indent=2) + "\n", nl=False)
+        return
+    typer.echo(_goal_markdown(payload), nl=False)
 
 
 def create(

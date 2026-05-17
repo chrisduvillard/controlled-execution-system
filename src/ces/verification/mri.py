@@ -1525,7 +1525,15 @@ def _command_for_missing(report: ProjectMriReport) -> str:
 
 def _is_greenfield_report(report: ProjectMriReport) -> bool:
     signal_names = {signal.name for signal in report.signals}
-    return report.project_type == "unknown" and signal_names <= {"project-type"}
+    if report.project_type != "unknown" or signal_names - {"project-type"}:
+        return False
+    try:
+        entries = list(report.project_root.iterdir())
+    except FileNotFoundError:
+        return True
+    except OSError:
+        return False
+    return not any(entry.name not in {".DS_Store"} for entry in entries)
 
 
 def _greenfield_command(objective: str | None) -> str:

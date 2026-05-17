@@ -88,7 +88,15 @@ The boundary is intentionally narrow. CES is not a hosted control plane, not a s
 
 ### First command: guided start before runtime
 
-If you are starting a brand-new project from an idea, use the interactive creation wizard first:
+If you want the lowest-friction entrypoint, use `ces goal`: say the goal, get the safest next command.
+
+```bash
+ces goal "Create a small project-management app with tests and run instructions"
+```
+
+`ces goal` is read-only. It does not create `.ces/`, edit files, launch Codex/Claude, or guess dangerously. In an empty folder it routes to `ces build --from-scratch "..."`; inside an existing repo it routes through `ces mri`, `ces next`, and the bounded brownfield build path.
+
+If you are starting a brand-new project from an idea and want CES to print the new folder setup too, use the interactive creation wizard:
 
 ```bash
 ces create
@@ -103,7 +111,7 @@ ces create "Task Tracker" "Create a small project-management app with tests and 
 
 `ces create` is read-only: it prints the `mkdir`, `ces ship`, `ces build --from-scratch`, `ces verify`, and `ces proof` sequence without creating folders, initializing `.ces/`, editing files, or launching a runtime.
 
-If you are already inside an idea folder or a messy AI-built/vibe-coded repo, use the read-only guided front door:
+If you are already inside an idea folder or a messy AI-built/vibe-coded repo and want a staged guide, use the read-only guided front door:
 
 ```bash
 ces start

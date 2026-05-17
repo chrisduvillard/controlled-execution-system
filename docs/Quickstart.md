@@ -72,12 +72,20 @@ enforcement before the agent starts.
 
 ## 3. Plan or start your project
 
-For a brand-new app, start with the read-only guided front door:
+For the shortest path, say the goal and let CES choose the safest next command:
 
 ```bash
 mkdir my-task-app && cd my-task-app
-ces start
-# prompts: What do you want to build?
+ces goal "Create a small task tracker app with add/list/complete tasks, tests, and a README"
+```
+
+`ces goal` is read-only: it does not create `.ces/`, edit files, or launch Codex/Claude. It routes empty folders to `ces build --from-scratch "..."` and existing repos to diagnostic brownfield commands first.
+
+For a brand-new app where you also want CES to print the folder setup, use the read-only guided front door:
+
+```bash
+ces create
+# prompts: Project name / What do you want it to do?
 ```
 
 For copy/paste or automation, pass the objective directly:

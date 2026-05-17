@@ -54,6 +54,14 @@ If CES is installed as a tool instead, the normal pattern is shorter:
 
 ```bash
 uv tool install controlled-execution-system
+ces goal "Create the project I want, including tests, README, and run instructions"
+```
+
+`ces goal` is read-only: say the goal, get the safest next command. It does not create `.ces/`, edit files, or launch Codex/Claude. In an empty folder it points to `ces build --from-scratch "..."`; inside an existing repo it points to `ces mri`, `ces next`, plain `ces build "Add ..."`, `ces verify`, and `ces proof` before you mutate anything.
+
+If you also want CES to print the new-project folder setup, use `ces create`:
+
+```bash
 ces create
 # prompts: Project name / What do you want it to do?
 ```

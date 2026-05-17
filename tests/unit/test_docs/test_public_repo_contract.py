@@ -274,6 +274,20 @@ def test_docs_make_behavior_delta_and_proof_the_native_control_surface() -> None
     assert "BMAD/story docs" not in combined
 
 
+def test_beginner_docs_surface_goal_as_safest_front_door() -> None:
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    quickstart = (ROOT / "docs" / "Quickstart.md").read_text(encoding="utf-8")
+    getting_started = (ROOT / "docs" / "Getting_Started.md").read_text(encoding="utf-8")
+    combined = f"{readme}\n{quickstart}\n{getting_started}"
+
+    assert "ces goal" in readme
+    assert "ces goal" in quickstart
+    assert "ces goal" in getting_started
+    assert "say the goal, get the safest next command" in combined
+    assert "read-only" in combined
+    assert "does not create `.ces/`" in combined
+
+
 def test_project_version_surfaces_are_launch_consistent() -> None:
     project = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))["project"]
     readme = (ROOT / "README.md").read_text(encoding="utf-8")

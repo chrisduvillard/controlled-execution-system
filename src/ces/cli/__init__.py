@@ -90,6 +90,75 @@ def _rewrite_intake_default(argv: Sequence[str]) -> list[str]:
     return rewritten
 
 
+def _rewrite_goal_option_like(argv: Sequence[str]) -> list[str]:
+    """Allow `ces goal --help-like-text --format json` as a literal goal.
+
+    Typer/Click treat dash-prefixed positionals as options unless the caller
+    inserts `--`. For the beginner goal front door, recover the common shape by
+    moving known command options before a generated `--` separator and keeping
+    the dash-prefixed text as the objective.
+    """
+
+    rewritten = list(argv)
+    root_options_with_values = {"--config"}
+    goal_options_with_values = {"--project-root", "--format"}
+
+    def _is_goal_option_equals_form(value: str) -> bool:
+        return any(value.startswith(f"{option}=") for option in goal_options_with_values)
+
+    index = 0
+    while index < len(rewritten):
+        arg = rewritten[index]
+        if arg == "--":
+            return rewritten
+        if arg in root_options_with_values:
+            index += 2
+            continue
+        if arg == "goal":
+            goal_index = index
+            tail = rewritten[goal_index + 1 :]
+            options: list[str] = []
+            cursor = 0
+            while cursor < len(tail):
+                item = tail[cursor]
+                if item == "--":
+                    return rewritten
+                if item in {"--help", "-h"}:
+                    return rewritten
+                if item in goal_options_with_values:
+                    if cursor + 1 >= len(tail):
+                        return rewritten
+                    options.extend([item, tail[cursor + 1]])
+                    cursor += 2
+                    continue
+                if _is_goal_option_equals_form(item):
+                    options.append(item)
+                    cursor += 1
+                    continue
+                if not item.startswith("-"):
+                    return rewritten
+                objective = item
+                rest = tail[cursor + 1 :]
+                rest_literals: list[str] = []
+                rest_cursor = 0
+                while rest_cursor < len(rest):
+                    rest_item = rest[rest_cursor]
+                    if rest_item in goal_options_with_values and rest_cursor + 1 < len(rest):
+                        options.extend([rest_item, rest[rest_cursor + 1]])
+                        rest_cursor += 2
+                        continue
+                    if _is_goal_option_equals_form(rest_item):
+                        options.append(rest_item)
+                        rest_cursor += 1
+                        continue
+                    rest_literals.extend(rest[rest_cursor:])
+                    break
+                return rewritten[: goal_index + 1] + options + ["--", objective, *rest_literals]
+            return rewritten
+        index += 1
+    return rewritten
+
+
 class JsonAwareTyperGroup(typer.core.TyperGroup):
     """Typer group that preserves machine-readable usage errors under root --json."""
 
@@ -102,7 +171,7 @@ class JsonAwareTyperGroup(typer.core.TyperGroup):
         windows_expand_args: bool = True,
         **extra: Any,
     ) -> Any:
-        argv = _rewrite_intake_default(list(sys.argv[1:] if args is None else args))
+        argv = _rewrite_goal_option_like(_rewrite_intake_default(list(sys.argv[1:] if args is None else args)))
         json_requested = _root_json_requested(argv)
         try:
             result = super().main(
@@ -144,6 +213,7 @@ class JsonAwareTyperGroup(typer.core.TyperGroup):
 _ROOT_HELP = """Production Autopilot for local AI-built projects.
 
 Start Here:
+  `ces goal`      Simplest front door: say the goal, get the safest next command
   `ces create`    Interactive project creation wizard for new apps
   `ces start`     Guided read-only path: plan → build → verify → prove
   `ces ship`      Read-only plan from idea/current repo to proof-backed delivery
@@ -254,6 +324,9 @@ app.command(name="setup-ci", help="Generate a CI gating workflow for the chosen 
 app.command(name="scan", help="Inventory the repository: modules, generated code, CODEOWNERS.")(scan_cmd.scan)
 app.command(name="mri", help="Read-only repository diagnostic with project-health risks and next CES actions.")(
     mri_cmd.mri
+)
+app.command(name="goal", help="Simplest read-only front door: say the goal, get the safest next command.")(
+    autopilot_cmd.goal
 )
 app.command(name="ship", help="Read-only plan from idea/current repo to proof-backed delivery.")(autopilot_cmd.ship)
 app.command(name="create", help="Interactive project creation wizard for new apps.")(autopilot_cmd.create)
