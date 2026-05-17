@@ -103,6 +103,8 @@ class JsonAwareTyperGroup(typer.core.TyperGroup):
         **extra: Any,
     ) -> Any:
         argv = _rewrite_intake_default(list(sys.argv[1:] if args is None else args))
+        if not argv:
+            argv = ["--help"]
         json_requested = _root_json_requested(argv)
         try:
             result = super().main(
@@ -164,6 +166,7 @@ app = typer.Typer(
     cls=JsonAwareTyperGroup,
     help=_ROOT_HELP,
     rich_markup_mode="rich",
+    no_args_is_help=True,
 )
 
 

@@ -313,6 +313,16 @@ def test_root_help_mentions_create_front_door() -> None:
     assert "interactive project creation wizard" in result.stdout.lower()
 
 
+def test_root_no_args_shows_start_here_help_instead_of_missing_command_error() -> None:
+    result = runner.invoke(_get_app(), [])
+
+    assert result.exit_code == 0
+    assert "Start Here" in result.stdout
+    assert "ces create" in result.stdout
+    assert "ces start" in result.stdout
+    assert "Missing command" not in result.stderr
+
+
 def test_start_interactive_prompts_for_objective_and_stays_read_only(tmp_path: Path) -> None:
     before = sorted(path.relative_to(tmp_path).as_posix() for path in tmp_path.rglob("*"))
 
