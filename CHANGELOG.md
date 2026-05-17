@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- Extract runtime prompt-pack helpers out of the large run command module to create the first safe CLI complexity reduction seam.
+- Extract runtime prompt-pack and completion-summary helpers out of the large run command module to create safe CLI complexity reduction seams.
 - Make `ces create "objective"` the beginner-safe one-argument path by inferring the project name and adding `--name` for explicit naming.
 
 - Keep SQL/Postgres compatibility-test dependencies in the private `ci` dependency group instead of advertising `compat-tests` as a public PyPI extra.
