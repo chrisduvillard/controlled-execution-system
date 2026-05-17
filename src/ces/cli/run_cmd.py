@@ -46,6 +46,7 @@ from ces.cli.init_cmd import (
     initialize_local_project,
 )
 from ces.cli.ownership import resolve_actor
+from ces.codebase_mapping import build_codebase_context
 from ces.control.models.manifest import TaskManifest
 from ces.control.services.approval_pipeline import required_gate_type_for_risk
 from ces.control.services.evidence_integrity import compute_reviewed_evidence_hash
@@ -1162,8 +1163,9 @@ async def _run_brief_flow(
             "Pre-runtime security scan found sensitive context; review security findings before running."
         )
 
-    workspace_before = WorkspaceSnapshot.capture(project_root)
     active_harness_memory_lessons = _active_harness_memory_lessons(services)
+    codebase_context = build_codebase_context(project_root, brief_draft.request, persist=True)
+    workspace_before = WorkspaceSnapshot.capture(project_root)
     write_builder_runtime_lock(
         project_root=project_root,
         session_id=session_id,
@@ -1179,6 +1181,7 @@ async def _run_brief_flow(
                 manifest=manifest,
                 framework_reminders=_active_framework_reminders(services),
                 harness_memory_lessons=active_harness_memory_lessons,
+                codebase_context=codebase_context,
             ),
             working_dir=project_root,
         )

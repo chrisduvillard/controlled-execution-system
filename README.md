@@ -21,6 +21,7 @@ collect evidence, review the result, and make approval explicit.
 [Operator Playbook](https://github.com/chrisduvillard/controlled-execution-system/blob/master/docs/Operator_Playbook.md) ·
 [Quick Reference](https://github.com/chrisduvillard/controlled-execution-system/blob/master/docs/Quick_Reference_Card.md) ·
 [Verification Profile](https://github.com/chrisduvillard/controlled-execution-system/blob/master/docs/Verification_Profile.md) ·
+[Semantic Codebase Mapping](https://github.com/chrisduvillard/controlled-execution-system/blob/master/docs/Semantic_Codebase_Mapping.md) ·
 [Changelog](https://github.com/chrisduvillard/controlled-execution-system/blob/master/CHANGELOG.md)
 
 <br>
@@ -57,6 +58,7 @@ CES can credibly improve AI-assisted work by making the operating loop stricter:
 4. **Higher verification discipline** — "done" means backed by checks, not vibes.
 5. **Better operator leverage** — skilled users can delegate more safely and consistently.
 6. **Reduced hallucinated completion** — CES creates pressure to prove rather than merely assert.
+7. **More focused brownfield context** — CES maps the repo, selects relevant areas for the objective, and injects stable invariants before runtime execution.
 
 | CES is | CES is not |
 |---|---|
