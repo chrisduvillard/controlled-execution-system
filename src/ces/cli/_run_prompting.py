@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from ces.cli._builder_flow import BuilderBriefDraft
+from ces.codebase_mapping import CodebaseContext, render_codebase_context
 from ces.execution.pipeline import build_completion_gate_prompt_fragment_from_values
 from ces.harness.prompts.engineering_charter import attach_engineering_charter
 from ces.harness.services.change_impact import build_observability_acceptance_template
@@ -22,6 +23,7 @@ def build_prompt_pack(
     manifest: Any | None = None,
     framework_reminders: list[FrameworkReminder] | None = None,
     harness_memory_lessons: list[HarnessMemoryLesson] | None = None,
+    codebase_context: CodebaseContext | None = None,
 ) -> str:
     """Build the runtime prompt sent to the local execution provider."""
 
@@ -44,6 +46,9 @@ def build_prompt_pack(
     rendered_memory = render_active_memory_lessons(harness_memory_lessons or [])
     if rendered_memory:
         lines.extend(["", rendered_memory])
+    rendered_codebase_context = render_codebase_context(codebase_context)
+    if rendered_codebase_context:
+        lines.extend(["", rendered_codebase_context])
     mcp_servers = tuple(getattr(manifest, "mcp_servers", ()) or ()) if manifest is not None else ()
     if mcp_servers:
         lines.extend(
