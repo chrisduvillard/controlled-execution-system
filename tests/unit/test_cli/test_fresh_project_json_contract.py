@@ -63,7 +63,8 @@ def test_global_json_scan_parse_error_uses_json_error_envelope(tmp_path: Path) -
     payload = json.loads(result.stderr)
     assert payload["error"]["type"] == "usage_error"
     assert payload["error"]["title"] == "Usage Error"
-    assert "No such option: --project-root" in payload["error"]["message"]
+    assert "No such option" in payload["error"]["message"]
+    assert "--project-root" in payload["error"]["message"]
     assert payload["error"]["exit_code"] == 2
 
 

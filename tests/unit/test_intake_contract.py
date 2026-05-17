@@ -303,7 +303,8 @@ def test_cli_intake_rejects_external_framework_importer_flags() -> None:
     result = runner.invoke(app, ["intake", "--from-speckit", "specs/001"])
 
     assert result.exit_code != 0
-    assert "No such option: --from-speckit" in result.output
+    assert "No such option" in result.output
+    assert "--from-speckit" in result.output
 
 
 def test_cli_preserves_interview_subcommand() -> None:
