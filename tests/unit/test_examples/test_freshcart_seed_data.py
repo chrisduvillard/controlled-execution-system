@@ -1,27 +1,15 @@
-"""Regression tests for the public FreshCart seed example."""
+"""Regression tests for retired FreshCart sample code."""
 
 from __future__ import annotations
 
-import json
+from pathlib import Path
 
-from ces.shared.crypto import sha256_hash
-from examples.freshcart.seed_data import (
-    _build_artifacts,
-    _truth_artifact_row_from_artifact,
-)
+ROOT = Path(__file__).resolve().parents[3]
 
 
-def test_truth_artifact_row_from_artifact_matches_current_schema() -> None:
-    """The demo seed helper must construct rows accepted by TruthArtifactRow."""
-    artifact = _build_artifacts()[0]
+def test_freshcart_sample_code_is_archived_not_active_example_package() -> None:
+    """Historical FreshCart material must not remain as importable active demo code."""
 
-    row = _truth_artifact_row_from_artifact(artifact)
-
-    assert row.id == artifact["artifact_id"]
-    assert row.type == artifact["type"]
-    assert row.version == 1
-    assert row.status == "approved"
-    assert row.owner == "freshcart-demo"
-    assert row.project_id == "freshcart"
-    assert row.content == artifact["content"]
-    assert row.content_hash == sha256_hash(json.dumps(artifact["content"], sort_keys=True))
+    assert not (ROOT / "examples" / "freshcart").exists()
+    assert (ROOT / "docs" / "historical" / "FreshCart_Worked_Example.md").is_file()
+    assert (ROOT / "docs" / "FreshCart_Worked_Example.md").is_file()

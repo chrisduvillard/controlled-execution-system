@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Keep SQL/Postgres compatibility-test dependencies in the private `ci` dependency group instead of advertising `compat-tests` as a public PyPI extra.
 - Harden release artifact workflows by removing stale `dist/` contents before builds, asserting the exact wheel/sdist set, and uploading checked distributions from publish workflows.
+- Add a high-confidence dead-code CI ratchet and retire active FreshCart sample code so historical examples cannot import compatibility-test internals.
 
 ## [0.1.28] - 2026-05-16
 
