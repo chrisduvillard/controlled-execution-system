@@ -31,6 +31,7 @@ from ces.cli._factory import get_services, get_settings
 from ces.cli._legacy_config import reject_server_mode
 from ces.cli._output import console
 from ces.cli._runtime_diagnostics import summarize_runtime_failure, write_runtime_diagnostics
+from ces.cli._state_path import has_safe_ces_state_dir
 from ces.cli._wizard_helpers import WIZARD_STEPS
 from ces.cli.init_cmd import (
     _ensure_local_gitignore_entries,
@@ -725,7 +726,7 @@ def _ensure_builder_project(project_root: Path | None = None) -> tuple[Path, dic
     if project_root is not None:
         resolved_root = project_root.resolve()
         ces_dir = resolved_root / ".ces"
-        if ces_dir.is_dir() and not _has_only_profile_bootstrap_state(ces_dir):
+        if has_safe_ces_state_dir(resolved_root) and not _has_only_profile_bootstrap_state(ces_dir):
             return resolved_root, get_project_config(resolved_root), False
         config = initialize_local_project(resolved_root, name=derive_project_name(resolved_root.name))
         _ensure_local_gitignore_entries(resolved_root)

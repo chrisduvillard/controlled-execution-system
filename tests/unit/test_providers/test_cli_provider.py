@@ -84,7 +84,8 @@ class TestCLILLMProvider:
         assert call_kwargs["stdin_text"] == "What is the answer?"
 
     @pytest.mark.asyncio
-    async def test_generate_calls_codex_subprocess(self) -> None:
+    async def test_generate_calls_codex_subprocess(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("CODEX_SANDBOX", "danger-full-access")
         provider = CLILLMProvider(cli_tool="codex")
 
         mock_run = AsyncMock(return_value=_process_result(stdout="The answer is 42."))
@@ -98,6 +99,13 @@ class TestCLILLMProvider:
         assert isinstance(response, LLMResponse)
         assert response.content == "The answer is 42."
         assert response.provider_name == "codex-cli"
+
+        call_args = mock_run.call_args.args[0]
+        call_kwargs = mock_run.call_args.kwargs
+        assert call_args[:2] == ["/usr/bin/codex", "exec"]
+        assert "--sandbox" in call_args
+        assert call_args[call_args.index("--sandbox") + 1] == "read-only"
+        assert "CODEX_SANDBOX" not in call_kwargs["env"]
 
     @pytest.mark.asyncio
     async def test_generate_handles_non_json_claude_output(self) -> None:
@@ -243,8 +251,8 @@ class TestCLIBuildCommand:
         cmd = provider._build_command()
         assert "--add-dir" in cmd
 
-    def test_codex_command_minimal(self) -> None:
+    def test_codex_command_is_read_only_for_helper_preflight(self) -> None:
         with patch("shutil.which", return_value="/usr/bin/codex"):
             provider = CLILLMProvider(cli_tool="codex")
         cmd = provider._build_command()
-        assert cmd == ["/usr/bin/codex", "exec"]
+        assert cmd == ["/usr/bin/codex", "exec", "--sandbox", "read-only"]

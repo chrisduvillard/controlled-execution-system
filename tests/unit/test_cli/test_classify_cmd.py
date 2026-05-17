@@ -77,10 +77,15 @@ def _patch_services(mock_services: dict[str, Any]):
 def _patch_services_error(error: Exception):
     """Return a patch that makes get_services raise an error."""
 
-    @asynccontextmanager
-    async def _fake_get_services():
-        raise error
-        yield  # pragma: no cover
+    class _FailingServicesContext:
+        async def __aenter__(self) -> None:
+            raise error
+
+        async def __aexit__(self, exc_type: object, exc: object, tb: object) -> bool:
+            return False
+
+    def _fake_get_services():
+        return _FailingServicesContext()
 
     return patch("ces.cli.classify_cmd.get_services", new=_fake_get_services)
 

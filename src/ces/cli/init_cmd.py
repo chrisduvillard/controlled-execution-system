@@ -28,6 +28,7 @@ from rich.panel import Panel
 from ces import __version__
 from ces.cli._async import run_async
 from ces.cli._output import console
+from ces.cli._state_path import validate_ces_state_dir
 from ces.shared.crypto import (
     AUDIT_HMAC_FILENAME,
     generate_audit_hmac_secret,
@@ -83,18 +84,6 @@ def _has_only_profile_bootstrap_state(ces_dir: Path) -> bool:
     return bool(children) and children <= allowed and not dirs
 
 
-def _validate_ces_state_path(project_root: Path, ces_dir: Path) -> None:
-    """Fail closed if the CES state path can escape the project root."""
-    if ces_dir.is_symlink():
-        raise ValueError("Refusing to initialize .ces because it is a symlink.")
-    resolved_project = project_root.resolve()
-    resolved_ces = ces_dir.resolve(strict=False)
-    try:
-        resolved_ces.relative_to(resolved_project)
-    except ValueError as exc:
-        raise ValueError("Refusing to initialize .ces outside the project root.") from exc
-
-
 def initialize_local_project(project_root: Path, *, name: str) -> dict[str, Any]:
     """Create ``.ces/`` local project state and return the written config."""
     if not _PROJECT_NAME_RE.match(name):
@@ -104,7 +93,7 @@ def initialize_local_project(project_root: Path, *, name: str) -> dict[str, Any]
         )
 
     ces_dir = project_root / ".ces"
-    _validate_ces_state_path(project_root, ces_dir)
+    validate_ces_state_dir(project_root, ces_dir)
     profile_bootstrap_only = _has_only_profile_bootstrap_state(ces_dir)
     if ces_dir.exists() and not profile_bootstrap_only:
         raise FileExistsError(f"Directory {project_root} is already a CES project.")
@@ -239,7 +228,7 @@ async def init_project(
 
     ces_dir = cwd / ".ces"
     try:
-        _validate_ces_state_path(cwd, ces_dir)
+        validate_ces_state_dir(cwd, ces_dir)
     except ValueError as exc:
         console.print(
             Panel(

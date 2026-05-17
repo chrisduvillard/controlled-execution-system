@@ -28,9 +28,31 @@ def test_security_docs_distinguish_codex_and_claude_runtime_boundaries() -> None
     security = (ROOT / "SECURITY.md").read_text(encoding="utf-8")
 
     assert "Claude runs with `--allowedTools`" in security
+    assert "Codex is invoked with `--sandbox danger-full-access` by default" not in security
     assert "Codex defaults to `workspace-write`" in security
     assert "invalid explicit sandbox values fail closed to `read-only`" in security.lower()
     assert "not manifest-tool-allowlist-enforced" in security
+
+
+def test_release_runbook_rebuilds_or_uses_ci_artifacts_and_stages_version_surfaces() -> None:
+    release = (ROOT / "docs" / "RELEASE.md").read_text(encoding="utf-8")
+
+    assert "rm -rf dist" in release
+    assert "uv build" in release
+    assert "CI-built artifacts" in release
+    assert (
+        "git add pyproject.toml src/ces/__init__.py uv.lock CHANGELOG.md README.md "
+        "tests/unit/test_docs/test_package_contract.py"
+    ) in release
+
+
+def test_contributor_typecheck_command_matches_ci() -> None:
+    contributing = (ROOT / "CONTRIBUTING.md").read_text(encoding="utf-8")
+    workflow = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+
+    command = "uv run mypy src/ces/ --ignore-missing-imports"
+    assert command in workflow
+    assert command in contributing
 
 
 def test_production_deployment_guide_uses_real_package_name() -> None:

@@ -86,7 +86,7 @@ uv run ruff format src/ tests/
 ### Type Checking
 
 ```bash
-uv run mypy src/ces/
+uv run mypy src/ces/ --ignore-missing-imports
 ```
 
 ### Pre-commit Hooks
