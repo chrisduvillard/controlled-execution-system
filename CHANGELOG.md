@@ -7,14 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.29] - 2026-05-17
+
+Public-readiness, proof-governance, and CLI maintainability release.
+
+### Added
+
+- Add intake execution contracts so implementation requests can carry explicit execution context before governed runtime work begins.
+- Add proof status safety signals, proof review summaries, and behavior-delta propagation into proof evidence.
+- Tie risk tracks to proof evidence so approval and release decisions have stronger governance context.
+- Add a high-confidence dead-code CI ratchet to keep stale implementation surfaces from returning.
+
 ### Changed
 
-- Extract runtime prompt-pack and completion-summary helpers out of the large run command module to create safe CLI complexity reduction seams.
+- Gate approval on proven contracts so ship decisions depend on verified completion evidence rather than runtime claims alone.
 - Make `ces create "objective"` the beginner-safe one-argument path by inferring the project name and adding `--name` for explicit naming.
-
+- Improve first-run and beginner CLI help, clarify `ces create` as the front door, and hide the legacy `run` alias from root help.
+- Position CES documentation as an execution-accountability layer rather than a generic agent wrapper.
+- Extract runtime prompt-pack and completion-summary helpers out of the large run command module to create safe CLI complexity reduction seams.
 - Keep SQL/Postgres compatibility-test dependencies in the private `ci` dependency group instead of advertising `compat-tests` as a public PyPI extra.
 - Harden release artifact workflows by removing stale `dist/` contents before builds, asserting the exact wheel/sdist set, and uploading checked distributions from publish workflows.
-- Add a high-confidence dead-code CI ratchet and retire active FreshCart sample code so historical examples cannot import compatibility-test internals.
+- Retire active FreshCart sample code so historical examples cannot import compatibility-test internals.
+
+### Security / governance hardening
+
+- Harden audit-readiness boundaries, including Codex pre-consent sandbox behavior and `.ces` state-directory safety checks.
 
 ## [0.1.28] - 2026-05-16
 
