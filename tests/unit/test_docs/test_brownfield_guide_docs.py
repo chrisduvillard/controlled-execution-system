@@ -59,5 +59,5 @@ def test_getting_started_command_reference_summarizes_brownfield_command_group()
 def test_readme_command_reference_summarizes_brownfield_command_group() -> None:
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
 
-    assert "| `brownfield ...` |" in readme
+    assert "| `ces brownfield ...` |" in readme
     assert "Expert legacy behavior capture, review, and promotion" in readme

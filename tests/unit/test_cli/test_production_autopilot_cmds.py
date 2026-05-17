@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import shlex
 from pathlib import Path
 from typing import Any
@@ -310,7 +311,26 @@ def test_root_help_mentions_create_front_door() -> None:
 
     assert result.exit_code == 0
     assert "ces create" in result.stdout
-    assert "interactive project creation wizard" in result.stdout.lower()
+    assert "read-only new-project plan" in result.stdout.lower()
+    assert "Legacy alias" not in result.stdout
+
+
+def test_legacy_run_alias_still_has_help_while_hidden_from_root_help() -> None:
+    result = runner.invoke(_get_app(), ["run", "--help"])
+
+    assert result.exit_code == 0
+    cleaned = re.sub(r"\x1b\[[0-9;]*[a-zA-Z]", "", result.stdout)
+    assert "Usage: ces run" in cleaned
+    assert "Legacy alias for the guided local-first build flow." in cleaned
+
+
+def test_create_help_makes_read_only_project_root_boundary_explicit() -> None:
+    result = runner.invoke(_get_app(), ["create", "--help"])
+
+    assert result.exit_code == 0
+    assert "read-only new-project creation plan" in result.stdout.lower()
+    assert "no files are created" in result.stdout.lower()
+    assert "should be created" not in result.stdout.lower()
 
 
 def test_root_no_args_shows_start_here_help_instead_of_missing_command_error() -> None:

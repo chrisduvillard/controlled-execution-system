@@ -96,10 +96,10 @@ def test_getting_started_command_reference_uses_supported_operations_examples() 
 def test_readme_command_reference_uses_supported_operations_examples() -> None:
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
 
-    assert "| `audit` | Expert operations audit inspection;" in readme
+    assert "| `ces audit` | Expert operations audit inspection;" in readme
     assert "`ces audit --limit 20`" in readme
     assert "| `audit --limit 20` |" not in readme
-    assert "| `emergency declare` | Expert operations emergency declaration;" in readme
+    assert "| `ces emergency declare` | Expert operations emergency declaration;" in readme
     assert '`ces emergency declare "Security incident detected"`' in readme
     assert '| `emergency declare "Security incident detected"` |' not in readme
     assert "| `emergency ...` | Expert operations kill switch and emergency controls |" not in readme

@@ -208,7 +208,7 @@ def _create_markdown(payload: dict) -> str:
         f"Objective: {payload['objective']}",
         f"Execution mode: **{payload['execution_mode']}**",
         "",
-        "This is an interactive project creation wizard. It is read-only: it does not create folders, initialize `.ces/`, edit files, or launch Codex or Claude Code.",
+        "This is a read-only new-project creation plan. It does not create folders, initialize `.ces/`, edit files, or launch Codex or Claude Code.",
         "",
         "## Copy-paste sequence",
         "",
@@ -231,11 +231,11 @@ def create(
     project_root: Path | None = typer.Option(
         None,
         "--project-root",
-        help="Directory where the project folder should be created; defaults to the current working directory.",
+        help="Parent directory used when printing the planned project path; no files are created.",
     ),
     output_format: str = typer.Option("markdown", "--format", help="Output format: markdown or json."),
 ) -> None:
-    """Interactive read-only wizard for starting a new project from scratch."""
+    """Print a read-only new-project creation plan."""
 
     format_name = _format_option(output_format)
     json_requested = _output_mod._json_mode or format_name == "json"

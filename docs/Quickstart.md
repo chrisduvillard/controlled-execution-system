@@ -76,7 +76,14 @@ enforcement before the agent starts.
 
 ## 3. Plan or start your project
 
-For a brand-new app, start with the read-only guided front door:
+For a brand-new idea with no folder yet, start with `ces create`. It prints the project folder and the exact plan/build/verify/prove sequence without touching the filesystem:
+
+```bash
+ces create
+# prompts: Project name / What do you want it to do?
+```
+
+If you are already inside an idea folder or an existing/uncertain repo, use the read-only guided front door:
 
 ```bash
 mkdir my-task-app && cd my-task-app
@@ -165,11 +172,13 @@ ces next-prompt "Rotate production database credentials" \
 
 ## What just happened?
 
-CES created a `.ces/` directory in your project with:
+After `ces create`, `ces start`, or `ces ship`, nothing was changed: no `.ces/`, no file edits, and no runtime launch. You only received a bounded command sequence.
+
+After the first mutating `ces build ...` step, CES creates a local `.ces/` directory with:
 - `config.yaml` — project metadata and preferred runtime
 - `state.db` — SQLite database storing manifests, audit entries, and session state
 
-Everything is local. No Postgres, Redis, or external services were needed.
+Everything stays local. No Postgres, Redis, or external services are needed.
 
 ## Next steps
 

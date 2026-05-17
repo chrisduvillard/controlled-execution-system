@@ -146,7 +146,7 @@ class JsonAwareTyperGroup(typer.core.TyperGroup):
 _ROOT_HELP = """Production Autopilot for local AI-built projects.
 
 Start Here:
-  `ces create`    Interactive project creation wizard for new apps
+  `ces create`    Read-only new-project plan; prints the folder and command sequence
   `ces start`     Guided read-only path: plan → build → verify → prove
   `ces ship`      Read-only plan from idea/current repo to proof-backed delivery
   `ces build --from-scratch "Create a task tracker app"`
@@ -228,7 +228,7 @@ app.command(name="why", help="Explain why the latest builder run is blocked and 
 app.command(name="recover", help="Recover from a blocked builder run with rerunnable verification evidence.")(
     recover_cmd.recover_builder_session
 )
-app.command(name="run", help="Legacy alias for the guided local-first build flow.")(run_cmd.run_task)
+app.command(name="run", help="Legacy alias for the guided local-first build flow.", hidden=True)(run_cmd.run_task)
 
 app.command(name="classify", help="Classify a task manifest.")(classify_cmd.classify_task)
 app.command(name="execute", help="Execute an agent task locally with manifest evidence and delta checks.")(
@@ -259,7 +259,7 @@ app.command(name="mri", help="Read-only repository diagnostic with project-healt
     mri_cmd.mri
 )
 app.command(name="ship", help="Read-only plan from idea/current repo to proof-backed delivery.")(autopilot_cmd.ship)
-app.command(name="create", help="Interactive project creation wizard for new apps.")(autopilot_cmd.create)
+app.command(name="create", help="Print a read-only new-project creation plan.")(autopilot_cmd.create)
 app.command(name="start", help="Interactive read-only guide from idea to proof-backed delivery.")(autopilot_cmd.start)
 app.command(name="next", help="Show the next safest production-readiness action.")(autopilot_cmd.next_action)
 app.command(name="next-prompt", help="Generate a guardrailed prompt for the next readiness step.")(
