@@ -764,6 +764,8 @@ class TestAlembicMigration005:
         import importlib.util
         from pathlib import Path
 
+        pytest.importorskip("alembic", reason="compat migration import checks require alembic to be installed")
+
         migration_path = Path(__file__).resolve().parent / "alembic" / "versions" / "005_knowledge_tables.py"
         spec = importlib.util.spec_from_file_location("migration_005", migration_path)
         assert spec is not None, f"Migration file not found at {migration_path}"

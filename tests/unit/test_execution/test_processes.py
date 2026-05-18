@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import os
-import signal
 import sys
 import time
 from pathlib import Path
@@ -175,14 +174,16 @@ async def test_private_output_helpers_handle_empty_values() -> None:
 def _pid_exists(pid: int) -> bool:
     if sys.platform == "win32":
         return False
+    status_path = Path(f"/proc/{pid}/status")
+    if status_path.exists():
+        state_line = next(
+            (line for line in status_path.read_text(encoding="utf-8").splitlines() if line.startswith("State:")),
+            "",
+        )
+        if "\tZ" in state_line or " zombie" in state_line.lower():
+            return False
     try:
         os.kill(pid, 0)
-    except ProcessLookupError:
-        return False
-    except PermissionError:
-        return True
-    try:
-        os.kill(pid, signal.SIGTERM)
     except ProcessLookupError:
         return False
     except PermissionError:
