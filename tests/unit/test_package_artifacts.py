@@ -8,6 +8,8 @@ import tarfile
 import zipfile
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[2]
 BULKY_DOC_ASSET_SUFFIXES = (".gif", ".mp4", ".mov", ".webm", ".png", ".jpg", ".jpeg", ".webp")
 FORBIDDEN_ARTIFACT_PATH_PARTS = (
@@ -25,7 +27,19 @@ FORBIDDEN_ARTIFACT_PATH_PARTS = (
 def _build_artifacts(out_dir: Path) -> tuple[Path, Path]:
     uv = shutil.which("uv")
     assert uv is not None
-    subprocess.run([uv, "build", "--out-dir", str(out_dir)], cwd=ROOT, check=True)  # noqa: S603
+    try:
+        subprocess.run(  # noqa: S603
+            [uv, "build", "--out-dir", str(out_dir)],
+            cwd=ROOT,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    except subprocess.CalledProcessError as exc:
+        message = (exc.stderr or "").lower()
+        if any(token in message for token in ("failed to fetch", "client error (connect)", "tunnel error")):
+            pytest.skip("uv build could not fetch build dependencies in this environment")
+        raise
     wheels = sorted(out_dir.glob("*.whl"))
     sdists = sorted(out_dir.glob("*.tar.gz"))
     assert len(wheels) == 1

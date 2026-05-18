@@ -122,6 +122,34 @@ ces status
 
 This shows the current builder session, evidence, and next action.
 
+## 4a. Greenfield flow (idea → build → verify → proof)
+
+Run this inside a brand-new project folder.
+
+```bash
+mkdir task-tracker && cd task-tracker
+ces build --from-scratch "Create a small task tracker app with add/list/complete tasks, tests, and a README"
+ces verify
+ces proof
+```
+
+Use `ces approve --yes` only after `ces proof` reports `proven` and recommends `safe-to-review`.
+
+## 4b. Brownfield flow (existing repo → bounded change)
+
+Run this at the root of an existing project.
+
+```bash
+cd /path/to/existing-repo
+ces mri
+ces next
+ces build "Add invoice notes to CSV exports"
+ces verify
+ces proof
+```
+
+For higher-risk brownfield work, keep scope explicit with `ces next-prompt "..." --must-not-break "..." --acceptance "..."` before `ces build`.
+
 ## 5. Use the Production Autopilot reports
 
 Before asking an agent for more feature work, inspect the repo and generate the next bounded readiness prompt:
