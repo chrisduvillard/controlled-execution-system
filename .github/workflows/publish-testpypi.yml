@@ -11,7 +11,7 @@ on:
 env:
   # Keep this aligned with publish.yml so release-candidate validation uses the
   # same uv binary as the real PyPI publish gate.
-  UV_VERSION: "0.11.8"
+  UV_VERSION: "0.7.22"
 
 jobs:
   publish-testpypi:

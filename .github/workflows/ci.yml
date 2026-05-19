@@ -13,7 +13,7 @@ env:
   # Pin uv so setup-uv does not select a brand-new release before the
   # releases.astral.sh mirror has synced it, which creates noisy fallback
   # warnings in otherwise-green runs.
-  UV_VERSION: "0.11.8"
+  UV_VERSION: "0.7.22"
 
 jobs:
   lint:
