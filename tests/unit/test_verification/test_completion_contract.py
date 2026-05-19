@@ -113,6 +113,8 @@ def test_completion_contract_read_accepts_legacy_payload_without_acceptance_prof
     assert loaded.behavior_delta.has_signal() is False
     assert loaded.risk_track.tier == "C"
     assert loaded.risk_track.required_artifacts == ()
+    assert loaded.proof_binding_hash is None
+    assert loaded.to_dict()["proof_binding_hash"] is None
     assert loaded.next_ces_command == "ces verify --json"
 
 
@@ -145,3 +147,21 @@ def test_build_completion_contract_records_greenfield_acceptance_profile(tmp_pat
     assert payload["risk_track"]["required_artifacts"] == ["regression-evidence.md"]
     assert "Document unproven areas or remaining risks" in payload["proof_requirements"]
     assert payload["next_ces_command"] == "ces verify --json"
+    assert payload["proof_binding_hash"]
+
+
+def test_completion_contract_roundtrip_preserves_proof_binding_hash(tmp_path: Path) -> None:
+    from ces.verification.completion_contract import CompletionContract
+
+    contract = CompletionContract(
+        request="Create a recipe app",
+        project_type="unknown",
+        proof_binding_hash="abc123",
+    )
+    path = tmp_path / "contract.json"
+    contract.write(path)
+
+    loaded = CompletionContract.read(path)
+
+    assert loaded.proof_binding_hash == "abc123"
+    assert loaded.to_dict()["proof_binding_hash"] == "abc123"

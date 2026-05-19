@@ -17,40 +17,48 @@ def _get_app() -> Any:
     return app
 
 
+def _completion_contract_payload() -> dict[str, Any]:
+    return {
+        "version": 1,
+        "request": "Create a tiny CLI calculator",
+        "project_type": "python-cli",
+        "acceptance_criteria": [],
+        "inferred_commands": [
+            {
+                "id": "tests",
+                "kind": "test",
+                "command": "pytest",
+                "reason": "test suite",
+                "expected_exit_codes": [0],
+            }
+        ],
+        "runtime": {"name": "codex"},
+        "required_artifacts": ["README.md", "run command", "test command", "verification evidence"],
+        "proof_requirements": ["README includes beginner run and test instructions"],
+        "next_ces_command": "ces verify --json",
+    }
+
+
 def _write_completion_contract(root: Path) -> None:
     ces_dir = root / ".ces"
     ces_dir.mkdir()
+    payload = _completion_contract_payload()
+    from ces.verification.proof_binding import proof_binding_hash_from_payload
+
+    payload["proof_binding_hash"] = proof_binding_hash_from_payload(payload)
     (ces_dir / "completion-contract.json").write_text(
-        json.dumps(
-            {
-                "version": 1,
-                "request": "Create a tiny CLI calculator",
-                "project_type": "python-cli",
-                "acceptance_criteria": [],
-                "inferred_commands": [
-                    {
-                        "id": "tests",
-                        "kind": "test",
-                        "command": "pytest",
-                        "reason": "test suite",
-                        "expected_exit_codes": [0],
-                    }
-                ],
-                "runtime": {"name": "codex"},
-                "required_artifacts": ["README.md", "run command", "test command", "verification evidence"],
-                "proof_requirements": ["README includes beginner run and test instructions"],
-                "next_ces_command": "ces verify --json",
-            }
-        )
-        + "\n",
+        json.dumps(payload) + "\n",
         encoding="utf-8",
     )
 
 
 def _write_latest_verification(root: Path) -> None:
+    from ces.verification.proof_binding import proof_binding_hash_from_payload
+
     (root / ".ces" / "latest-verification.json").write_text(
         json.dumps(
             {
+                "proof_binding_hash": proof_binding_hash_from_payload(_completion_contract_payload()),
                 "verification": {
                     "passed": True,
                     "commands": [
@@ -68,7 +76,7 @@ def _write_latest_verification(root: Path) -> None:
                             "passed": True,
                         }
                     ],
-                }
+                },
             }
         )
         + "\n",
