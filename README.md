@@ -115,6 +115,40 @@ Run `ces` with no arguments to print the Start Here guide. Use `ces --help` when
 
 `ces create`, `ces start`, and `ces ship` are read-only front doors: they do not launch a runtime, create `.ces/`, or mutate files.
 
+
+## Beginner journey (10-minute map)
+
+If you are new to CES, use this exact order to avoid the most common mistakes:
+
+1. **Install + preflight**: `ces --help` then `ces doctor`
+2. **Pick project mode**:
+   - New app/empty folder -> **greenfield**
+   - Existing repo with behavior to preserve -> **brownfield**
+3. **Stay read-only first**:
+   - Greenfield: `ces create "..."`
+   - Brownfield: `ces mri`, `ces next`, `ces next-prompt "..."`
+4. **Run exactly one governed implementation command**:
+   - Greenfield: `ces build --from-scratch "..."`
+   - Brownfield: `ces build "..."`
+5. **Require proof before approval**: `ces verify` -> `ces proof` -> `ces approve --yes` (only if recommendation is `safe-to-review`)
+
+### Greenfield vs brownfield quick decision
+
+| If this is true | Use | Avoid |
+|---|---|---|
+| I am creating a brand-new project skeleton | `ces build --from-scratch "..."` | Plain `ces build` if you expect full project generation |
+| I am changing an existing repository | Plain `ces build "..."` | `--from-scratch` unless intentionally rewriting |
+| I only want a plan/prompt first | `ces create`, `ces start`, `ces ship`, `ces next-prompt` | Running `ces build` immediately |
+
+### New operator pitfalls (and fixes)
+
+- **Pitfall:** Treating `ces create/start/ship` as mutating commands.  
+  **Fix:** They are read-only front doors; they print next steps only.
+- **Pitfall:** Using `--from-scratch` in a brownfield repo.  
+  **Fix:** Use plain `ces build` after `ces mri` + `ces next-prompt`.
+- **Pitfall:** Approving on agent claims instead of evidence.  
+  **Fix:** Require successful `ces verify` and `ces proof` first.
+
 ## Greenfield project: create a new project from scratch
 
 Use this when you have an idea but no existing app yet. Start with a read-only plan, then run the governed build inside the new project folder.

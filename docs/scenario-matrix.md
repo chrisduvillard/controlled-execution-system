@@ -1,66 +1,55 @@
 # CES Scenario Matrix
 
-This matrix records the expected beginner and operator paths CES is meant to support. It was created during the production-readiness dogfood pass so claims stay tied to tested or explicitly scoped behavior.
+This matrix tracks whether CES delivers a low-friction, evidence-first path for:
+
+- **Greenfield** work (new project from scratch),
+- **Brownfield** work (existing repo with behavior to preserve), and
+- **Agent-quality controls** (anti-slop, bounded scope, proof-before-approval).
+
+Use this document as the operator planning artifact before large workflow edits.
+
+## Status legend
+
+- **Supported**: flow works as documented with current guardrails.
+- **Partially supported**: flow works but has known friction or reliability gaps.
+- **Blocked**: cannot be validated in this environment without an external unblock.
 
 ## Greenfield scenarios
 
-### Empty folder, new app from an idea
-
-- **Expected user path:** `ces create "..."`, create the suggested folder, run `ces ship`, `ces build --from-scratch "..."`, `ces verify`, `ces proof`.
-- **Success criteria:** CES treats the project as greenfield, creates local `.ces/` state during the mutating build, generates app files, captures a completion contract, and proof reports `proven` or a concrete evidence blocker.
-- **Likely friction:** Codex requires `--accept-runtime-side-effects`; source-checkout use via `uv run --project` is noisy; `ces create` can suggest a nested folder when run from an already-created slug folder.
-- **Current support status:** Tested to the runtime-consent boundary in a real outside folder under a local `ces-friction-tests/greenfield-quickstart-*` workspace.
-- **Improvements made:** README and Quickstart now show explicit greenfield flow, Codex consent guidance, expected `ces create` output, and proof success criteria.
-
-### User follows only the README
-
-- **Expected user path:** Install first, choose Greenfield or Brownfield, follow copy-paste commands, use `ces verify` and `ces proof` before approval.
-- **Success criteria:** No `ces: command not found` before install guidance; no hidden runtime assumption; explicit quality gates.
-- **Likely friction:** Too many commands too early; install previously appeared after `ces` commands.
-- **Current support status:** README revised with install-first quickstart, path chooser, explicit Greenfield and Brownfield sections.
-- **Improvements made:** Added beginner path chooser and “Quality gates: how to know it worked.”
+| Scenario | Expected user path | Commands / steps | Success criteria | Likely friction | Current support status | Improvements needed |
+|---|---|---|---|---|---|---|
+| User starts from an empty folder | Read-only planning first, then one governed mutating run | `ces create` -> `mkdir/cd` -> `ces ship` -> `ces build --from-scratch` -> `ces verify` -> `ces proof` | `.ces/` created in target folder, app scaffolded, verification evidence captured, proof is `proven` or explicitly blocked | Project-root confusion, runtime side-effect consent | Partially supported | Keep emphasizing explicit target folder/project-root patterns in docs and examples |
+| User follows only README | Uses beginner map without jumping into advanced sections | “Beginner journey (10-minute map)” then Greenfield section | First run completes with bounded objective and reviewable evidence | Treating `create/start/ship` as mutating commands | Supported | Keep examples concise and keep pitfalls near quickstart |
+| User has no CES internals knowledge | Uses mode decision first (greenfield vs brownfield) | Quick decision table + pitfalls checklist | User can explain why the selected mode is correct before running build | Misusing `--from-scratch` in an existing repo | Supported | Continue strict mode-selection framing and examples |
 
 ## Brownfield scenarios
 
-### Existing real repo, scoped safe improvement
-
-- **Expected user path:** `ces mri`, `ces next`, `ces next-prompt "..." --acceptance "..." --must-not-break "..."`, plain `ces build "..."`, `ces verify`, `ces proof`.
-- **Success criteria:** CES identifies the repo as brownfield, preserves must-not-break behavior in the contract, changed files stay inside declared scope, and proof reports `proven` or names the blocker.
-- **Likely friction:** Deliberation challenge can over-block common terminology; generated file areas may be too broad or too generic; `status` and `proof` report latest persisted task, not necessarily the latest read-only planning objective.
-- **Current support status:** Tested read-only against the local Auralis checkout for a provider-capability panel objective.
-- **Improvements made:** Brownfield docs now start read-only and emphasize explicit scope, verification, proof, and changed-file boundaries.
-
-### Existing repo with agent-output risk
-
-- **Expected user path:** Compile a strict Developer Intent Contract with scope, non-goals, anti-slop limits, must-not-break rules, and verification evidence before launching runtime work.
-- **Success criteria:** Runtime output cannot auto-authorize out-of-scope changes or recommend approval based only on exit code.
-- **Likely friction:** Post-runtime summaries can sound stronger than the evidence; brownfield runtime deltas can be mistaken for authorized scope.
-- **Current support status:** Code paths reviewed and hardened in this pass.
-- **Improvements made:** Runtime evidence summaries now explicitly say they are raw status only, and brownfield observed edits are no longer added to manifest scope as post-hoc authorization.
+| Scenario | Expected user path | Commands / steps | Success criteria | Likely friction | Current support status | Improvements needed |
+|---|---|---|---|---|---|---|
+| Existing repo with must-not-break behavior | Build a contract before runtime execution | `ces mri` -> `ces next` -> `ces next-prompt ... --must-not-break ... --acceptance ...` -> `ces build` -> `ces verify` -> `ces proof` | Contract captures bounded scope + must-not-break; edits stay scoped; proof reflects evidence freshness | Weak/generic acceptance criteria | Partially supported | Improve prompt generation for objective-specific acceptance/must-not-break defaults |
+| Scoped improvement in a risky repo | Require checklist before mutating commands | Brownfield guardrails checklist in Getting Started | Operator checks objective bounds, acceptance criteria, and verification plan before run | Users skip checklist discipline | Supported | Keep checklist copy-paste ready for issue/PR templates |
+| Real brownfield dogfood on Auralis | Validate CES against real-world codebase | Clone `https://github.com/chrisduvillard/auralis` and run brownfield path | End-to-end evidence-backed change loop on non-trivial repo | Environment/network restrictions can block clone | Blocked in this environment | Use local checkout/mirror/artifact bundle to complete mandatory dogfood trial |
 
 ## Agent-quality scenarios
 
-### Agent must plan before coding
+| Scenario | Expected user path | Commands / steps | Success criteria | Likely friction | Current support status | Improvements needed |
+|---|---|---|---|---|---|---|
+| CES forces plan before code | Deliberation before execution contract | `ces deliberate` then `ces next-prompt` | Alternatives, risk critique, dissent, and blockers are visible before runtime work | Over-blocking terminology in challenge mode | Partially supported | Tune challenge-mode scoring and deduplicate blocker terms |
+| CES enforces validation over claims | Proof gate must pass before approval | `ces verify` -> `ces proof` -> `ces approve` only when safe | Approvals are evidence-backed, not runtime-exit-backed | Humans may shortcut to approval | Supported | Continue emphasizing proof status and recommendation semantics |
+| CES limits uncontrolled rewrites | Scope + must-not-break + evidence checks constrain runtime output | Contract + workspace delta checks + proof review | Out-of-scope edits detected and explained | Generic scope relevance can reduce precision | Partially supported | Improve objective-aware likely-file selection for `next-prompt` |
 
-- **Expected user path:** `ces deliberate` when approach needs pushback, then `ces next-prompt` to produce a Developer Intent Contract.
-- **Success criteria:** The prompt includes scope, non-goals, anti-slop limits, verification commands, and `ces:completion` expectations.
-- **Current support status:** Read-only dogfood confirmed useful shape on Auralis; file-scope precision remains an improvement area.
+## Known blockers and dependencies
 
-### Agent must prove instead of assert
+1. **External brownfield dogfood dependency**: Auralis clone access is required to complete the mandated real-project brownfield trial in this environment.
+2. **Prompt quality dependency**: Contract quality still depends on acceptance/must-not-break specificity.
+3. **Operator discipline dependency**: CES guardrails are strongest when users follow read-only-first and proof-before-approval sequences.
 
-- **Expected user path:** `ces build`, `ces verify`, `ces proof`; approval only after proof is `proven` and recommendation is `safe-to-review`.
-- **Success criteria:** Completion claim, verification, changed-file scope, and behavior-delta evidence are fresh and consistent.
-- **Current support status:** Existing CI and docs cover proof loop; docs now make the quality gate prominent.
+## Exit criteria linkage
 
-### Independent critique and preserved dissent
+This matrix is considered complete for a release when:
 
-- **Expected user path:** `ces deliberate` before risky work, `ces proof` and reports after runtime work.
-- **Success criteria:** Alternatives, role critique, dissent, blockers, and next operator action are visible.
-- **Current support status:** Supported by existing commands; challenge-mode overblocking should be tuned later.
-
-## Out of scope for this pass
-
-- Launching a real Codex or Claude runtime to completion in Auralis.
-- Pushing or modifying Auralis.
-- Building import adapters for external methodology frameworks.
-- Claiming full integration-suite coverage in PR CI before a curated integration lane is designed.
+- README and Getting Started paths match these scenario flows,
+- friction entries are logged for any failed or confusing step,
+- greenfield trial evidence exists,
+- brownfield trial evidence exists (or explicit environmental blocker is documented),
+- and verification/proof checks are runnable and documented.
