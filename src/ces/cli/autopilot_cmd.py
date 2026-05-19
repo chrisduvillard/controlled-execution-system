@@ -385,9 +385,9 @@ def deliberate(
         "--must-not-break",
         help="Repeatable behavior or boundary that the approach must preserve.",
     ),
-    grill: bool = typer.Option(
+    challenge: bool = typer.Option(
         False,
-        "--grill",
+        "--challenge",
         help="Add deterministic domain-language, docs, and codebase pushback to the brief.",
     ),
     output_format: str = typer.Option("markdown", "--format", help="Output format: markdown or json."),
@@ -400,7 +400,7 @@ def deliberate(
             objective,
             acceptance_criteria=tuple(item.strip() for item in acceptance or [] if item.strip()),
             must_not_break=tuple(item.strip() for item in must_not_break or [] if item.strip()),
-            grill=grill,
+            challenge=challenge,
         )
     except ValueError as exc:
         raise typer.BadParameter(str(exc)) from exc
