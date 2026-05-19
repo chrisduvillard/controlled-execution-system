@@ -55,6 +55,7 @@ def test_entry_docs_route_operators_to_builder_reports_and_expert_handoff() -> N
     assert "ces complete" in readme
     for command in (
         "ces next",
+        "ces deliberate",
         "ces next-prompt",
         "ces passport",
         "ces promote production-candidate",
@@ -117,6 +118,21 @@ def test_agent_contract_docs_explain_next_prompt_positioning_and_examples() -> N
         assert "thin/vibe-coded" in text or "thin/born-thin" in text
         assert "Create a small task tracker with tests and run instructions" in text
         assert "Add invoice notes to CSV exports" in text
+
+
+def test_entry_docs_explain_deliberate_pushback_before_agent_handoff() -> None:
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    getting_started = (ROOT / "docs" / "Getting_Started.md").read_text(encoding="utf-8")
+    quickstart = (ROOT / "docs" / "Quickstart.md").read_text(encoding="utf-8")
+    quick_reference = (ROOT / "docs" / "Quick_Reference_Card.md").read_text(encoding="utf-8")
+    playbook = (ROOT / "docs" / "Operator_Playbook.md").read_text(encoding="utf-8")
+
+    for text in (readme, getting_started, quickstart, quick_reference, playbook):
+        assert "ces deliberate" in text
+        assert "Approach Decision Brief" in text
+        assert "preserved dissent" in text
+        assert "implementation/maintainer/risk" in text
+        assert "read-only" in text
 
 
 def test_entry_docs_explain_zero_argument_help_front_door() -> None:

@@ -11,6 +11,7 @@ import typer
 
 from ces.cli import _output as _output_mod
 from ces.verification.mri import (
+    build_approach_decision_brief,
     build_launch_rehearsal,
     build_next_action,
     build_next_prompt,
@@ -362,6 +363,42 @@ def next_prompt(
         must_not_break=tuple(item.strip() for item in must_not_break or [] if item.strip()),
     )
     if _format_option(output_format) == "json":
+        typer.echo(report.to_json(), nl=False)
+        return
+    typer.echo(report.to_markdown(), nl=False)
+
+
+def deliberate(
+    objective: str = typer.Argument(..., help="Objective to challenge before runtime implementation."),
+    project_root: Path | None = typer.Option(
+        None,
+        "--project-root",
+        help="Repo/CES project root to inspect; defaults to the current working directory.",
+    ),
+    acceptance: list[str] | None = typer.Option(
+        None,
+        "--acceptance",
+        help="Repeatable acceptance criteria to use while challenging the approach.",
+    ),
+    must_not_break: list[str] | None = typer.Option(
+        None,
+        "--must-not-break",
+        help="Repeatable behavior or boundary that the approach must preserve.",
+    ),
+    output_format: str = typer.Option("markdown", "--format", help="Output format: markdown or json."),
+) -> None:
+    """Produce a read-only Approach Decision Brief before launching runtime work."""
+
+    try:
+        report = build_approach_decision_brief(
+            project_root or Path.cwd(),
+            objective,
+            acceptance_criteria=tuple(item.strip() for item in acceptance or [] if item.strip()),
+            must_not_break=tuple(item.strip() for item in must_not_break or [] if item.strip()),
+        )
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc)) from exc
+    if _output_mod._json_mode or _format_option(output_format) == "json":
         typer.echo(report.to_json(), nl=False)
         return
     typer.echo(report.to_markdown(), nl=False)

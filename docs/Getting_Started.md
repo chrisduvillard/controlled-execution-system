@@ -138,6 +138,7 @@ The Production Autopilot surfaces are read-only by default and work without Code
 ```bash
 ces mri --format markdown
 ces next --format markdown
+ces deliberate "Add invoice notes to CSV exports" --format markdown
 ces next-prompt --format markdown
 ces passport --format json
 ces promote production-candidate --format markdown
@@ -146,11 +147,20 @@ ces slop-scan --format json
 ces launch rehearsal --format json
 ```
 
-Use them when you want CES to diagnose the repository, explain the next safest production-readiness step, generate an actionable agent prompt, summarize evidence in a Production Passport, and rehearse launch checks without mutating the target project. Each command accepts `--project-root PATH` for source-checkout workflows.
+Use them when you want CES to diagnose the repository, explain the next safest production-readiness step, challenge an approach before runtime work, generate an actionable agent prompt, summarize evidence in a Production Passport, and rehearse launch checks without mutating the target project. Each command accepts `--project-root PATH` for source-checkout workflows.
 
 ### Developer Intent Contract
 
 CES does not replace your coding agent. CES gives your coding agent a narrow, testable, evidence-backed mission.
+
+`ces deliberate` is the read-only Approach Decision Brief before that handoff. It does not ask agents to argue until synthetic consensus; it preserves alternatives, implementation/maintainer/risk critique, preserved dissent, blockers, and the operator decision needed before runtime work.
+
+```bash
+ces deliberate "Add invoice notes to CSV exports" --project-root .
+ces deliberate "Rotate production database credentials" \
+  --acceptance "New credentials pass smoke verification before cutover." \
+  --must-not-break "Existing rollback path."
+```
 
 `ces next-prompt` is the read-only contract compiler for that handoff. It turns an objective plus the repo's MRI/slop context into a strict Developer Intent Contract that works well when pasted into Codex, Claude Code, or a similar agent.
 
