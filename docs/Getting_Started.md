@@ -69,6 +69,29 @@ ces build --from-scratch "Create the project I want, including tests, README, an
 
 `ces create`, `ces start`, and `ces ship` are read-only and are the safest first commands for a new idea or an AI-built/vibe-coded repo. They do not create `.ces/`, edit files, or launch Codex/Claude. `ces create` prints the new-project folder and greenfield command sequence. `ces start` reduces cognitive load by showing the right path for the current folder: greenfield projects use `ces build --from-scratch "..."`; existing brownfield repos use `ces mri`, `ces next`, plain `ces build "Add ..."`, `ces verify`, and `ces proof`. `ces ship` turns the current project state and optional objective into the next recommended command.
 
+
+## Beginner-first path selection
+
+If you are unsure where to start, decide mode first, then run the smallest safe sequence.
+
+| Situation | Minimum safe sequence | Why this is safest |
+|---|---|---|
+| **Greenfield**: no existing app behavior to preserve | `ces create "..."` -> `mkdir/cd` -> `ces build --from-scratch "..."` -> `ces verify` -> `ces proof` | Keeps first run bounded and proof-backed |
+| **Brownfield**: existing code and behavior must remain stable | `ces mri` -> `ces next` -> `ces next-prompt "..." --must-not-break "..."` -> `ces build "..."` -> `ces verify` -> `ces proof` | Forces explicit boundaries before mutation |
+| **Unsure / AI-generated messy repo** | `ces start` -> follow generated command sequence | Reduces incorrect mode selection |
+
+### Brownfield guardrails checklist (before `ces build`)
+
+Copy this checklist into your issue/PR description for novice operators:
+
+- [ ] Objective states one bounded change.
+- [ ] At least one `--acceptance` criterion is explicit and testable.
+- [ ] At least one `--must-not-break` behavior is named.
+- [ ] `ces next-prompt` contract reviewed by a human before runtime launch.
+- [ ] Verification commands are known and runnable locally.
+
+If any box is unchecked, do not run mutating commands yet.
+
 ## 2. Verify a Local Runtime
 
 ```bash

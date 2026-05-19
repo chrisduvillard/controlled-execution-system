@@ -13,7 +13,7 @@ env:
   # Pin uv so setup-uv does not select a brand-new release before the
   # releases.astral.sh mirror has synced it, which creates noisy fallback
   # warnings in otherwise-green runs.
-  UV_VERSION: "0.11.8"
+  UV_VERSION: "0.7.22"
 
 jobs:
   lint:
@@ -60,7 +60,7 @@ jobs:
       - name: Audit dependencies for known CVEs
         run: |
           uv export --frozen --group ci --format requirements-txt --no-emit-project --no-hashes --output-file /tmp/ces-ci-requirements.txt
-          uv run pip-audit --strict -r /tmp/ces-ci-requirements.txt
+          uv run pip-audit --strict --disable-pip -r /tmp/ces-ci-requirements.txt
 
   test:
     runs-on: ubuntu-latest
@@ -199,7 +199,7 @@ jobs:
       - name: Audit latest allowed dependency set
         run: |
           uv export --group ci --format requirements-txt --no-emit-project --no-hashes --output-file /tmp/ces-latest-requirements.txt
-          uv run pip-audit --strict -r /tmp/ces-latest-requirements.txt
+          uv run pip-audit --strict --disable-pip -r /tmp/ces-latest-requirements.txt
       - run: uv run ruff check src/ tests/
       - run: uv run ruff format --check src/ tests/
       - run: uv run mypy src/ces/ --ignore-missing-imports

@@ -120,3 +120,23 @@ This log records friction found during the production-readiness dogfood pass. Fr
 - **Severity:** Low.
 - **Status:** Documented.
 - **Proposed fix:** Add a source dogfood note or recommend running from a shell without an active unrelated venv.
+
+## FL-013: Source-checkout invocation can target the wrong repo root
+
+- **Step attempted:** Run greenfield trial from external folder using `uv run --directory <CES_SRC> ces ship/build ...` without consistently pinning `--project-root`.
+- **Expected:** Commands operate on the external target folder.
+- **Actual:** CES analyzed the source checkout instead, misclassifying flow as brownfield.
+- **Severity:** High.
+- **Status:** Partially fixed in docs.
+- **Fix:** README/Getting Started now emphasize beginner mode selection and explicit project-root safety patterns.
+- **Evidence after fix:** Greenfield trial findings captured from parallel dogfood run; README now includes explicit “beginner journey” and pitfalls.
+
+## FL-014: Brownfield Auralis trial blocked by network access in this environment
+
+- **Step attempted:** Clone `https://github.com/chrisduvillard/auralis` for mandated brownfield dogfood.
+- **Expected:** Repo clones and CES brownfield flow can run.
+- **Actual:** `git clone` failed with `CONNECT tunnel failed, response 403`.
+- **Severity:** High (environmental blocker).
+- **Status:** Open (cannot fix in CES code/docs alone).
+- **Proposed next step:** Provide local checkout, reachable mirror, or artifact bundle for Auralis to complete mandatory trial.
+- **Evidence:** Parallel brownfield testing agent report with clone command output.
