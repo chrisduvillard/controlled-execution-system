@@ -296,6 +296,177 @@ def test_deliberate_high_risk_with_boundaries_is_ready_and_preserves_flags(tmp_p
     assert "--must-not-break 'Existing rollback path.'" in payload["next_ces_command"]
 
 
+def test_deliberate_grill_json_surfaces_domain_language_and_docs(tmp_path: Path) -> None:
+    _write_minimal_project(tmp_path)
+    (tmp_path / "CONTEXT.md").write_text(
+        """
+# Context
+
+## Glossary
+
+- User: Person who signs in to the application.
+- Billing Account: Entity that owns invoices and payment settings.
+- Workspace: Collaboration boundary for projects and members.
+""".strip(),
+        encoding="utf-8",
+    )
+    (tmp_path / "docs" / "adr").mkdir(parents=True)
+    (tmp_path / "docs" / "adr" / "0001-billing-account.md").write_text(
+        "# Use billing accounts for invoice ownership\n", encoding="utf-8"
+    )
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "billing.py").write_text(
+        "class BillingAccount:\n    pass\n\nclass UserAccount:\n    pass\n",
+        encoding="utf-8",
+    )
+    before = _snapshot_files(tmp_path)
+
+    result = runner.invoke(
+        _get_app(),
+        [
+            "deliberate",
+            "Add account-level invoice export settings",
+            "--project-root",
+            str(tmp_path),
+            "--grill",
+            "--format",
+            "json",
+        ],
+    )
+
+    after = _snapshot_files(tmp_path)
+    assert result.exit_code == 0, result.stdout
+    assert before == after
+    assert not (tmp_path / ".ces").exists()
+    payload = json.loads(result.stdout)
+    assert payload["execution_mode"] == "read-only-deliberation"
+    assert payload["domain_challenge"]["mode"] == "grill"
+    assert "CONTEXT.md" in payload["domain_challenge"]["context_sources"]
+    assert "docs/adr/0001-billing-account.md" in payload["domain_challenge"]["context_sources"]
+    assert any(item["term"] == "account" for item in payload["domain_challenge"]["terminology_challenges"])
+    assert any(item["blocking"] for item in payload["domain_challenge"]["terminology_challenges"])
+    assert any(
+        "Billing Account" in item["recommended_answer"] for item in payload["domain_challenge"]["clarifying_questions"]
+    )
+    assert any(
+        "CONTEXT.md" in item["target"] for item in payload["domain_challenge"]["documentation_capture_suggestions"]
+    )
+    assert payload["decision"] == "needs_operator_decision"
+    assert any("account" in item.lower() for item in payload["blockers"])
+
+
+def test_deliberate_grill_reads_context_map_adr_and_lowercase_terms(tmp_path: Path) -> None:
+    _write_minimal_project(tmp_path)
+    (tmp_path / "CONTEXT-MAP.md").write_text(
+        "- account: Customer-owned billing and usage boundary.\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "docs" / "adr").mkdir(parents=True)
+    (tmp_path / "docs" / "adr" / "0002-workspace.md").write_text(
+        "# Workspace decisions\n\n- workspace: Collaboration surface for shared transcripts.\n",
+        encoding="utf-8",
+    )
+
+    account_result = runner.invoke(
+        _get_app(),
+        [
+            "deliberate",
+            "Change account settings",
+            "--project-root",
+            str(tmp_path),
+            "--grill",
+            "--format",
+            "json",
+        ],
+    )
+    workspace_result = runner.invoke(
+        _get_app(),
+        [
+            "deliberate",
+            "Add workspace transcript sharing",
+            "--project-root",
+            str(tmp_path),
+            "--grill",
+            "--format",
+            "json",
+        ],
+    )
+
+    assert account_result.exit_code == 0, account_result.stdout
+    assert workspace_result.exit_code == 0, workspace_result.stdout
+    account_payload = json.loads(account_result.stdout)
+    workspace_payload = json.loads(workspace_result.stdout)
+    assert any(
+        "CONTEXT-MAP.md" in meaning
+        for item in account_payload["domain_challenge"]["terminology_challenges"]
+        for meaning in item["existing_meanings"]
+    )
+    assert any(
+        "docs/adr/0002-workspace.md" in meaning
+        for item in workspace_payload["domain_challenge"]["terminology_challenges"]
+        for meaning in item["existing_meanings"]
+    )
+    assert account_payload["decision"] == "needs_operator_decision"
+    assert workspace_payload["decision"] == "needs_operator_decision"
+
+
+def test_deliberate_grill_uses_visible_lowercase_code_identifiers(tmp_path: Path) -> None:
+    _write_minimal_project(tmp_path)
+    (tmp_path / "src").mkdir(exist_ok=True)
+    (tmp_path / "src" / "sessions.py").write_text(
+        "def session_timeout_policy():\n    return 'strict'\n",
+        encoding="utf-8",
+    )
+
+    result = runner.invoke(
+        _get_app(),
+        [
+            "deliberate",
+            "Change session timeout",
+            "--project-root",
+            str(tmp_path),
+            "--grill",
+            "--format",
+            "json",
+        ],
+    )
+
+    assert result.exit_code == 0, result.stdout
+    payload = json.loads(result.stdout)
+    assert any(
+        "session_timeout_policy" in meaning
+        for item in payload["domain_challenge"]["terminology_challenges"]
+        for meaning in item["existing_meanings"]
+    )
+
+
+def test_deliberate_grill_markdown_contains_domain_challenge_sections(tmp_path: Path) -> None:
+    _write_minimal_project(tmp_path)
+    (tmp_path / "CONTEXT.md").write_text("- Session: Authenticated browser lifetime.\n", encoding="utf-8")
+
+    result = runner.invoke(
+        _get_app(),
+        ["deliberate", "Change session timeout", "--project-root", str(tmp_path), "--grill"],
+    )
+
+    assert result.exit_code == 0, result.stdout
+    assert "## Domain-aware grill" in result.stdout
+    assert "### Domain context sources" in result.stdout
+    assert "### Terminology challenges" in result.stdout
+    assert "### Codebase contradictions" in result.stdout
+    assert "### Clarifying questions" in result.stdout
+    assert "### Documentation capture suggestions" in result.stdout
+
+
+def test_deliberate_grill_help_lists_flag() -> None:
+    result = runner.invoke(_get_app(), ["deliberate", "--help"])
+
+    assert result.exit_code == 0, result.stdout
+    cleaned = re.sub(r"\x1b\[[0-9;]*[a-zA-Z]", "", result.stdout)
+    normalized = re.sub(r"\s+", "", cleaned)
+    assert "--grill" in normalized
+
+
 def test_passport_json_contains_evidence_backed_summary(tmp_path: Path) -> None:
     _write_minimal_project(tmp_path)
 

@@ -975,6 +975,100 @@ class PreservedDissent:
 
 
 @dataclass(frozen=True)
+class TerminologyChallenge:
+    term: str
+    existing_meanings: tuple[str, ...]
+    risk: str
+    recommended_canonical_term: str
+    blocking: bool
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "term": self.term,
+            "existing_meanings": list(self.existing_meanings),
+            "risk": self.risk,
+            "recommended_canonical_term": self.recommended_canonical_term,
+            "blocking": self.blocking,
+        }
+
+
+@dataclass(frozen=True)
+class CodebaseContradiction:
+    claim: str
+    evidence: str
+    risk: str
+    required_decision: str
+    blocking: bool
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "claim": self.claim,
+            "evidence": self.evidence,
+            "risk": self.risk,
+            "required_decision": self.required_decision,
+            "blocking": self.blocking,
+        }
+
+
+@dataclass(frozen=True)
+class ClarifyingQuestion:
+    question: str
+    why_it_matters: str
+    recommended_answer: str
+    blocking: bool
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "question": self.question,
+            "why_it_matters": self.why_it_matters,
+            "recommended_answer": self.recommended_answer,
+            "blocking": self.blocking,
+        }
+
+
+@dataclass(frozen=True)
+class DocumentationCaptureSuggestion:
+    target: str
+    suggestion: str
+    reason: str
+
+    def to_dict(self) -> dict[str, str]:
+        return {"target": self.target, "suggestion": self.suggestion, "reason": self.reason}
+
+
+@dataclass(frozen=True)
+class DomainChallenge:
+    mode: str
+    context_sources: tuple[str, ...]
+    terminology_challenges: tuple[TerminologyChallenge, ...]
+    codebase_contradictions: tuple[CodebaseContradiction, ...]
+    clarifying_questions: tuple[ClarifyingQuestion, ...]
+    documentation_capture_suggestions: tuple[DocumentationCaptureSuggestion, ...]
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "mode": self.mode,
+            "context_sources": list(self.context_sources),
+            "terminology_challenges": [item.to_dict() for item in self.terminology_challenges],
+            "codebase_contradictions": [item.to_dict() for item in self.codebase_contradictions],
+            "clarifying_questions": [item.to_dict() for item in self.clarifying_questions],
+            "documentation_capture_suggestions": [item.to_dict() for item in self.documentation_capture_suggestions],
+        }
+
+    @property
+    def blocking_items(self) -> tuple[str, ...]:
+        blockers: list[str] = []
+        blockers.extend(
+            f"Resolve overloaded domain term `{item.term}` before implementation."
+            for item in self.terminology_challenges
+            if item.blocking
+        )
+        blockers.extend(item.required_decision for item in self.codebase_contradictions if item.blocking)
+        blockers.extend(item.question for item in self.clarifying_questions if item.blocking)
+        return tuple(blockers)
+
+
+@dataclass(frozen=True)
 class ApproachDecisionBrief:
     """Read-only pre-runtime pushback before compiling an execution contract."""
 
@@ -994,9 +1088,10 @@ class ApproachDecisionBrief:
     blockers: tuple[str, ...]
     next_ces_command: str
     validation_commands: tuple[str, ...]
+    domain_challenge: DomainChallenge | None = None
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        payload = {
             "schema_version": _SCHEMA_VERSION,
             "project_root": str(self.project_root),
             "objective": self.objective,
@@ -1015,6 +1110,9 @@ class ApproachDecisionBrief:
             "next_ces_command": self.next_ces_command,
             "validation_commands": list(self.validation_commands),
         }
+        if self.domain_challenge is not None:
+            payload["domain_challenge"] = self.domain_challenge.to_dict()
+        return payload
 
     def to_json(self) -> str:
         return json.dumps(self.to_dict(), indent=2) + "\n"
@@ -1076,6 +1174,75 @@ class ApproachDecisionBrief:
                     "",
                 ]
             )
+        if self.domain_challenge is not None:
+            challenge = self.domain_challenge
+            lines.extend(
+                [
+                    "",
+                    "## Domain-aware grill",
+                    "",
+                    "This optional read-only pass challenges the objective against repo language, docs, and visible code signals before runtime delegation.",
+                    "",
+                    "### Domain context sources",
+                    "",
+                    *_bullet(challenge.context_sources),
+                    "",
+                    "### Terminology challenges",
+                    "",
+                ]
+            )
+            if challenge.terminology_challenges:
+                for item in challenge.terminology_challenges:
+                    prefix = "Blocking" if item.blocking else "Non-blocking"
+                    lines.extend(
+                        [
+                            f"- **{prefix}:** `{item.term}`",
+                            f"  - Existing meanings: {', '.join(item.existing_meanings)}",
+                            f"  - Risk: {item.risk}",
+                            f"  - Recommended canonical term: {item.recommended_canonical_term}",
+                        ]
+                    )
+            else:
+                lines.append("- No overloaded objective terms found in the scanned context.")
+            lines.extend(["", "### Codebase contradictions", ""])
+            if challenge.codebase_contradictions:
+                for item in challenge.codebase_contradictions:
+                    prefix = "Blocking" if item.blocking else "Non-blocking"
+                    lines.extend(
+                        [
+                            f"- **{prefix}:** {item.claim}",
+                            f"  - Evidence: {item.evidence}",
+                            f"  - Risk: {item.risk}",
+                            f"  - Required decision: {item.required_decision}",
+                        ]
+                    )
+            else:
+                lines.append("- No direct code/doc contradictions detected by the deterministic grill.")
+            lines.extend(["", "### Clarifying questions", ""])
+            if challenge.clarifying_questions:
+                for item in challenge.clarifying_questions:
+                    prefix = "Blocking" if item.blocking else "Non-blocking"
+                    lines.extend(
+                        [
+                            f"- **{prefix}:** {item.question}",
+                            f"  - Why it matters: {item.why_it_matters}",
+                            f"  - Recommended answer: {item.recommended_answer}",
+                        ]
+                    )
+            else:
+                lines.append("- No blocking domain-language questions surfaced.")
+            lines.extend(["", "### Documentation capture suggestions", ""])
+            if challenge.documentation_capture_suggestions:
+                for item in challenge.documentation_capture_suggestions:
+                    lines.extend(
+                        [
+                            f"- Target: `{item.target}`",
+                            f"  - Suggestion: {item.suggestion}",
+                            f"  - Reason: {item.reason}",
+                        ]
+                    )
+            else:
+                lines.append("- No glossary or ADR capture suggested.")
         lines.extend(["## Preserved dissent", ""])
         if self.preserved_dissent:
             for dissent in self.preserved_dissent:
@@ -1699,12 +1866,206 @@ def _objective_dissent(objective: str, *, blocking: bool) -> PreservedDissent:
     )
 
 
+_GLOSSARY_RE = re.compile(r"^\s*[-*]\s+`?([A-Za-z][A-Za-z0-9 _/-]{1,48}?)`?\s*:\s*(.+?)\s*$")
+_CODE_IDENTIFIER_RE = re.compile(r"\b(?:class|interface|type|function|const|def)\s+([A-Za-z_][A-Za-z0-9_]{2,80})\b")
+_DOMAIN_SOURCE_NAMES = ("CONTEXT.md", "CONTEXT-MAP.md")
+_DOMAIN_CODE_SUFFIXES = {".js", ".jsx", ".py", ".ts", ".tsx"}
+_AMBIGUOUS_DOMAIN_TERMS = frozenset(
+    {
+        "account",
+        "agent",
+        "context",
+        "memory",
+        "profile",
+        "project",
+        "session",
+        "task",
+        "user",
+        "workspace",
+    }
+)
+
+
+def _relative(root: Path, path: Path) -> str:
+    try:
+        return path.relative_to(root).as_posix()
+    except ValueError:
+        return path.as_posix()
+
+
+def _safe_read_text(path: Path, *, max_chars: int = 20_000) -> str:
+    try:
+        return path.read_text(encoding="utf-8")[:max_chars]
+    except (OSError, UnicodeDecodeError):
+        return ""
+
+
+def _domain_context_paths(root: Path) -> tuple[Path, ...]:
+    paths: list[Path] = []
+    for name in _DOMAIN_SOURCE_NAMES:
+        path = root / name
+        if _is_regular_file(path):
+            paths.append(path)
+    docs_dir = root / "docs" / "adr"
+    if docs_dir.is_dir():
+        for path in sorted(docs_dir.glob("*.md"))[:20]:
+            if _is_regular_file(path):
+                paths.append(path)
+    return tuple(paths)
+
+
+def _collect_domain_context_sources(root: Path) -> tuple[str, ...]:
+    sources = tuple(_relative(root, path) for path in _domain_context_paths(root))
+    if not sources:
+        return ("No CONTEXT.md, CONTEXT-MAP.md, or docs/adr/*.md files found.",)
+    return sources
+
+
+def _extract_glossary_terms(root: Path) -> dict[str, tuple[str, str]]:
+    terms: dict[str, tuple[str, str]] = {}
+    for source in _domain_context_paths(root):
+        source_label = _relative(root, source)
+        for line in _safe_read_text(source).splitlines():
+            match = _GLOSSARY_RE.match(line)
+            if not match:
+                continue
+            term = " ".join(match.group(1).split())
+            definition = " ".join(match.group(2).split())
+            terms[term] = (source_label, definition)
+    return terms
+
+
+def _collect_code_identifiers(root: Path) -> dict[str, tuple[str, ...]]:
+    identifiers: dict[str, list[str]] = {}
+    for path in _iter_project_files(root):
+        if path.suffix not in _DOMAIN_CODE_SUFFIXES:
+            continue
+        text = _safe_read_text(path, max_chars=12_000)
+        for match in _CODE_IDENTIFIER_RE.finditer(text):
+            identifier = match.group(1)
+            identifiers.setdefault(identifier, []).append(_relative(root, path))
+    return {name: tuple(sorted(set(paths))) for name, paths in identifiers.items()}
+
+
+def _objective_words(objective: str) -> tuple[str, ...]:
+    return tuple(
+        word
+        for word in re.findall(r"[a-z][a-z0-9]{2,}", objective.lower().replace("-", " "))
+        if word not in _OBJECTIVE_STOPWORDS
+    )
+
+
+def _meaning_matches(term: str, objective_word: str) -> bool:
+    compact = re.sub(r"[^a-z0-9]", "", term.lower())
+    return objective_word in compact or compact in objective_word
+
+
+def _source_descriptions_for_word(
+    objective_word: str, glossary_terms: dict[str, tuple[str, str]], code_identifiers: dict[str, tuple[str, ...]]
+) -> tuple[str, ...]:
+    meanings: list[str] = []
+    for term, (source, definition) in sorted(glossary_terms.items(), key=lambda item: item[0].lower()):
+        if _meaning_matches(term, objective_word):
+            meanings.append(f"{term} ({source}: {definition})")
+    for identifier, paths in sorted(code_identifiers.items(), key=lambda item: item[0].lower()):
+        if _meaning_matches(identifier, objective_word):
+            meanings.append(f"{identifier} ({', '.join(paths[:3])})")
+    return tuple(meanings[:8])
+
+
+def _choose_canonical_meaning(objective: str, meanings: tuple[str, ...]) -> str:
+    objective_words = set(_objective_words(objective))
+    scored: list[tuple[int, str]] = []
+    for meaning in meanings:
+        score = sum(1 for word in objective_words if word in meaning.lower())
+        if any(source in meaning for source in _DOMAIN_SOURCE_NAMES):
+            score += 1
+        if "docs/adr/" in meaning:
+            score += 1
+        scored.append((score, meaning))
+    if not scored:
+        return "Use the repo's existing canonical domain term before implementation."
+    return max(scored, key=lambda item: (item[0], item[1]))[1].split(" (")[0]
+
+
+def _build_domain_challenge(root: Path, objective: str) -> DomainChallenge:
+    context_sources = _collect_domain_context_sources(root)
+    glossary_terms = _extract_glossary_terms(root)
+    code_identifiers = _collect_code_identifiers(root)
+    challenges: list[TerminologyChallenge] = []
+    contradictions: list[CodebaseContradiction] = []
+    questions: list[ClarifyingQuestion] = []
+    suggestions: list[DocumentationCaptureSuggestion] = []
+
+    for word in _objective_words(objective):
+        meanings = _source_descriptions_for_word(word, glossary_terms, code_identifiers)
+        should_challenge = len(meanings) > 1 or (word in _AMBIGUOUS_DOMAIN_TERMS and meanings)
+        if not should_challenge:
+            continue
+        canonical = _choose_canonical_meaning(objective, meanings)
+        blocking = len(meanings) > 1 or word in _AMBIGUOUS_DOMAIN_TERMS
+        challenges.append(
+            TerminologyChallenge(
+                term=word,
+                existing_meanings=meanings,
+                risk=(
+                    f"`{word}` maps to existing repo language in more than one place; an agent could pick the wrong boundary."
+                ),
+                recommended_canonical_term=canonical,
+                blocking=blocking,
+            )
+        )
+        questions.append(
+            ClarifyingQuestion(
+                question=f"When you say `{word}`, which repo term owns this behavior?",
+                why_it_matters="The implementation boundary changes depending on the canonical domain term.",
+                recommended_answer=f"Use `{canonical}` if that matches the requested behavior; otherwise name the intended term explicitly.",
+                blocking=blocking,
+            )
+        )
+        suggestions.append(
+            DocumentationCaptureSuggestion(
+                target="CONTEXT.md",
+                suggestion=f"Capture the resolved meaning of `{word}` for this objective after the operator decides.",
+                reason="CES should preserve domain-language decisions without mixing them into implementation plans.",
+            )
+        )
+        if len(meanings) > 1:
+            contradictions.append(
+                CodebaseContradiction(
+                    claim=f"The objective uses `{word}` as if it has one obvious implementation boundary.",
+                    evidence="; ".join(meanings),
+                    risk="Existing repo language suggests competing boundaries that may require different files, tests, or data ownership.",
+                    required_decision=f"Choose the canonical `{word}` meaning before implementation.",
+                    blocking=True,
+                )
+            )
+
+    if _approach_domain(objective) in {"operations", "data-removal"}:
+        suggestions.append(
+            DocumentationCaptureSuggestion(
+                target="docs/adr/",
+                suggestion="Consider an ADR only if the final approach is hard to reverse, surprising, and a real tradeoff.",
+                reason="Sensitive or destructive work often needs decision history, but CES should not create ADRs automatically.",
+            )
+        )
+    return DomainChallenge(
+        mode="grill",
+        context_sources=context_sources,
+        terminology_challenges=tuple(challenges),
+        codebase_contradictions=tuple(contradictions),
+        clarifying_questions=tuple(questions),
+        documentation_capture_suggestions=tuple(suggestions),
+    )
+
+
 def build_approach_decision_brief(
     project_root: str | Path,
     objective: str,
     *,
     acceptance_criteria: tuple[str, ...] | list[str] = (),
     must_not_break: tuple[str, ...] | list[str] = (),
+    grill: bool = False,
 ) -> ApproachDecisionBrief:
     """Build a deterministic, read-only pre-runtime approach challenge brief."""
 
@@ -1721,9 +2082,11 @@ def build_approach_decision_brief(
         must_not_break=normalized_must_not_break,
     )
     report = scan_project_mri(project_root)
+    domain_challenge = _build_domain_challenge(report.project_root, normalized_objective) if grill else None
     validation = _validation_commands_for(report)
     contract_command = _next_prompt_command(normalized_objective, normalized_acceptance, normalized_must_not_break)
-    if next_prompt.contract_status == "blocked":
+    domain_blockers = domain_challenge.blocking_items if domain_challenge is not None else ()
+    if next_prompt.contract_status == "blocked" or domain_blockers:
         decision = "needs_operator_decision"
         next_ces_command = "Clarify the request and rerun ces deliberate."
     else:
@@ -1735,6 +2098,7 @@ def build_approach_decision_brief(
         blockers = (
             "The intent gate blocked implementation; add acceptance criteria and must-not-break constraints before runtime work.",
         )
+    blockers = tuple(dict.fromkeys((*blockers, *domain_blockers)))
 
     alternatives = _approach_alternatives(normalized_objective, contract_command)
     perspectives = (
@@ -1827,6 +2191,7 @@ def build_approach_decision_brief(
         blockers=blockers,
         next_ces_command=next_ces_command,
         validation_commands=validation,
+        domain_challenge=domain_challenge,
     )
 
 

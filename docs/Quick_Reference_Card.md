@@ -70,7 +70,7 @@ Unattended `--yes` is still evidence-gated. CES should block auto-approval when 
 | Work completed outside CES | `ces complete` | Reconcile externally completed builder work with the audit trail |
 | Need independent verification | `ces verify` | Run local verification for the current project before approval; add `--write-contract` only when you want to persist an inferred contract |
 | Need a read-only project-health diagnostic | `ces mri` | Review maturity, readiness score, detected signals, prioritized risks, missing production-readiness signals, and recommended next CES actions |
-| Need the next readiness step or an agent handoff prompt | `ces next`, `ces deliberate`, `ces next-prompt` | Use deliberate for a read-only Approach Decision Brief with implementation/maintainer/risk pushback and preserved dissent before compiling the next agent request |
+| Need the next readiness step or an agent handoff prompt | `ces next`, `ces deliberate`, `ces next-prompt` | Use deliberate for a read-only Approach Decision Brief with implementation/maintainer/risk pushback and preserved dissent before compiling the next agent request; add `--grill` to challenge vague domain language against docs and code identifiers first |
 | Need a local readiness proof packet | `ces passport` | Summarize deterministic evidence, blockers, warnings, missing signals, and recommended promotion |
 | Need plan-only maturity promotion | `ces promote production-candidate` | Plan one checkpoint at a time without bypassing governance or consent gates |
 | Need constraints, slop findings, or rehearsal checks | `ces invariants`, `ces slop-scan`, `ces launch rehearsal` | Mine evidence-backed invariants, surface AI-native failure patterns, and rehearse validation without mutation |
