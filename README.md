@@ -80,7 +80,7 @@ The boundary is intentionally narrow. CES is not a hosted control plane, not a s
 
 ## Quick start
 
-### Prerequisites
+### 1. Install CES
 
 | Need | Notes |
 |---|---|
@@ -88,46 +88,94 @@ The boundary is intentionally narrow. CES is not a hosted control plane, not a s
 | Package tool | [`uv`](https://docs.astral.sh/uv/) |
 | Local runtime | Codex CLI or Claude Code installed, authenticated, and on `PATH` |
 
-Run `ces` with no arguments to print the Start Here guide. Use `ces --help` when you want the full command reference.
-
 ```bash
-ces
+uv tool install controlled-execution-system
+uv tool update-shell
 ces --help
 ces doctor
 ```
 
-### First command: guided start before runtime
-
-If you are starting a brand-new project from an idea, use the read-only creation plan first:
+If your ambient `python3` is Python 3.11, direct `pip install controlled-execution-system` may fail with `No matching distribution` before CES starts because the package requires Python 3.12 or 3.13. Ask `uv` for a supported interpreter explicitly:
 
 ```bash
-ces create "Create a small project-management app with tests and run instructions"
-# infers a short project name; add --name "Task Tracker" if you want to choose it
+uv tool install --python 3.13 controlled-execution-system
 ```
 
-For automation or copy/paste use:
+Run `ces` with no arguments to print the Start Here guide. Use `ces --help` when you want the full command reference.
+
+### 2. Choose your path
+
+| Situation | Start with |
+|---|---|
+| I have an idea and no folder yet | `ces create "..."` |
+| I am inside an empty folder | `ces start` or `ces build --from-scratch "..."` |
+| I have an existing repo | `ces mri`, then `ces next` |
+| I need a safe prompt before running an agent | `ces next-prompt "..."` |
+| I already have a PRD or GitHub issue | `ces intake ...` |
+
+`ces create`, `ces start`, and `ces ship` are read-only front doors: they do not launch a runtime, create `.ces/`, or mutate files.
+
+## Greenfield project: create a new project from scratch
+
+Use this when you have an idea but no existing app yet. Start with a read-only plan, then run the governed build inside the new project folder.
 
 ```bash
-ces create "Create a small project-management app with tests and run instructions" --name "Task Tracker"
+ces create "Create a small task tracker app with add/list/complete tasks, tests, and a README" --name "Task Tracker"
+mkdir -p task-tracker && cd task-tracker
+ces ship "Create a small task tracker app with add/list/complete tasks, tests, and a README"
+ces build --from-scratch "Create a small task tracker app with add/list/complete tasks, tests, and a README"
+ces verify
+ces proof
 ```
 
-`ces create` is read-only: it prints the `mkdir`, `ces ship`, `ces build --from-scratch`, `ces verify`, and `ces proof` sequence without creating folders, initializing `.ces/`, editing files, or launching a runtime.
-
-If you are already inside an idea folder or a messy AI-built/vibe-coded repo, use the read-only guided front door:
+If you use Codex, `ces build` stops before subprocess launch unless you explicitly accept the runtime boundary. After reading the prompt, rerun with:
 
 ```bash
-ces start
-# prompts: What do you want to build?
+ces build --from-scratch "Create a small task tracker app with add/list/complete tasks, tests, and a README" --accept-runtime-side-effects
 ```
 
-For automation or copy/paste use:
+Expected `ces create` output includes a target directory and a copy-paste sequence with `mkdir`, `ces ship`, `ces build --from-scratch`, `ces verify`, and `ces proof`.
+
+You know the greenfield path worked when `.ces/` exists in the new project, app files were created, `ces verify` passed or reported concrete missing evidence, and `ces proof` reports `proven` with a `safe-to-review` recommendation.
+
+## Brownfield project: apply CES to an existing project
+
+Use this when files already exist and behavior must not silently break. Start read-only, turn the objective into a bounded contract, then run plain `ces build`.
 
 ```bash
-ces start "Create a small project-management app with tests and run instructions"
-ces ship "Create a small project-management app with tests and run instructions"
+cd path/to/existing-repo
+ces mri
+ces next
+ces next-prompt "Add invoice notes to CSV exports" \
+  --acceptance "CSV exports include invoice notes when present." \
+  --must-not-break "Existing CSV export columns and import compatibility."
+ces build "Add invoice notes to CSV exports"
+ces verify
+ces proof
 ```
 
-`ces start` and `ces ship` are plan-only Production Autopilot reports. They do not launch a runtime, create `.ces/`, or mutate files. `ces start` gives beginners the exact path: plan, inspect/build, verify, prove. `ces ship` tells you whether to create a greenfield app with `ces build --from-scratch "..."` or work safely in an existing brownfield repo with `ces mri`, `ces next`, plain `ces build "Add ..."`, `ces verify`, and `ces proof`.
+You know the brownfield path worked when CES identifies the repo as brownfield, the contract/proof includes must-not-break behavior, changed files stay inside the declared scope, verification evidence is fresh, and `ces proof` reports `proven` or names the exact blocker.
+
+## Quality gates: how to know it worked
+
+Do not approve because the agent says it is done. Approve only when CES evidence supports it.
+
+A run is ready for review when:
+
+1. The runtime emitted a valid `ces:completion` claim.
+2. Changed files match the requested scope.
+3. Required verification commands passed.
+4. Brownfield must-not-break behavior has evidence.
+5. `ces proof` reports `proven`.
+6. The recommendation is `safe-to-review`.
+
+If any item is missing, run:
+
+```bash
+ces why
+ces verify
+ces proof
+```
 
 ### Compile the next agent contract before touching code
 

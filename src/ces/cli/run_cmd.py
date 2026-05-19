@@ -381,14 +381,14 @@ def _manifest_with_effective_brownfield_scope(
     brief: BuilderBriefDraft,
     delta: WorkspaceDelta | None = None,
 ) -> object:
-    """Populate brownfield manifest scope from operator truth paths and runtime edits.
+    """Populate brownfield manifest scope from operator truth paths.
 
     Brownfield governance should fail closed before runtime when no scope clues are
-    available, but ReleasePulse showed that explicit source-of-truth paths and
-    observed runtime edits must be reflected before completion evidence is
-    validated. Otherwise users see unhelpful `allowed=()` false governance
-    failures after a successful implementation.
+    available. Observed runtime edits are evidence, not authorization: adding
+    them to ``affected_files`` before scope checks would launder out-of-scope
+    changes into the approved manifest after the fact.
     """
+    del delta
     if getattr(brief, "project_mode", "") != "brownfield":
         return manifest
     existing = tuple(getattr(manifest, "affected_files", ()) or ())
@@ -397,10 +397,6 @@ def _manifest_with_effective_brownfield_scope(
         for candidate in _candidate_scope_paths(str(value)):
             if candidate not in paths:
                 paths.append(candidate)
-    if delta is not None:
-        for changed in _runtime_product_scope_files(delta):
-            if changed not in paths:
-                paths.append(changed)
     if tuple(paths) == existing:
         return manifest
     if isinstance(manifest, TaskManifest):
@@ -1705,7 +1701,8 @@ async def run_task(
         "--accept-runtime-side-effects",
         help=(
             "Explicitly consent before launching a runtime that cannot enforce manifest tool allowlists "
-            "or workspace scoping. Required for Codex full-access execution."
+            "or workspace scoping. Required for Codex because CES cannot enforce "
+            "manifest tool allowlists before subprocess launch."
         ),
     ),
     from_spec: Path | None = typer.Option(
@@ -1895,7 +1892,8 @@ async def continue_task(
         "--accept-runtime-side-effects",
         help=(
             "Explicitly consent before launching a runtime that cannot enforce manifest tool allowlists "
-            "or workspace scoping. Required for Codex full-access execution."
+            "or workspace scoping. Required for Codex because CES cannot enforce "
+            "manifest tool allowlists before subprocess launch."
         ),
     ),
     project_root: Path | None = typer.Option(

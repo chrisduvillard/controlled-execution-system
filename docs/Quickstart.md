@@ -11,25 +11,27 @@ builder-first tool with SQLite project state and no hosted control plane.
 
 ## 1. Install CES
 
-From source:
-
-```bash
-git clone https://github.com/chrisduvillard/controlled-execution-system.git
-cd controlled-execution-system
-uv sync
-uv run ces --help
-```
-
-For day-to-day use, install the published package from PyPI:
+Recommended for day-to-day use:
 
 ```bash
 uv tool install controlled-execution-system
+uv tool update-shell
+ces --help
 ```
 
 If your default `python3` is Python 3.11, a direct `pip install controlled-execution-system` can stop with `No matching distribution` because CES requires Python 3.12 or 3.13. Use uv with an explicit supported interpreter, such as Python 3.13:
 
 ```bash
 uv tool install --python 3.13 controlled-execution-system
+```
+
+From source, only if developing CES itself:
+
+```bash
+git clone https://github.com/chrisduvillard/controlled-execution-system.git
+cd controlled-execution-system
+uv sync
+uv run ces --help
 ```
 
 ## Before you start
@@ -133,6 +135,21 @@ ces verify
 ces proof
 ```
 
+If you use Codex, the first `ces build` run stops before subprocess launch until you explicitly accept the runtime boundary. After reading the notice, rerun with `--accept-runtime-side-effects`.
+
+Expected `ces create` output includes:
+
+```text
+# CES Create Plan
+Target directory: .../task-tracker
+Copy-paste sequence:
+1. mkdir -p .../task-tracker
+2. ces ship "..."
+3. ces build --from-scratch "..."
+4. ces verify
+5. ces proof
+```
+
 Use `ces approve --yes` only after `ces proof` reports `proven` and recommends `safe-to-review`.
 
 ## 4b. Brownfield flow (existing repo → bounded change)
@@ -143,12 +160,25 @@ Run this at the root of an existing project.
 cd /path/to/existing-repo
 ces mri
 ces next
+ces next-prompt "Add invoice notes to CSV exports" \
+  --acceptance "CSV exports include invoice notes when present." \
+  --must-not-break "Existing CSV export columns and import compatibility."
 ces build "Add invoice notes to CSV exports"
 ces verify
 ces proof
 ```
 
 For higher-risk brownfield work, keep scope explicit with `ces next-prompt "..." --must-not-break "..." --acceptance "..."` before `ces build`.
+
+You are looking for:
+
+```text
+Proof status: proven
+Recommendation: safe-to-review
+Primary blocker: none
+```
+
+If proof is `partially_proven`, `unproven`, or `contradicted`, do not approve yet. Run `ces why`, add the missing evidence or narrower scope, then rerun `ces verify` and `ces proof`.
 
 ## 5. Use the Production Autopilot reports
 

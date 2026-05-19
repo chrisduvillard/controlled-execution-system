@@ -224,7 +224,11 @@ def load_audit_hmac_secret(path: Path, env_override: str | None = None) -> bytes
     publicly-known secret.
     """
     if env_override and DEV_DEFAULT_HMAC_MARKER not in env_override:
-        return env_override.encode("utf-8")
+        secret = env_override.encode("utf-8")
+        if len(secret) < AUDIT_HMAC_SECRET_BYTES:
+            msg = f"CES_AUDIT_HMAC_SECRET must be at least {AUDIT_HMAC_SECRET_BYTES} bytes."
+            raise ValueError(msg)
+        return secret
     if path.exists():
         secret = path.read_bytes()
         if len(secret) < AUDIT_HMAC_SECRET_BYTES:

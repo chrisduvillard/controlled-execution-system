@@ -393,11 +393,12 @@ class _BaseRuntimeAdapter:
 
     def summarize_evidence(self, evidence_context: dict) -> tuple[str, str]:
         summary = [
+            "Raw runtime status only; this is not an approval decision.",
             f"Runtime: {evidence_context.get('runtime_name', self.runtime_name)}",
             f"Task: {evidence_context.get('description', 'unknown task')}",
             f"Exit code: {evidence_context.get('exit_code', 'n/a')}",
             f"Output lines: {evidence_context.get('output_lines', 0)}",
-            f"Recommendation: {'approve' if evidence_context.get('exit_code', 1) == 0 else 'review carefully'}",
+            "Approval source: run `ces verify` and `ces proof`; do not approve from runtime exit code alone.",
         ]
         challenge = [
             "Did the runtime actually modify the intended files?",
