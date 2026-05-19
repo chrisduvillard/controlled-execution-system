@@ -133,17 +133,17 @@ ces ship "Create a small project-management app with tests and run instructions"
 
 CES does not replace your coding agent. CES gives your coding agent a narrow, testable, evidence-backed mission.
 
-Use `ces deliberate` when the approach itself needs pushback before you hand work to Codex, Claude Code, or another coding agent. It produces a read-only Approach Decision Brief with alternatives, implementation/maintainer/risk perspectives, preserved dissent, blockers, and the next CES command. Add `--grill` when vague domain language should be challenged against `CONTEXT.md`, `CONTEXT-MAP.md`, `docs/adr/`, and visible code identifiers before runtime work:
+Use `ces deliberate` when the approach itself needs pushback before you hand work to Codex, Claude Code, or another coding agent. It produces a read-only Approach Decision Brief with alternatives, implementation/maintainer/risk perspectives, preserved dissent, blockers, and the next CES command. Add `--challenge` when vague domain language should be challenged against `CONTEXT.md`, `CONTEXT-MAP.md`, `docs/adr/`, and visible code identifiers before runtime work:
 
 ```bash
 ces deliberate "Add invoice notes to CSV exports"
-ces deliberate "Add account-level invoice export settings" --grill
+ces deliberate "Add account-level invoice export settings" --challenge
 ces deliberate "Rotate production database credentials" \
   --acceptance "Old credentials are revoked only after the new ones pass smoke verification." \
   --must-not-break "Existing deploy and rollback commands."
 ```
 
-`--grill` stays deterministic and read-only. It surfaces domain context sources, overloaded terminology, code/doc contradictions, blocking clarifying questions, and documentation capture suggestions without editing glossary or ADR files.
+`--challenge` stays deterministic and read-only. It surfaces domain context sources, overloaded terminology, code/doc contradictions, blocking clarifying questions, and documentation capture suggestions without editing glossary or ADR files.
 
 Use `ces next-prompt` when you are ready for CES to turn an objective plus repo context into a strict Developer Intent Contract:
 

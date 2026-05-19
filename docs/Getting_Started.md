@@ -153,17 +153,17 @@ Use them when you want CES to diagnose the repository, explain the next safest p
 
 CES does not replace your coding agent. CES gives your coding agent a narrow, testable, evidence-backed mission.
 
-`ces deliberate` is the read-only Approach Decision Brief before that handoff. It does not ask agents to argue until synthetic consensus; it preserves alternatives, implementation/maintainer/risk critique, preserved dissent, blockers, and the operator decision needed before runtime work. Add `--grill` when the domain language itself needs challenge against `CONTEXT.md`, `CONTEXT-MAP.md`, `docs/adr/`, and visible code identifiers.
+`ces deliberate` is the read-only Approach Decision Brief before that handoff. It does not ask agents to argue until synthetic consensus; it preserves alternatives, implementation/maintainer/risk critique, preserved dissent, blockers, and the operator decision needed before runtime work. Add `--challenge` when the domain language itself needs challenge against `CONTEXT.md`, `CONTEXT-MAP.md`, `docs/adr/`, and visible code identifiers.
 
 ```bash
 ces deliberate "Add invoice notes to CSV exports" --project-root .
-ces deliberate "Add account-level invoice export settings" --project-root . --grill
+ces deliberate "Add account-level invoice export settings" --project-root . --challenge
 ces deliberate "Rotate production database credentials" \
   --acceptance "New credentials pass smoke verification before cutover." \
   --must-not-break "Existing rollback path."
 ```
 
-`--grill` is still read-only: it reports domain context sources, terminology challenges, codebase contradictions, clarifying questions, and glossary/ADR capture suggestions without writing those docs automatically.
+`--challenge` is still read-only: it reports domain context sources, terminology challenges, codebase contradictions, clarifying questions, and glossary/ADR capture suggestions without writing those docs automatically.
 
 `ces next-prompt` is the read-only contract compiler for that handoff. It turns an objective plus the repo's MRI/slop context into a strict Developer Intent Contract that works well when pasted into Codex, Claude Code, or a similar agent.
 

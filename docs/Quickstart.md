@@ -105,7 +105,7 @@ ces ship "Create a small task tracker app with add/list/complete tasks, tests, a
 ces build --from-scratch "Create a small task tracker app with add/list/complete tasks, tests, and a README"
 ```
 
-For an existing brownfield repo, use `ces mri` and `ces next` first. If the approach itself needs pushback, run `ces deliberate "Change ..."` to produce a read-only Approach Decision Brief with alternatives, implementation/maintainer/risk critique, and preserved dissent before compiling an agent contract. Add `--grill` when the risky part is domain language: CES will challenge vague terms against `CONTEXT.md`, `CONTEXT-MAP.md`, `docs/adr/`, and visible code identifiers without editing those files. Then run plain `ces build "Change ..."` for the bounded implementation step. Do not use `--from-scratch` unless you intentionally want to replace/recreate a project.
+For an existing brownfield repo, use `ces mri` and `ces next` first. If the approach itself needs pushback, run `ces deliberate "Change ..."` to produce a read-only Approach Decision Brief with alternatives, implementation/maintainer/risk critique, and preserved dissent before compiling an agent contract. Add `--challenge` when the risky part is domain language: CES will challenge vague terms against `CONTEXT.md`, `CONTEXT-MAP.md`, `docs/adr/`, and visible code identifiers without editing those files. Then run plain `ces build "Change ..."` for the bounded implementation step. Do not use `--from-scratch` unless you intentionally want to replace/recreate a project.
 
 CES will:
 1. Auto-create `.ces/` with local project state

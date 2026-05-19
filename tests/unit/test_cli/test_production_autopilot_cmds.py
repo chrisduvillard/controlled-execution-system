@@ -296,7 +296,7 @@ def test_deliberate_high_risk_with_boundaries_is_ready_and_preserves_flags(tmp_p
     assert "--must-not-break 'Existing rollback path.'" in payload["next_ces_command"]
 
 
-def test_deliberate_grill_json_surfaces_domain_language_and_docs(tmp_path: Path) -> None:
+def test_deliberate_challenge_json_surfaces_domain_language_and_docs(tmp_path: Path) -> None:
     _write_minimal_project(tmp_path)
     (tmp_path / "CONTEXT.md").write_text(
         """
@@ -328,7 +328,7 @@ def test_deliberate_grill_json_surfaces_domain_language_and_docs(tmp_path: Path)
             "Add account-level invoice export settings",
             "--project-root",
             str(tmp_path),
-            "--grill",
+            "--challenge",
             "--format",
             "json",
         ],
@@ -340,7 +340,7 @@ def test_deliberate_grill_json_surfaces_domain_language_and_docs(tmp_path: Path)
     assert not (tmp_path / ".ces").exists()
     payload = json.loads(result.stdout)
     assert payload["execution_mode"] == "read-only-deliberation"
-    assert payload["domain_challenge"]["mode"] == "grill"
+    assert payload["domain_challenge"]["mode"] == "challenge"
     assert "CONTEXT.md" in payload["domain_challenge"]["context_sources"]
     assert "docs/adr/0001-billing-account.md" in payload["domain_challenge"]["context_sources"]
     assert any(item["term"] == "account" for item in payload["domain_challenge"]["terminology_challenges"])
@@ -355,7 +355,7 @@ def test_deliberate_grill_json_surfaces_domain_language_and_docs(tmp_path: Path)
     assert any("account" in item.lower() for item in payload["blockers"])
 
 
-def test_deliberate_grill_reads_context_map_adr_and_lowercase_terms(tmp_path: Path) -> None:
+def test_deliberate_challenge_reads_context_map_adr_and_lowercase_terms(tmp_path: Path) -> None:
     _write_minimal_project(tmp_path)
     (tmp_path / "CONTEXT-MAP.md").write_text(
         "- account: Customer-owned billing and usage boundary.\n",
@@ -374,7 +374,7 @@ def test_deliberate_grill_reads_context_map_adr_and_lowercase_terms(tmp_path: Pa
             "Change account settings",
             "--project-root",
             str(tmp_path),
-            "--grill",
+            "--challenge",
             "--format",
             "json",
         ],
@@ -386,7 +386,7 @@ def test_deliberate_grill_reads_context_map_adr_and_lowercase_terms(tmp_path: Pa
             "Add workspace transcript sharing",
             "--project-root",
             str(tmp_path),
-            "--grill",
+            "--challenge",
             "--format",
             "json",
         ],
@@ -410,7 +410,7 @@ def test_deliberate_grill_reads_context_map_adr_and_lowercase_terms(tmp_path: Pa
     assert workspace_payload["decision"] == "needs_operator_decision"
 
 
-def test_deliberate_grill_uses_visible_lowercase_code_identifiers(tmp_path: Path) -> None:
+def test_deliberate_challenge_uses_visible_lowercase_code_identifiers(tmp_path: Path) -> None:
     _write_minimal_project(tmp_path)
     (tmp_path / "src").mkdir(exist_ok=True)
     (tmp_path / "src" / "sessions.py").write_text(
@@ -425,7 +425,7 @@ def test_deliberate_grill_uses_visible_lowercase_code_identifiers(tmp_path: Path
             "Change session timeout",
             "--project-root",
             str(tmp_path),
-            "--grill",
+            "--challenge",
             "--format",
             "json",
         ],
@@ -440,17 +440,17 @@ def test_deliberate_grill_uses_visible_lowercase_code_identifiers(tmp_path: Path
     )
 
 
-def test_deliberate_grill_markdown_contains_domain_challenge_sections(tmp_path: Path) -> None:
+def test_deliberate_challenge_markdown_contains_domain_challenge_sections(tmp_path: Path) -> None:
     _write_minimal_project(tmp_path)
     (tmp_path / "CONTEXT.md").write_text("- Session: Authenticated browser lifetime.\n", encoding="utf-8")
 
     result = runner.invoke(
         _get_app(),
-        ["deliberate", "Change session timeout", "--project-root", str(tmp_path), "--grill"],
+        ["deliberate", "Change session timeout", "--project-root", str(tmp_path), "--challenge"],
     )
 
     assert result.exit_code == 0, result.stdout
-    assert "## Domain-aware grill" in result.stdout
+    assert "## Domain challenge" in result.stdout
     assert "### Domain context sources" in result.stdout
     assert "### Terminology challenges" in result.stdout
     assert "### Codebase contradictions" in result.stdout
@@ -458,13 +458,13 @@ def test_deliberate_grill_markdown_contains_domain_challenge_sections(tmp_path: 
     assert "### Documentation capture suggestions" in result.stdout
 
 
-def test_deliberate_grill_help_lists_flag() -> None:
+def test_deliberate_challenge_help_lists_flag() -> None:
     result = runner.invoke(_get_app(), ["deliberate", "--help"])
 
     assert result.exit_code == 0, result.stdout
     cleaned = re.sub(r"\x1b\[[0-9;]*[a-zA-Z]", "", result.stdout)
     normalized = re.sub(r"\s+", "", cleaned)
-    assert "--grill" in normalized
+    assert "--challenge" in normalized
 
 
 def test_passport_json_contains_evidence_backed_summary(tmp_path: Path) -> None:

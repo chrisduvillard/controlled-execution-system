@@ -1179,9 +1179,9 @@ class ApproachDecisionBrief:
             lines.extend(
                 [
                     "",
-                    "## Domain-aware grill",
+                    "## Domain challenge",
                     "",
-                    "This optional read-only pass challenges the objective against repo language, docs, and visible code signals before runtime delegation.",
+                    "This optional read-only challenge pass challenges the objective against repo language, docs, and visible code signals before runtime delegation.",
                     "",
                     "### Domain context sources",
                     "",
@@ -1217,7 +1217,7 @@ class ApproachDecisionBrief:
                         ]
                     )
             else:
-                lines.append("- No direct code/doc contradictions detected by the deterministic grill.")
+                lines.append("- No direct code/doc contradictions detected by the deterministic challenge.")
             lines.extend(["", "### Clarifying questions", ""])
             if challenge.clarifying_questions:
                 for item in challenge.clarifying_questions:
@@ -2050,7 +2050,7 @@ def _build_domain_challenge(root: Path, objective: str) -> DomainChallenge:
             )
         )
     return DomainChallenge(
-        mode="grill",
+        mode="challenge",
         context_sources=context_sources,
         terminology_challenges=tuple(challenges),
         codebase_contradictions=tuple(contradictions),
@@ -2065,7 +2065,7 @@ def build_approach_decision_brief(
     *,
     acceptance_criteria: tuple[str, ...] | list[str] = (),
     must_not_break: tuple[str, ...] | list[str] = (),
-    grill: bool = False,
+    challenge: bool = False,
 ) -> ApproachDecisionBrief:
     """Build a deterministic, read-only pre-runtime approach challenge brief."""
 
@@ -2082,7 +2082,7 @@ def build_approach_decision_brief(
         must_not_break=normalized_must_not_break,
     )
     report = scan_project_mri(project_root)
-    domain_challenge = _build_domain_challenge(report.project_root, normalized_objective) if grill else None
+    domain_challenge = _build_domain_challenge(report.project_root, normalized_objective) if challenge else None
     validation = _validation_commands_for(report)
     contract_command = _next_prompt_command(normalized_objective, normalized_acceptance, normalized_must_not_break)
     domain_blockers = domain_challenge.blocking_items if domain_challenge is not None else ()
