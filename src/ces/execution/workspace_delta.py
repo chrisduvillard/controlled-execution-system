@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import os
 from pathlib import Path
 
 from ces.shared.base import CESBaseModel
@@ -48,12 +49,7 @@ class WorkspaceSnapshot(CESBaseModel):
         resolved = root.resolve()
         files: dict[str, str] = {}
         for path in resolved.rglob("*"):
-            if path.is_symlink():
-                continue
-            if not path.is_file():
-                continue
             try:
-                path.resolve(strict=False).relative_to(resolved)
                 rel = path.relative_to(resolved)
             except ValueError:
                 continue
@@ -63,6 +59,18 @@ class WorkspaceSnapshot(CESBaseModel):
                 or any(rel_posix.startswith(prefix) for prefix in _EXCLUDED_PATH_PREFIXES)
                 or rel_posix in _EXCLUDED_PATHS
             ):
+                continue
+            if path.is_symlink():
+                try:
+                    files[rel_posix] = _hash_symlink(path)
+                except OSError:
+                    continue
+                continue
+            if not path.is_file():
+                continue
+            try:
+                path.resolve(strict=False).relative_to(resolved)
+            except ValueError:
                 continue
             try:
                 files[rel_posix] = _hash_file(path)
@@ -83,6 +91,12 @@ class WorkspaceSnapshot(CESBaseModel):
             modified_files=tuple(modified),
             deleted_files=tuple(deleted),
         )
+
+
+def _hash_symlink(path: Path) -> str:
+    target = os.readlink(path)
+    digest = hashlib.sha256(target.encode("utf-8", errors="surrogateescape")).hexdigest()
+    return f"symlink:{digest}"
 
 
 def _hash_file(path: Path) -> str:

@@ -44,7 +44,24 @@ _SECRET_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
 
 # File paths that should never appear in commits
 _SENSITIVE_PATHS = {".env", ".env.local", ".env.production", "credentials.json", "secrets.json"}
+_SENSITIVE_FILENAMES = {".npmrc", ".pypirc", ".netrc", ".envrc", "kubeconfig"}
+_SENSITIVE_DIRS = {".aws", ".ssh", ".gnupg", ".kube"}
 _SENSITIVE_EXTENSIONS = (".pem", ".key", ".p12", ".pfx", ".jks")
+
+
+def _is_sensitive_path(fpath: str) -> bool:
+    normalized = fpath.replace("\\", "/")
+    path = PurePosixPath(normalized)
+    name = path.name
+    parts = set(path.parts)
+    if name == ".env.example":
+        return False
+    return (
+        name in _SENSITIVE_PATHS
+        or name in _SENSITIVE_FILENAMES
+        or (name.startswith(".env.") and name != ".env.example")
+        or bool(parts & _SENSITIVE_DIRS)
+    )
 
 
 class SecuritySensor(BaseSensor):
@@ -70,9 +87,7 @@ class SecuritySensor(BaseSensor):
 
         # Path-based checks (no file reading needed)
         for fpath in files_to_check:
-            # Cross-platform: normalize separators then extract final component
-            name = PurePosixPath(fpath.replace("\\", "/")).name
-            if name in _SENSITIVE_PATHS:
+            if _is_sensitive_path(fpath):
                 findings.append(f"Sensitive file in changeset: {fpath}")
                 self._findings.append(
                     SensorFinding(

@@ -7,6 +7,8 @@ import stat
 from pathlib import Path
 from unittest.mock import patch
 
+import pytest
+
 from ces.cli._runtime_diagnostics import (
     scrub_and_truncate_runtime_output,
     summarize_runtime_failure,
@@ -47,6 +49,14 @@ def test_summarize_runtime_failure_prefers_redacted_stderr() -> None:
     assert "Transcript: runtime-transcripts/transcript.txt" in summary
 
 
+def test_summarize_runtime_failure_redacts_absolute_transcript_path(tmp_path: Path) -> None:
+    transcript = tmp_path / ".ces" / "runtime-transcripts" / "run.txt"
+    summary = summarize_runtime_failure({"runtime_name": "codex", "exit_code": 1, "transcript_path": str(transcript)})
+
+    assert str(tmp_path) not in summary
+    assert "Transcript: <project>/.ces/runtime-transcripts/run.txt" in summary
+
+
 def test_summarize_runtime_failure_uses_stdout_when_stderr_empty() -> None:
     summary = summarize_runtime_failure({"runtime_name": "claude", "exit_code": 2, "stdout": "partial log"})
 
@@ -84,6 +94,7 @@ def test_write_runtime_diagnostics_sanitizes_filename_content_and_permissions(tm
     content = path.read_text(encoding="utf-8")
     assert secret not in content
     assert "TOKEN=<REDACTED>" in content
+    assert str(tmp_path) not in content
     if os.name != "nt":
         assert stat.S_IMODE(path.parent.stat().st_mode) == 0o700
         assert stat.S_IMODE(path.stat().st_mode) == 0o600
@@ -99,3 +110,23 @@ def test_write_runtime_diagnostics_continues_when_chmod_fails(tmp_path: Path) ->
 
     assert path.exists()
     assert "ok" in path.read_text(encoding="utf-8")
+
+
+def test_write_runtime_diagnostics_rejects_symlinked_ces_dir(tmp_path: Path) -> None:
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (tmp_path / ".ces").symlink_to(outside)
+
+    with pytest.raises(ValueError, match=r"symlinked \.ces"):
+        write_runtime_diagnostics(tmp_path, "M-1", {"runtime_name": "codex", "exit_code": 1})
+
+
+def test_write_runtime_diagnostics_rejects_symlinked_runtime_diagnostics_dir(tmp_path: Path) -> None:
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    diagnostics = tmp_path / ".ces" / "runtime-diagnostics"
+    diagnostics.parent.mkdir()
+    diagnostics.symlink_to(outside)
+
+    with pytest.raises(ValueError, match="CES state path outside|symlinked"):
+        write_runtime_diagnostics(tmp_path, "M-1", {"runtime_name": "codex", "exit_code": 1})

@@ -35,8 +35,8 @@ def test_workspace_delta_tracks_ces_governance_files_but_ignores_runtime_outputs
     assert delta.created_files == (".ces/state.db",)
 
 
-def test_workspace_snapshot_skips_symlinks_to_outside_files(tmp_path) -> None:
-    """Workspace deltas should not hash files that escape the project via symlink."""
+def test_workspace_snapshot_tracks_symlinks_without_hashing_targets(tmp_path) -> None:
+    """Workspace deltas should see symlink artifacts without reading outside targets."""
     outside = tmp_path / "outside.txt"
     outside.write_text("outside secret-ish content\n", encoding="utf-8")
     (tmp_path / "inside.txt").write_text("inside\n", encoding="utf-8")
@@ -45,13 +45,29 @@ def test_workspace_snapshot_skips_symlinks_to_outside_files(tmp_path) -> None:
     snapshot = WorkspaceSnapshot.capture(tmp_path)
 
     assert "inside.txt" in snapshot.files
-    assert "linked-outside.txt" not in snapshot.files
+    assert snapshot.files["linked-outside.txt"].startswith("symlink:")
 
 
-def test_workspace_snapshot_ignores_broken_symlink(tmp_path) -> None:
+def test_workspace_delta_reports_symlink_target_changes(tmp_path) -> None:
+    first = tmp_path / "first.txt"
+    second = tmp_path / "second.txt"
+    first.write_text("first", encoding="utf-8")
+    second.write_text("second", encoding="utf-8")
+    link = tmp_path / "current.txt"
+    link.symlink_to(first)
+    snapshot = WorkspaceSnapshot.capture(tmp_path)
+    link.unlink()
+    link.symlink_to(second)
+
+    delta = snapshot.diff(WorkspaceSnapshot.capture(tmp_path))
+
+    assert delta.modified_files == ("current.txt",)
+
+
+def test_workspace_snapshot_tracks_broken_symlink(tmp_path) -> None:
     """Broken symlinks in messy brownfield repos should not crash snapshotting."""
     (tmp_path / "broken.txt").symlink_to(tmp_path / "missing.txt")
 
     snapshot = WorkspaceSnapshot.capture(tmp_path)
 
-    assert snapshot.files == {}
+    assert snapshot.files["broken.txt"].startswith("symlink:")

@@ -19,6 +19,7 @@ from ces.cli import (
     benchmark_cmd,
     brownfield_cmd,
     classify_cmd,
+    cleanup_cmd,
     complete_cmd,
     diff_cmd,
     doctor_cmd,
@@ -155,6 +156,7 @@ Start Here:
   `ces mri`       Read-only diagnosis of readiness gaps and risks
   `ces deliberate` Read-only Approach Decision Brief before implementation
   `ces proof`     Compact shareable proof card: evidence, gaps, ship/no-ship
+  `ces cleanup`   Preview/remove project-local `.ces/` state; does not uninstall CES
   `ces next`      Show the next safest readiness step
   `ces status`    Show builder-first status; add `--expert` for the full expert view
 
@@ -203,6 +205,13 @@ def main(
 # ---------------------------------------------------------------------------
 
 app.command(name="init", help="Optional manual setup before your first builder-first run.")(init_cmd.init_project)
+app.command(
+    name="cleanup",
+    help=(
+        "Dry-run by default. Preview or remove project-local `.ces/` state and only the "
+        "CES-managed `.gitignore` block; does not uninstall CES and refuses symlinked paths."
+    ),
+)(cleanup_cmd.cleanup_project)
 app.command(name="manifest", help="Advanced governance: generate a task manifest from natural language.")(
     manifest_cmd.create_manifest
 )
