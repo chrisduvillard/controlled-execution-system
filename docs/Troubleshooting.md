@@ -2,6 +2,35 @@
 
 Common issues and how to resolve them.
 
+## Beginner setup checks
+
+Run these before a first governed build:
+
+```bash
+which ces
+ces --version
+python --version
+uv python list
+which codex || true
+which claude || true
+ces doctor
+ces doctor --runtime-safety
+```
+
+If `ces` is missing, install with `uv tool install controlled-execution-system` and reopen your shell or run `uv tool update-shell`. If Python 3.11 causes `No matching distribution`, use `uv tool install --python 3.13 controlled-execution-system`.
+
+If neither `codex` nor `claude` exists, install and authenticate one runtime before `ces build`. `CES_DEMO_MODE=1` can help optional helper/provider flows; it cannot run `ces build` or `ces execute` without Codex CLI or Claude Code.
+
+If proof is not ready, do not approve. Run:
+
+```bash
+ces why
+ces verify
+ces proof
+```
+
+If you accidentally run from the CES source checkout or the wrong directory, switch to the project you want to govern. Keep `.ces/` untracked unless you intentionally share exported reports or team verification policy.
+
 ## "Not inside a CES project"
 
 **Error:**

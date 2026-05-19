@@ -333,6 +333,11 @@ class TestAuditHmacPersistence:
         override = "ci-override-secret-at-least-32-bytes-long"
         assert load_audit_hmac_secret(path, env_override=override) == override.encode("utf-8")
 
+    def test_env_override_rejects_short_secret(self, tmp_path: Path) -> None:
+        path = tmp_path / AUDIT_HMAC_FILENAME
+        with pytest.raises(ValueError, match="CES_AUDIT_HMAC_SECRET.*32 bytes"):
+            load_audit_hmac_secret(path, env_override="too-short")
+
     def test_env_override_with_dev_default_falls_through(self, tmp_path: Path) -> None:
         """If the env value is the hardcoded dev placeholder, ignore it and use the file."""
         file_secret = generate_audit_hmac_secret()

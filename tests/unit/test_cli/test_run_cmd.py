@@ -236,8 +236,8 @@ def test_greenfield_empty_manifest_scope_derives_runtime_changed_files() -> None
     assert manifest.affected_files == ()
 
 
-def test_brownfield_empty_manifest_scope_derives_truth_paths_and_runtime_changes() -> None:
-    """ReleasePulse dogfood: brownfield verification should not hit allowed=()."""
+def test_brownfield_empty_manifest_scope_derives_truth_paths_not_runtime_changes() -> None:
+    """Observed brownfield edits are evidence, not post-hoc authorization."""
     from ces.cli._builder_flow import BuilderBriefDraft
     from ces.cli.run_cmd import _manifest_with_effective_brownfield_scope
     from ces.execution.workspace_delta import WorkspaceDelta
@@ -275,7 +275,8 @@ def test_brownfield_empty_manifest_scope_derives_truth_paths_and_runtime_changes
 
     scoped = _manifest_with_effective_brownfield_scope(manifest, brief, delta)
 
-    assert scoped.affected_files == ("README.md", "src/releasepulse/cli.py", "tests/test_cli.py")
+    assert scoped.affected_files == ("README.md", "src/releasepulse/cli.py")
+    assert "tests/test_cli.py" not in scoped.affected_files
     assert ".ces/state.db" not in scoped.affected_files
     assert manifest.affected_files == ()
 

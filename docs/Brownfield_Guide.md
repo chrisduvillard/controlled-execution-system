@@ -2,7 +2,7 @@
 
 CES supports brownfield projects — existing codebases where legacy behavior must be preserved while making changes. This guide explains how CES detects, captures, and governs changes to existing systems.
 
-Default posture: start with the builder-first flow (`ces build`, `ces continue`, `ces explain --view brownfield`) and only drop into the expert workflow brownfield commands when you need to register, review, or promote specific legacy behaviors yourself.
+Default posture: start read-only with `ces mri`, `ces next`, and `ces next-prompt`; run `ces build` only after the scope, acceptance criteria, and must-not-break behavior are explicit. Use expert brownfield commands only when you need to register, review, or promote specific legacy behaviors yourself.
 
 Use the [Operator Playbook](Operator_Playbook.md) when you need the broader builder-first versus expert workflow boundary for a single request. This guide focuses on the brownfield-specific legacy-behavior path within that workflow.
 
@@ -14,9 +14,18 @@ When you run `ces build`, CES automatically detects whether the project is green
 - **Brownfield**: directory contains existing source files
 
 ```bash
-# Auto-detection: CES sees existing files and enters brownfield mode
+# Read-only diagnosis before runtime execution
 cd my-existing-project
+ces mri
+ces next
+ces next-prompt "Add input validation to the API" \
+  --acceptance "Invalid payloads return documented 4xx errors." \
+  --must-not-break "Existing successful API requests and response schemas."
+
+# Governed execution after the scope is explicit
 ces build "Add input validation to the API"
+ces verify
+ces proof
 ```
 
 CES will ask additional questions in brownfield mode:
@@ -104,26 +113,53 @@ ces brownfield discard OLB-<entry-id>
 ### First time applying CES to an existing repo
 
 ```bash
-# 1. Start with a builder-first run — CES auto-detects brownfield
+# 1. Start read-only. Understand the repo and generate a bounded contract.
 cd my-existing-project
-ces build "Add feature X"
+ces mri
+ces next
+ces next-prompt "Add feature X" \
+  --acceptance "The feature has focused tests and documented run instructions." \
+  --must-not-break "Existing public CLI/API behavior."
 
-# 2. Resume the same builder-first request if CES paused for grouped review
+# 2. Run the governed build only after the boundaries are explicit.
+ces build "Add feature X"
+ces verify
+ces proof
+
+# 3. Resume the same builder-first request if CES paused for grouped review.
 ces continue
 
-# 3. After the first run, use expert workflow commands for any critical
-#    behaviors CES should track explicitly
+# 4. Use expert workflow commands only for critical behaviors CES should track explicitly.
 ces brownfield register --system "auth" --description "Session tokens expire after 30 minutes"
 ces brownfield register --system "api" --description "Rate limit is 100 req/min per API key"
 
-# 4. Review and promote the important ones
+# 5. Review and promote the important ones.
 ces brownfield list
 ces brownfield review OLB-<entry-id> --disposition preserve
 ces brownfield promote OLB-<entry-id>
 
-# 5. Future builds will include these as constraints
+# 6. Future builds will include these as constraints.
 ces build "Change session handling"
 ```
+
+### How to know brownfield protection worked
+
+After a brownfield run, check:
+
+```bash
+ces explain --view brownfield
+ces verify
+ces proof
+```
+
+Look for:
+
+- source-of-truth files or docs captured in the contract
+- critical flows and must-not-break behaviors listed
+- changed files inside the declared scope
+- behavior deltas marked `added`, `modified`, `removed`, or `preserved`
+- no unresolved `unknown` behavior deltas before approval
+- `ces proof` status `proven` with recommendation `safe-to-review`
 
 ### Ongoing brownfield governance
 

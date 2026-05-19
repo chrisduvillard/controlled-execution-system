@@ -36,6 +36,26 @@ def serialize_model(value: Any) -> Any:
     return value
 
 
+_IGNORED_CES_RUNTIME_STATE_FILES = {
+    ".ces/state.db",
+    ".ces/state.db-shm",
+    ".ces/state.db-wal",
+    ".ces/state.db.lock",
+    ".ces/latest-verification.json",
+}
+
+
+def _is_ignored_ces_runtime_state(path: str) -> bool:
+    """Return whether a changed `.ces` path is expected local runtime state.
+
+    Product-scope enforcement should ignore noisy SQLite/report byproducts, but
+    it must still surface governance-sensitive `.ces` mutations such as config,
+    keys, policies, and profiles instead of treating the whole directory as a
+    safe scratch area.
+    """
+    return path in _IGNORED_CES_RUNTIME_STATE_FILES
+
+
 def workspace_scope_violations(manifest: object, delta: WorkspaceDelta) -> tuple[str, ...]:
     """Return actual changed files outside manifest boundaries."""
     affected = tuple(getattr(manifest, "affected_files", ()) or ())
@@ -44,6 +64,8 @@ def workspace_scope_violations(manifest: object, delta: WorkspaceDelta) -> tuple
     for path in delta.changed_files:
         if any(fnmatch(path, pattern) for pattern in forbidden):
             violations.append(path)
+            continue
+        if _is_ignored_ces_runtime_state(path):
             continue
         if affected and not any(fnmatch(path, pattern) for pattern in affected):
             violations.append(path)
