@@ -923,6 +923,197 @@ class NextPromptReport:
 
 
 @dataclass(frozen=True)
+class ApproachAlternative:
+    name: str
+    summary: str
+    pros: tuple[str, ...]
+    cons: tuple[str, ...]
+    suggested_command: str
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "name": self.name,
+            "summary": self.summary,
+            "pros": list(self.pros),
+            "cons": list(self.cons),
+            "suggested_command": self.suggested_command,
+        }
+
+
+@dataclass(frozen=True)
+class ApproachPerspective:
+    role: str
+    position: str
+    critiques: tuple[str, ...]
+    evidence: tuple[str, ...]
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "role": self.role,
+            "position": self.position,
+            "critiques": list(self.critiques),
+            "evidence": list(self.evidence),
+        }
+
+
+@dataclass(frozen=True)
+class PreservedDissent:
+    claim: str
+    evidence: str
+    why_it_matters: str
+    operator_decision: str
+    blocking: bool
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "claim": self.claim,
+            "evidence": self.evidence,
+            "why_it_matters": self.why_it_matters,
+            "operator_decision": self.operator_decision,
+            "blocking": self.blocking,
+        }
+
+
+@dataclass(frozen=True)
+class ApproachDecisionBrief:
+    """Read-only pre-runtime pushback before compiling an execution contract."""
+
+    project_root: Path
+    objective: str
+    execution_mode: str
+    detected_project_type: str
+    detected_maturity: str
+    contract_status: str
+    decision: str
+    acceptance_criteria: tuple[str, ...]
+    must_not_break: tuple[str, ...]
+    alternatives: tuple[ApproachAlternative, ...]
+    perspectives: tuple[ApproachPerspective, ...]
+    preserved_dissent: tuple[PreservedDissent, ...]
+    recommended_synthesis: str
+    blockers: tuple[str, ...]
+    next_ces_command: str
+    validation_commands: tuple[str, ...]
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema_version": _SCHEMA_VERSION,
+            "project_root": str(self.project_root),
+            "objective": self.objective,
+            "execution_mode": self.execution_mode,
+            "detected_project_type": self.detected_project_type,
+            "detected_maturity": self.detected_maturity,
+            "contract_status": self.contract_status,
+            "decision": self.decision,
+            "acceptance_criteria": list(self.acceptance_criteria),
+            "must_not_break": list(self.must_not_break),
+            "alternatives": [item.to_dict() for item in self.alternatives],
+            "perspectives": [item.to_dict() for item in self.perspectives],
+            "preserved_dissent": [item.to_dict() for item in self.preserved_dissent],
+            "recommended_synthesis": self.recommended_synthesis,
+            "blockers": list(self.blockers),
+            "next_ces_command": self.next_ces_command,
+            "validation_commands": list(self.validation_commands),
+        }
+
+    def to_json(self) -> str:
+        return json.dumps(self.to_dict(), indent=2) + "\n"
+
+    def to_markdown(self) -> str:
+        lines = [
+            "# Approach Decision Brief",
+            "",
+            f"Project root: `{self.project_root}`",
+            f"Objective: {self.objective}",
+            f"Execution mode: **{self.execution_mode}**",
+            f"Decision: **{self.decision}**",
+            "",
+            "## What this command does",
+            "",
+            "This is a read-only pre-implementation pushback pass. It does not launch Codex or Claude Code, does not create `.ces/`, and does not edit project files.",
+            "",
+            "## Acceptance criteria",
+            "",
+            *_bullet(self.acceptance_criteria),
+            "",
+            "## Must not break",
+            "",
+            *_bullet(self.must_not_break),
+            "",
+            "## Alternatives",
+            "",
+        ]
+        for alternative in self.alternatives:
+            lines.extend(
+                [
+                    f"### {alternative.name}",
+                    "",
+                    alternative.summary,
+                    "",
+                    "Pros:",
+                    *_bullet(alternative.pros),
+                    "",
+                    "Cons:",
+                    *_bullet(alternative.cons),
+                    "",
+                    f"Suggested command: `{alternative.suggested_command}`",
+                    "",
+                ]
+            )
+        lines.extend(["## Independent perspectives", ""])
+        for perspective in self.perspectives:
+            lines.extend(
+                [
+                    f"### {perspective.role.title()}",
+                    "",
+                    perspective.position,
+                    "",
+                    "Critiques:",
+                    *_bullet(perspective.critiques),
+                    "",
+                    "Evidence:",
+                    *_bullet(perspective.evidence),
+                    "",
+                ]
+            )
+        lines.extend(["## Preserved dissent", ""])
+        if self.preserved_dissent:
+            for dissent in self.preserved_dissent:
+                prefix = "Blocking" if dissent.blocking else "Non-blocking"
+                lines.extend(
+                    [
+                        f"- **{prefix}:** {dissent.claim}",
+                        f"  - Evidence: {dissent.evidence}",
+                        f"  - Why it matters: {dissent.why_it_matters}",
+                        f"  - Operator decision: {dissent.operator_decision}",
+                    ]
+                )
+        else:
+            lines.append("- No dissent surfaced by the deterministic brief.")
+        lines.extend(
+            [
+                "",
+                "## Recommended synthesis",
+                "",
+                self.recommended_synthesis,
+                "",
+                "## Blockers",
+                "",
+                *_bullet(self.blockers),
+                "",
+                "## Next CES command",
+                "",
+                f"`{self.next_ces_command}`",
+                "",
+                "## Verification expectations",
+                "",
+                *_bullet(f"`{command}`" for command in self.validation_commands),
+            ]
+        )
+        return "\n".join(lines).rstrip() + "\n"
+
+
+@dataclass(frozen=True)
 class ShipPlanReport:
     """Read-only beginner front-door plan from idea to proof-backed project."""
 
@@ -1351,6 +1542,291 @@ def build_next_prompt(
         completion_evidence_required=completion_evidence_required,
         ces_completion_expectations=ces_completion_expectations,
         next_ces_command_after_implementation=next_ces_command,
+    )
+
+
+def _next_prompt_command(objective: str, acceptance: tuple[str, ...], must_not_break: tuple[str, ...]) -> str:
+    parts = ["ces", "next-prompt", shlex.quote(objective)]
+    for item in acceptance:
+        parts.extend(("--acceptance", shlex.quote(item)))
+    for item in must_not_break:
+        parts.extend(("--must-not-break", shlex.quote(item)))
+    return " ".join(parts)
+
+
+def _approach_domain(objective: str) -> str:
+    text = objective.lower()
+    if any(term in text for term in ("credential", "secret", "token", "password", "rotate", "production")):
+        return "operations"
+    if any(term in text for term in ("delete", "remove", "customer data", "retention")):
+        return "data-removal"
+    if any(term in text for term in ("invoice", "csv", "export", "report")):
+        return "export"
+    return "feature"
+
+
+def _approach_alternatives(objective: str, contract_command: str) -> tuple[ApproachAlternative, ...]:
+    domain = _approach_domain(objective)
+    if domain == "operations":
+        first = ApproachAlternative(
+            name="Rehearsal-first operational change",
+            summary="Model the rollout, smoke verification, and rollback path before any credential or production-facing mutation.",
+            pros=(
+                "Forces verification and rollback evidence before runtime work.",
+                "Keeps operator approval attached to the sensitive step.",
+            ),
+            cons=("Adds an explicit rehearsal/checkpoint before implementation.",),
+            suggested_command=contract_command,
+        )
+    elif domain == "data-removal":
+        first = ApproachAlternative(
+            name="Policy-first data change",
+            summary="Define retention, legal/product approval, audit evidence, and recovery boundaries before changing deletion behavior.",
+            pros=("Prevents an agent from treating destructive data work as a normal feature.",),
+            cons=("May block until a human supplies authority and rollback expectations.",),
+            suggested_command=contract_command,
+        )
+    elif domain == "export":
+        first = ApproachAlternative(
+            name="Minimal existing-export extension",
+            summary="Extend the current export path while preserving column order, compatibility, and existing invoice behavior.",
+            pros=(
+                "Optimizes for the smallest brownfield change.",
+                "Keeps CSV/export compatibility visible in the contract.",
+            ),
+            cons=("May be insufficient if the request actually implies a data-model or UI ownership change.",),
+            suggested_command=contract_command,
+        )
+    else:
+        first = ApproachAlternative(
+            name="Minimal existing-pattern implementation",
+            summary="Make the smallest repo-native change after CES compiles a narrow, testable Developer Intent Contract.",
+            pros=("Avoids broad rewrites and unnecessary dependencies.", "Preserves the CES proof and review loop."),
+            cons=("Can miss product ambiguity unless the operator reviews dissent first.",),
+            suggested_command=contract_command,
+        )
+    return (
+        first,
+        ApproachAlternative(
+            name="Clarify-first before implementation",
+            summary=(
+                "Stop before runtime work and resolve blocking ambiguity, preserved-behavior risk, or missing "
+                "verification expectations surfaced by this brief."
+            ),
+            pros=(
+                "Protects underspecified work from obedient execution.",
+                "Turns vague language into an explicit operator decision before code changes.",
+            ),
+            cons=("Adds a short planning step before implementation.",),
+            suggested_command="Clarify the objective, then rerun ces deliberate.",
+        ),
+    )
+
+
+def _objective_implementation_critique(objective: str) -> str:
+    domain = _approach_domain(objective)
+    if domain == "operations":
+        return "Implement rehearsal and smoke checks before touching production-facing credentials or runtime configuration."
+    if domain == "data-removal":
+        return "Do not implement destructive data behavior until authority, retention semantics, and recovery evidence are explicit."
+    if domain == "export":
+        return (
+            "Identify the existing export boundary first; avoid changing CSV schema or invoice behavior accidentally."
+        )
+    return "Identify the smallest existing code path that can satisfy the request without broad architecture changes."
+
+
+def _objective_maintainer_critique(objective: str) -> str:
+    domain = _approach_domain(objective)
+    if domain == "operations":
+        return (
+            "Document rollback and operator handoff because future maintainers will inherit the operational procedure."
+        )
+    if domain == "data-removal":
+        return "Require auditable behavior and compatibility notes for any data lifecycle change."
+    if domain == "export":
+        return "Protect downstream consumers that may depend on current export columns, ordering, and encodings."
+    return (
+        "Preserve public interfaces, fixtures, and documented behavior unless the operator explicitly accepts a change."
+    )
+
+
+def _objective_risk_critique(objective: str) -> str:
+    domain = _approach_domain(objective)
+    if domain == "operations":
+        return "Credential or production work needs smoke verification, rollback, and explicit cutover authority."
+    if domain == "data-removal":
+        return "Destructive data work needs legal/product authority, auditability, and a recovery story."
+    if domain == "export":
+        return "Export changes can silently break downstream users; require regression evidence for existing exports."
+    return (
+        "If the objective is vague, preserve assumptions as dissent instead of letting the agent invent requirements."
+    )
+
+
+def _objective_dissent(objective: str, *, blocking: bool) -> PreservedDissent:
+    domain = _approach_domain(objective)
+    if domain == "operations":
+        return PreservedDissent(
+            claim="Credential or production changes are unsafe without rehearsal, smoke verification, and rollback evidence.",
+            evidence=objective,
+            why_it_matters="Operational work can create external side effects even when the code diff is small.",
+            operator_decision="Confirm the verification and rollback boundary before runtime work starts.",
+            blocking=blocking,
+        )
+    if domain == "data-removal":
+        return PreservedDissent(
+            claim="Data-removal work may require policy approval before implementation.",
+            evidence=objective,
+            why_it_matters="An obedient implementation can permanently remove data or violate retention expectations.",
+            operator_decision="Confirm authority, audit evidence, and recovery expectations before runtime work starts.",
+            blocking=blocking,
+        )
+    if domain == "export":
+        return PreservedDissent(
+            claim="Invoice/export work may imply CSV compatibility and data-model decisions, not only formatting changes.",
+            evidence=objective,
+            why_it_matters="Downstream consumers may depend on current export columns and invoice semantics.",
+            operator_decision="Decide whether schema/order compatibility is mandatory or intentionally changing.",
+            blocking=blocking,
+        )
+    return PreservedDissent(
+        claim="The objective may hide product decisions that should not be silently inferred by an agent.",
+        evidence=objective,
+        why_it_matters="Pre-runtime ambiguity is where obedient implementation most often creates the wrong artifact.",
+        operator_decision="Review assumptions and add acceptance criteria if any hidden decision matters.",
+        blocking=blocking,
+    )
+
+
+def build_approach_decision_brief(
+    project_root: str | Path,
+    objective: str,
+    *,
+    acceptance_criteria: tuple[str, ...] | list[str] = (),
+    must_not_break: tuple[str, ...] | list[str] = (),
+) -> ApproachDecisionBrief:
+    """Build a deterministic, read-only pre-runtime approach challenge brief."""
+
+    normalized_objective = objective.strip()
+    if not normalized_objective:
+        msg = "objective is required"
+        raise ValueError(msg)
+    normalized_acceptance = tuple(item.strip() for item in acceptance_criteria if item.strip())
+    normalized_must_not_break = tuple(item.strip() for item in must_not_break if item.strip())
+    next_prompt = build_next_prompt(
+        project_root,
+        normalized_objective,
+        acceptance_criteria=normalized_acceptance,
+        must_not_break=normalized_must_not_break,
+    )
+    report = scan_project_mri(project_root)
+    validation = _validation_commands_for(report)
+    contract_command = _next_prompt_command(normalized_objective, normalized_acceptance, normalized_must_not_break)
+    if next_prompt.contract_status == "blocked":
+        decision = "needs_operator_decision"
+        next_ces_command = "Clarify the request and rerun ces deliberate."
+    else:
+        decision = "ready_for_contract"
+        next_ces_command = contract_command
+
+    blockers = tuple(next_prompt.open_questions) if next_prompt.open_questions else ()
+    if next_prompt.contract_status == "blocked" and not blockers:
+        blockers = (
+            "The intent gate blocked implementation; add acceptance criteria and must-not-break constraints before runtime work.",
+        )
+
+    alternatives = _approach_alternatives(normalized_objective, contract_command)
+    perspectives = (
+        ApproachPerspective(
+            role="implementation",
+            position="Prefer the smallest existing-pattern change after CES compiles a concrete execution contract.",
+            critiques=(
+                "Do not start runtime work until scope, acceptance criteria, and verification are explicit.",
+                "Avoid adding frameworks, services, or new dependencies for a pre-runtime planning concern.",
+                _objective_implementation_critique(normalized_objective),
+            ),
+            evidence=(
+                f"Detected project type: {report.project_type}.",
+                f"Detected maturity: {report.maturity}.",
+                f"Validation commands: {', '.join(validation) if validation else 'none inferred'}.",
+            ),
+        ),
+        ApproachPerspective(
+            role="maintainer",
+            position="Protect existing behavior and repo conventions before optimizing for agent throughput.",
+            critiques=(
+                "Preserve must-not-break behavior as first-class context, not a footnote.",
+                "Keep dissent visible so a later proof/review can compare implementation against the chosen approach.",
+                _objective_maintainer_critique(normalized_objective),
+            ),
+            evidence=(
+                f"Must-not-break items: {', '.join(normalized_must_not_break) if normalized_must_not_break else 'none supplied'}.",
+                f"Readiness blockers: {', '.join(blockers) if blockers else 'none surfaced'}.",
+            ),
+        ),
+        ApproachPerspective(
+            role="risk",
+            position="Fail closed when the objective is high-risk, vague, or lacks verification evidence.",
+            critiques=(
+                "Do not let an LLM infer consent for sensitive, destructive, or externally visible work.",
+                "Treat missing acceptance criteria for high-risk work as a blocker, not as implementation freedom.",
+                _objective_risk_critique(normalized_objective),
+            ),
+            evidence=(
+                f"Intent gate decision: {next_prompt.intent_gate_decision}.",
+                f"Contract status: {next_prompt.contract_status}.",
+            ),
+        ),
+    )
+    dissent_items: list[PreservedDissent] = []
+    if blockers:
+        dissent_items.append(
+            PreservedDissent(
+                claim="The objective is not ready for obedient runtime execution without an operator decision.",
+                evidence="; ".join(blockers),
+                why_it_matters="Pre-implementation ambiguity is where an LLM is most likely to implement the wrong thing cleanly.",
+                operator_decision="Resolve the blocker or add explicit acceptance criteria before launching runtime work.",
+                blocking=True,
+            )
+        )
+    dissent_items.append(_objective_dissent(normalized_objective, blocking=False))
+    dissent_items.append(
+        PreservedDissent(
+            claim="The recommended path must not erase alternatives or unresolved critique.",
+            evidence="This brief preserves alternatives, role-specific critiques, and the next CES command as separate fields.",
+            why_it_matters="The goal is engineering judgment before delegation, not synthetic consensus or agent theater.",
+            operator_decision="Use the synthesis only after reviewing the dissent items that remain relevant.",
+            blocking=False,
+        )
+    )
+    if decision == "ready_for_contract":
+        synthesis = (
+            "Proceed by turning the objective into a Developer Intent Contract before implementation. Keep the dissent "
+            "visible in the prompt/review path, run the inferred verification commands, then require proof and approval."
+        )
+    else:
+        synthesis = (
+            "Do not launch runtime work yet. Resolve the blocking ambiguity, add concrete acceptance criteria and "
+            "must-not-break behavior, then rerun deliberation before compiling an execution contract."
+        )
+    return ApproachDecisionBrief(
+        project_root=report.project_root,
+        objective=normalized_objective,
+        execution_mode="read-only-deliberation",
+        detected_project_type=report.project_type,
+        detected_maturity=report.maturity,
+        contract_status=next_prompt.contract_status,
+        decision=decision,
+        acceptance_criteria=normalized_acceptance,
+        must_not_break=normalized_must_not_break,
+        alternatives=alternatives,
+        perspectives=perspectives,
+        preserved_dissent=tuple(dissent_items),
+        recommended_synthesis=synthesis,
+        blockers=blockers,
+        next_ces_command=next_ces_command,
+        validation_commands=validation,
     )
 
 

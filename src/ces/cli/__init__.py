@@ -153,6 +153,7 @@ Start Here:
                   Create a new project from an empty folder
   `ces build`     Change an existing local project with governed runtime execution
   `ces mri`       Read-only diagnosis of readiness gaps and risks
+  `ces deliberate` Read-only Approach Decision Brief before implementation
   `ces proof`     Compact shareable proof card: evidence, gaps, ship/no-ship
   `ces next`      Show the next safest readiness step
   `ces status`    Show builder-first status; add `--expert` for the full expert view
@@ -264,6 +265,9 @@ app.command(name="start", help="Interactive read-only guide from idea to proof-b
 app.command(name="next", help="Show the next safest production-readiness action.")(autopilot_cmd.next_action)
 app.command(name="next-prompt", help="Generate a guardrailed prompt for the next readiness step.")(
     autopilot_cmd.next_prompt
+)
+app.command(name="deliberate", help="Produce a read-only Approach Decision Brief before implementation.")(
+    autopilot_cmd.deliberate
 )
 app.command(name="passport", help="Produce a local Production Passport report.")(autopilot_cmd.passport)
 app.command(name="proof", help="Produce a compact proof card with ship/no-ship recommendation.")(autopilot_cmd.proof)

@@ -133,7 +133,16 @@ ces ship "Create a small project-management app with tests and run instructions"
 
 CES does not replace your coding agent. CES gives your coding agent a narrow, testable, evidence-backed mission.
 
-Use `ces next-prompt` when you want CES to turn an objective plus repo context into a strict Developer Intent Contract before you hand work to Codex, Claude Code, or another coding agent:
+Use `ces deliberate` when the approach itself needs pushback before you hand work to Codex, Claude Code, or another coding agent. It produces a read-only Approach Decision Brief with alternatives, implementation/maintainer/risk perspectives, preserved dissent, blockers, and the next CES command:
+
+```bash
+ces deliberate "Add invoice notes to CSV exports"
+ces deliberate "Rotate production database credentials" \
+  --acceptance "Old credentials are revoked only after the new ones pass smoke verification." \
+  --must-not-break "Existing deploy and rollback commands."
+```
+
+Use `ces next-prompt` when you are ready for CES to turn an objective plus repo context into a strict Developer Intent Contract:
 
 ```bash
 ces next-prompt "Add invoice notes to CSV exports"
@@ -142,7 +151,7 @@ ces next-prompt "Rotate production database credentials" \
   --must-not-break "Existing deploy and rollback commands."
 ```
 
-The contract is read-only. It does not create `.ces/`, edit files, or launch a runtime. It reports:
+Both commands are read-only. They do not create `.ces/`, edit files, or launch a runtime. The deliberation brief reports alternatives, implementation/maintainer/risk critique, preserved dissent, blockers, and the next CES command. The contract reports:
 
 - the original objective
 - greenfield, brownfield, or thin/born-thin rescue mode
@@ -332,6 +341,7 @@ ces report builder
 | `ces verify` | Run independent local verification without writing inferred contracts by default. |
 | `ces mri` | Run a read-only Project MRI diagnostic for maturity, readiness score, risks, missing production-readiness signals, and recommended next CES actions. |
 | `ces next` | Show the next safest production-readiness action before launching more work. |
+| `ces deliberate` | Generate a read-only Approach Decision Brief with alternatives, role-specific pushback, preserved dissent, blockers, and the next CES command. |
 | `ces next-prompt` | Generate a scoped agent prompt for the next readiness step without running an agent. |
 | `ces passport` | Produce a local Production Passport from deterministic signals and available CES evidence. |
 | `ces promote production-candidate` | Produce a plan-only maturity promotion sequence, one checkpoint at a time. |

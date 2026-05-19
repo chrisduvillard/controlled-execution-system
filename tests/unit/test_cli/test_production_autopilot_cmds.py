@@ -39,6 +39,10 @@ line-length = 100
     (root / "tests" / "test_demo.py").write_text("def test_demo():\n    assert True\n", encoding="utf-8")
 
 
+def _snapshot_files(root: Path) -> dict[str, bytes]:
+    return {path.relative_to(root).as_posix(): path.read_bytes() for path in root.rglob("*") if path.is_file()}
+
+
 def test_next_json_reports_next_safe_action(tmp_path: Path) -> None:
     _write_minimal_project(tmp_path)
 
@@ -117,6 +121,179 @@ def test_next_prompt_cli_is_read_only(tmp_path: Path) -> None:
     assert result.exit_code == 0, result.stdout
     assert before == after
     assert not (tmp_path / ".ces").exists()
+
+
+def test_deliberate_markdown_outputs_approach_decision_brief(tmp_path: Path) -> None:
+    _write_minimal_project(tmp_path)
+
+    result = runner.invoke(_get_app(), ["deliberate", "Add invoice notes", "--project-root", str(tmp_path)])
+
+    assert result.exit_code == 0, result.stdout
+    assert "# Approach Decision Brief" in result.stdout
+    assert "## Alternatives" in result.stdout
+    assert "## Independent perspectives" in result.stdout
+    assert "## Preserved dissent" in result.stdout
+    assert "## Recommended synthesis" in result.stdout
+    assert "## Blockers" in result.stdout
+    assert "## Next CES command" in result.stdout
+    assert "read-only" in result.stdout
+    assert "does not launch Codex or Claude Code" in result.stdout
+
+
+def test_deliberate_help_lists_command_and_options_work(tmp_path: Path) -> None:
+    _write_minimal_project(tmp_path)
+    root_help = runner.invoke(_get_app(), ["--help"])
+    command_help = runner.invoke(_get_app(), ["deliberate", "--help"])
+    command_result = runner.invoke(
+        _get_app(),
+        [
+            "deliberate",
+            "Add invoice notes",
+            "--project-root",
+            str(tmp_path),
+            "--acceptance",
+            "Notes render in export output.",
+            "--must-not-break",
+            "Existing export rows stay intact.",
+            "--format",
+            "json",
+        ],
+    )
+
+    assert root_help.exit_code == 0, root_help.stdout
+    assert command_help.exit_code == 0, command_help.stdout
+    assert command_result.exit_code == 0, command_result.stdout
+    assert "deliberate" in root_help.stdout
+
+
+def test_deliberate_json_shape_and_read_only(tmp_path: Path) -> None:
+    _write_minimal_project(tmp_path)
+    before = _snapshot_files(tmp_path)
+
+    result = runner.invoke(
+        _get_app(),
+        [
+            "deliberate",
+            "Add invoice notes",
+            "--project-root",
+            str(tmp_path),
+            "--acceptance",
+            "Notes render in export output.",
+            "--must-not-break",
+            "Existing export rows stay intact.",
+            "--format",
+            "json",
+        ],
+    )
+
+    after = _snapshot_files(tmp_path)
+    assert result.exit_code == 0, result.stdout
+    assert before == after
+    assert not (tmp_path / ".ces").exists()
+    payload = json.loads(result.stdout)
+    assert payload["schema_version"] == 1
+    assert payload["objective"] == "Add invoice notes"
+    assert payload["execution_mode"] == "read-only-deliberation"
+    assert len(payload["alternatives"]) >= 2
+    assert {item["role"] for item in payload["perspectives"]} == {"implementation", "maintainer", "risk"}
+    assert payload["preserved_dissent"]
+    assert any("invoice" in item["claim"].lower() for item in payload["preserved_dissent"])
+    assert payload["recommended_synthesis"]
+    assert "blockers" in payload
+    assert payload["next_ces_command"]
+    assert "Notes render in export output." in payload["acceptance_criteria"]
+    assert "Existing export rows stay intact." in payload["must_not_break"]
+    assert "--acceptance 'Notes render in export output.'" in payload["next_ces_command"]
+    assert "--must-not-break 'Existing export rows stay intact.'" in payload["next_ces_command"]
+    assert any(
+        "--acceptance 'Notes render in export output.'" in item["suggested_command"] for item in payload["alternatives"]
+    )
+
+
+def test_deliberate_global_json_flag_outputs_json(tmp_path: Path) -> None:
+    _write_minimal_project(tmp_path)
+
+    result = runner.invoke(_get_app(), ["--json", "deliberate", "Add invoice notes", "--project-root", str(tmp_path)])
+
+    assert result.exit_code == 0, result.stdout
+    payload = json.loads(result.stdout)
+    assert payload["objective"] == "Add invoice notes"
+
+
+def test_deliberate_markdown_surfaces_supplied_boundaries(tmp_path: Path) -> None:
+    _write_minimal_project(tmp_path)
+
+    result = runner.invoke(
+        _get_app(),
+        [
+            "deliberate",
+            "Rotate production database credentials",
+            "--project-root",
+            str(tmp_path),
+            "--acceptance",
+            "New credentials pass smoke verification before cutover.",
+            "--must-not-break",
+            "Existing rollback path.",
+        ],
+    )
+
+    assert result.exit_code == 0, result.stdout
+    assert "## Acceptance criteria" in result.stdout
+    assert "New credentials pass smoke verification before cutover." in result.stdout
+    assert "## Must not break" in result.stdout
+    assert "Existing rollback path." in result.stdout
+    assert "--acceptance 'New credentials pass smoke verification before cutover.'" in result.stdout
+    assert "--must-not-break 'Existing rollback path.'" in result.stdout
+
+
+def test_deliberate_high_risk_objective_preserves_blocking_pushback(tmp_path: Path) -> None:
+    _write_minimal_project(tmp_path)
+
+    result = runner.invoke(
+        _get_app(),
+        [
+            "deliberate",
+            "Rotate production database credentials",
+            "--project-root",
+            str(tmp_path),
+            "--format",
+            "json",
+        ],
+    )
+
+    assert result.exit_code == 0, result.stdout
+    payload = json.loads(result.stdout)
+    assert payload["decision"] == "needs_operator_decision"
+    assert payload["blockers"]
+    assert any("acceptance" in item.lower() or "credential" in item.lower() for item in payload["blockers"])
+    assert any(item["blocking"] for item in payload["preserved_dissent"])
+    assert payload["next_ces_command"] == "Clarify the request and rerun ces deliberate."
+
+
+def test_deliberate_high_risk_with_boundaries_is_ready_and_preserves_flags(tmp_path: Path) -> None:
+    _write_minimal_project(tmp_path)
+
+    result = runner.invoke(
+        _get_app(),
+        [
+            "deliberate",
+            "Rotate production database credentials",
+            "--project-root",
+            str(tmp_path),
+            "--acceptance",
+            "New credentials pass smoke verification before cutover.",
+            "--must-not-break",
+            "Existing rollback path.",
+            "--format",
+            "json",
+        ],
+    )
+
+    assert result.exit_code == 0, result.stdout
+    payload = json.loads(result.stdout)
+    assert payload["decision"] == "ready_for_contract"
+    assert "--acceptance 'New credentials pass smoke verification before cutover.'" in payload["next_ces_command"]
+    assert "--must-not-break 'Existing rollback path.'" in payload["next_ces_command"]
 
 
 def test_passport_json_contains_evidence_backed_summary(tmp_path: Path) -> None:
