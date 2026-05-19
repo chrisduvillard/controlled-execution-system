@@ -48,6 +48,9 @@ _COMPOSE_FILES = ("dock" + "er-compose.yml", "dock" + "er-compose.yaml")
 _CES_RUNTIME_DECLARATION_SIGNAL = "ces-runtime-declaration"
 _CES_COMPLETION_CONTRACT_SIGNAL = ".ces/completion-contract.json"
 _RUNTIME_SIGNAL_NAMES = frozenset({_CONTAINER_FILE, *_COMPOSE_FILES, "Procfile", _CES_RUNTIME_DECLARATION_SIGNAL})
+_LOCKFILE_NAMES = frozenset(
+    {"package-lock.json", "pnpm-lock.yaml", "yarn.lock", "bun.lock", "bun.lockb", "uv.lock", "poetry.lock"}
+)
 _SEVERITY_ORDER = {"critical": 0, "high": 1, "medium": 2, "low": 3, "info": 4}
 _MATURITY_LADDER = ("vibe-prototype", "local-app", "shareable-app", "production-candidate", "production-ready")
 _READINESS_CATEGORIES = {
@@ -356,7 +359,30 @@ def _runtime_declaration_from_pyproject(pyproject: dict[str, Any]) -> dict[str, 
 def _runtime_declaration_from_package_json(package_json: dict[str, Any]) -> dict[str, Any]:
     ces = package_json.get("ces", {}) if isinstance(package_json.get("ces"), dict) else {}
     declaration = ces.get("runtime_declaration", {}) if isinstance(ces.get("runtime_declaration"), dict) else {}
-    return declaration if isinstance(declaration, dict) else {}
+    if isinstance(declaration, dict) and declaration:
+        return declaration
+    scripts = package_json.get("scripts", {}) if isinstance(package_json, dict) else {}
+    main = str(package_json.get("main", "")).strip() if isinstance(package_json, dict) else ""
+    deps: set[str] = set()
+    for key in ("dependencies", "devDependencies"):
+        section = package_json.get(key, {}) if isinstance(package_json, dict) else {}
+        if isinstance(section, dict):
+            deps.update(str(name) for name in section)
+    if isinstance(scripts, dict) and (
+        "electron" in deps
+        or "electron" in main.lower()
+        or any("electron" in str(command).lower() for command in scripts.values())
+    ):
+        entrypoint = str(scripts.get("desktop") or scripts.get("start") or "").strip()
+        if not entrypoint:
+            entrypoint = "electron ." if not main else f"electron {shlex.quote(main)}"
+        smoke_test = ""
+        for candidate in ("desktop:smoke", "desktop:check", "smoke", "test"):
+            if candidate in scripts:
+                smoke_test = f"npm run {candidate}"
+                break
+        return {"kind": "electron-desktop", "entrypoint": entrypoint, "smoke_test": smoke_test}
+    return {}
 
 
 def _node_tool_signals(package_json: dict[str, Any], root: Path) -> list[MriSignal]:
@@ -427,6 +453,8 @@ def _maintainability_findings(root: Path) -> list[MriFinding]:
     todo_count = 0
     large_files: list[str] = []
     for path in _iter_project_files(root):
+        if path.name in _LOCKFILE_NAMES:
+            continue
         if path.suffix.lower() not in _TEXT_SUFFIXES and path.suffix.lower() != ".py":
             continue
         try:

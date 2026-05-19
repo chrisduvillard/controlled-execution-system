@@ -89,7 +89,7 @@ def test_ci_dependency_audit_exports_dependencies_without_editable_project() -> 
 
     assert "uv export --frozen --group ci --format requirements-txt" in workflow_text
     assert "--no-emit-project" in workflow_text
-    assert "uv run pip-audit --strict --disable-pip -r /tmp/ces-ci-requirements.txt" in workflow_text
+    assert "uv run pip-audit --strict -r /tmp/ces-ci-requirements.txt" in workflow_text
 
 
 def test_publish_workflow_runs_builder_first_smoke_before_pypi_publish() -> None:

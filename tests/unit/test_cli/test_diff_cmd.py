@@ -54,6 +54,20 @@ def test_diff_since_approval_uses_latest_evidence_git_head(tmp_path: Path, monke
     assert run.call_args.args[0][:4] == ["git", "diff", "--name-status", "abc123"]
 
 
+def test_diff_output_escapes_rich_markup_characters(tmp_path: Path, monkeypatch: object) -> None:
+    """Git paths containing brackets must not crash Rich panel rendering."""
+    monkeypatch.chdir(tmp_path)  # type: ignore[attr-defined]
+    (tmp_path / ".ces").mkdir()
+    (tmp_path / ".ces" / "config.yaml").write_text("project_id: local-proj\n", encoding="utf-8")
+    fake_completed = SimpleNamespace(returncode=0, stdout="M\tdocs/[draft]/notes.md\n", stderr="")
+
+    with patch("ces.cli.diff_cmd.subprocess.run", return_value=fake_completed):
+        result = runner.invoke(_get_app(), ["diff"])
+
+    assert result.exit_code == 0, result.stdout
+    assert "docs/[draft]/notes.md" in result.stdout
+
+
 def test_diff_since_approval_fails_without_git_baseline(tmp_path: Path, monkeypatch: object) -> None:
     """The helper should fail clearly when there is no captured baseline head."""
     monkeypatch.chdir(tmp_path)  # type: ignore[attr-defined]

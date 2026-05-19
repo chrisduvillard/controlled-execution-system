@@ -10,7 +10,7 @@ def test_infers_python_cli_commands(tmp_path: Path) -> None:
     from ces.verification.command_inference import infer_verification_commands
 
     (tmp_path / "pyproject.toml").write_text(
-        "[project]\nname='promptvault'\n[project.scripts]\npromptvault='promptvault.cli:app'\n",
+        "[project]\nname='promptvault'\ndependencies=['pytest']\n[project.scripts]\npromptvault='promptvault.cli:app'\n",
         encoding="utf-8",
     )
     (tmp_path / "src" / "promptvault").mkdir(parents=True)
@@ -27,13 +27,50 @@ def test_infers_python_cli_commands(tmp_path: Path) -> None:
 def test_prefers_uv_run_when_lockfile_exists(tmp_path: Path) -> None:
     from ces.verification.command_inference import infer_verification_commands
 
-    (tmp_path / "pyproject.toml").write_text("[project]\nname='demo'\n", encoding="utf-8")
+    (tmp_path / "pyproject.toml").write_text("[project]\nname='demo'\ndependencies=['pytest']\n", encoding="utf-8")
     (tmp_path / "uv.lock").write_text("", encoding="utf-8")
     (tmp_path / "tests").mkdir()
 
     commands = infer_verification_commands(tmp_path, "python-package")
 
     assert commands[0].command == "uv run python -m pytest -q"
+
+
+def test_does_not_infer_pytest_from_tests_directory_alone(tmp_path: Path) -> None:
+    from ces.verification.command_inference import infer_verification_commands
+
+    (tmp_path / "pyproject.toml").write_text("[project]\nname='demo'\n", encoding="utf-8")
+    (tmp_path / "tests").mkdir()
+    (tmp_path / "tests" / "test_demo.py").write_text("def test_demo():\n    assert True\n", encoding="utf-8")
+
+    commands = infer_verification_commands(tmp_path, "python-package")
+
+    assert all("pytest" not in command.command for command in commands)
+    assert [command.kind for command in commands] == ["compile"]
+
+
+def test_infers_pytest_from_requirements_file(tmp_path: Path) -> None:
+    from ces.verification.command_inference import infer_verification_commands
+
+    (tmp_path / "pyproject.toml").write_text("[project]\nname='demo'\n", encoding="utf-8")
+    (tmp_path / "requirements-dev.txt").write_text("pytest>=8\n", encoding="utf-8")
+    (tmp_path / "tests").mkdir()
+
+    commands = infer_verification_commands(tmp_path, "python-package")
+
+    assert commands[0].command == "python -m pytest -q"
+
+
+def test_infers_pytest_from_tox_config(tmp_path: Path) -> None:
+    from ces.verification.command_inference import infer_verification_commands
+
+    (tmp_path / "pyproject.toml").write_text("[project]\nname='demo'\n", encoding="utf-8")
+    (tmp_path / "tox.ini").write_text("[testenv]\ndeps = pytest\ncommands = pytest\n", encoding="utf-8")
+    (tmp_path / "tests").mkdir()
+
+    commands = infer_verification_commands(tmp_path, "python-package")
+
+    assert commands[0].command == "python -m pytest -q"
 
 
 def test_infers_node_package_commands(tmp_path: Path) -> None:
@@ -66,7 +103,7 @@ def test_infers_bun_node_package_commands_when_bun_lock_exists(tmp_path: Path) -
 def test_infers_node_subproject_commands_from_acceptance_paths(tmp_path: Path) -> None:
     from ces.verification.command_inference import infer_verification_commands
 
-    (tmp_path / "pyproject.toml").write_text("[project]\nname='ces'\n", encoding="utf-8")
+    (tmp_path / "pyproject.toml").write_text("[project]\nname='ces'\ndependencies=['pytest']\n", encoding="utf-8")
     (tmp_path / "uv.lock").write_text("", encoding="utf-8")
     (tmp_path / "tests").mkdir()
     app = tmp_path / "examples" / "voice-to-text-mvp"
@@ -108,7 +145,7 @@ def test_infers_node_subproject_commands_from_acceptance_paths(tmp_path: Path) -
 def test_infers_bun_subproject_install_and_commands_from_acceptance_paths(tmp_path: Path) -> None:
     from ces.verification.command_inference import infer_verification_commands
 
-    (tmp_path / "pyproject.toml").write_text("[project]\nname='ces'\n", encoding="utf-8")
+    (tmp_path / "pyproject.toml").write_text("[project]\nname='ces'\ndependencies=['pytest']\n", encoding="utf-8")
     app = tmp_path / "examples" / "gstack-like-app"
     app.mkdir(parents=True)
     (app / "bun.lock").write_text("", encoding="utf-8")
@@ -136,7 +173,7 @@ def test_infers_uv_cli_smoke_command_when_lockfile_exists(tmp_path: Path) -> Non
     from ces.verification.command_inference import infer_verification_commands
 
     (tmp_path / "pyproject.toml").write_text(
-        "[project]\nname='promptvault'\n[project.scripts]\npromptvault='promptvault.cli:app'\n",
+        "[project]\nname='promptvault'\ndependencies=['pytest']\n[project.scripts]\npromptvault='promptvault.cli:app'\n",
         encoding="utf-8",
     )
     (tmp_path / "uv.lock").write_text("", encoding="utf-8")

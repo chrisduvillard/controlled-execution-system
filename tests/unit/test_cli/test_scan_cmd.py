@@ -162,3 +162,50 @@ class TestCesScan:
         runner.invoke(app, ["scan"])
         data = json.loads(out.read_text(encoding="utf-8"))
         assert "stale" not in data
+
+    def test_scan_rejects_symlinked_ces_dir_before_writing(self, tmp_path: Path, monkeypatch: object) -> None:
+        """Brownfield scans must not write scan.json through a symlinked .ces directory."""
+        monkeypatch.chdir(tmp_path)  # type: ignore[attr-defined]
+        _write(tmp_path / "pyproject.toml", '[project]\nname = "example"\n')
+        outside_state = tmp_path / "outside-state"
+        outside_state.mkdir()
+        (outside_state / "config.yaml").write_text("project_id: escaped\n", encoding="utf-8")
+        (tmp_path / ".ces").symlink_to(outside_state, target_is_directory=True)
+
+        result = runner.invoke(_get_app(), ["scan"])
+
+        assert result.exit_code != 0
+        combined_output = f"{result.stdout}\n{result.stderr}\n{result.exception}"
+        assert "symlinked .ces" in combined_output
+        assert not (outside_state / "brownfield" / "scan.json").exists()
+
+    def test_scan_rejects_symlinked_brownfield_dir_before_writing(self, tmp_path: Path, monkeypatch: object) -> None:
+        """Brownfield scans must not write through symlinked nested CES state dirs."""
+        monkeypatch.chdir(tmp_path)  # type: ignore[attr-defined]
+        _write(tmp_path / "pyproject.toml", '[project]\nname = "example"\n')
+        ces_dir = tmp_path / ".ces"
+        ces_dir.mkdir()
+        (ces_dir / "config.yaml").write_text("project_id: safe-root\n", encoding="utf-8")
+        outside_state = tmp_path / "outside-brownfield"
+        outside_state.mkdir()
+        (ces_dir / "brownfield").symlink_to(outside_state, target_is_directory=True)
+
+        result = runner.invoke(_get_app(), ["scan"])
+
+        assert result.exit_code != 0
+        combined_output = f"{result.stdout}\n{result.stderr}\n{result.exception}"
+        assert "outside the project root" in combined_output or "symlinked CES state path" in combined_output
+        assert not (outside_state / "scan.json").exists()
+
+    def test_scan_dry_run_does_not_touch_symlinked_ces_dir(self, tmp_path: Path, monkeypatch: object) -> None:
+        """Dry-run scans should stay read-only even if a dangerous local state path exists."""
+        monkeypatch.chdir(tmp_path)  # type: ignore[attr-defined]
+        _write(tmp_path / "pyproject.toml", '[project]\nname = "example"\n')
+        outside_state = tmp_path / "outside-state"
+        outside_state.mkdir()
+        (tmp_path / ".ces").symlink_to(outside_state, target_is_directory=True)
+
+        result = runner.invoke(_get_app(), ["scan", "--dry-run"])
+
+        assert result.exit_code == 0, result.stdout
+        assert not (outside_state / "brownfield").exists()

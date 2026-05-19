@@ -151,6 +151,54 @@ def test_project_mri_treats_node_ces_runtime_declaration_as_runtime_signal(tmp_p
     assert any(signal.name == ".ces/completion-contract.json" for signal in report.signals)
 
 
+def test_project_mri_infers_electron_runtime_from_package_json(tmp_path: Path) -> None:
+    """Desktop apps should get runtime credit from Electron entrypoints and smoke scripts."""
+    from ces.verification.mri import scan_project_mri
+
+    (tmp_path / "package.json").write_text(
+        json.dumps(
+            {
+                "main": "electron/main.cjs",
+                "scripts": {
+                    "test": "vitest run",
+                    "desktop": "electron .",
+                    "desktop:smoke": "node scripts/desktop-smoke.mjs",
+                },
+                "devDependencies": {"electron": "latest", "typescript": "latest"},
+            }
+        ),
+        encoding="utf-8",
+    )
+    (tmp_path / "README.md").write_text(
+        "# Desktop App\n\nRun as a desktop app with npm run desktop.\n", encoding="utf-8"
+    )
+
+    report = scan_project_mri(tmp_path)
+
+    assert "runtime" in report.readiness_score["passed"]
+    assert "deployment/runtime declaration" not in report.missing_readiness_signals
+    runtime_signal = next(signal for signal in report.signals if signal.name == "ces-runtime-declaration")
+    assert "electron-desktop" in runtime_signal.evidence
+    assert "npm run desktop:smoke" in runtime_signal.evidence
+
+
+def test_project_mri_does_not_flag_lockfiles_as_large_source_files(tmp_path: Path) -> None:
+    """Generated dependency locks should not pollute maintainability risk summaries."""
+    from ces.verification.mri import scan_project_mri
+
+    (tmp_path / "README.md").write_text("# App\n", encoding="utf-8")
+    (tmp_path / "package.json").write_text(json.dumps({"scripts": {"test": "vitest run"}}), encoding="utf-8")
+    (tmp_path / "package-lock.json").write_text(
+        "\n".join(f'{{"line": {idx}}}' for idx in range(1200)),
+        encoding="utf-8",
+    )
+
+    report = scan_project_mri(tmp_path)
+
+    rendered_findings = [finding.evidence for finding in report.risk_findings]
+    assert not any("package-lock.json" in evidence for evidence in rendered_findings)
+
+
 def test_project_mri_detects_bun_lock_as_dependency_signal(tmp_path: Path) -> None:
     from ces.verification.mri import scan_project_mri
 

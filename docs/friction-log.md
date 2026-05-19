@@ -39,8 +39,8 @@ This log records friction found during the production-readiness dogfood pass. Fr
 - **Actual:** CES suggested `notes-tasks/notes-tasks`.
 - **Severity:** Medium.
 - **Status:** Documented, not fixed in code yet.
-- **Proposed fix:** Add `--here` or a warning when the current directory basename matches the inferred slug.
-- **Evidence:** Greenfield dogfood trial report under a local `ces-friction-tests/greenfield-quickstart-*` workspace.
+- **Proposed fix:** Add `--here` or a warning when the current directory basename matches the inferred slug; for source-checkout users, docs now emphasize running in a separate target folder or passing `--project-root`.
+- **Evidence:** Greenfield dogfood trial report under an external dogfood workspace; source-checkout guidance in `docs/Getting_Started.md`.
 
 ## FL-005: Safe non-interactive greenfield preflight was not obvious
 
@@ -131,12 +131,73 @@ This log records friction found during the production-readiness dogfood pass. Fr
 - **Fix:** README/Getting Started now emphasize beginner mode selection and explicit project-root safety patterns.
 - **Evidence after fix:** Greenfield trial findings captured from parallel dogfood run; README now includes explicit “beginner journey” and pitfalls.
 
-## FL-014: Brownfield Auralis trial blocked by network access in this environment
+## FL-014: Auralis brownfield trial verifies useful planning but exposed stale runtime/readiness signals
 
-- **Step attempted:** Clone `https://github.com/chrisduvillard/auralis` for mandated brownfield dogfood.
-- **Expected:** Repo clones and CES brownfield flow can run.
-- **Actual:** `git clone` failed with `CONNECT tunnel failed, response 403`.
-- **Severity:** High (environmental blocker).
-- **Status:** Open (cannot fix in CES code/docs alone).
-- **Proposed next step:** Provide local checkout, reachable mirror, or artifact bundle for Auralis to complete mandatory trial.
-- **Evidence:** Parallel brownfield testing agent report with clone command output.
+- **Step attempted:** Run read-only CES brownfield flow against local Auralis checkout (`ces mri`, `ces next`, `ces next-prompt`, `ces ship`, `ces proof`, `ces verify`) and direct Auralis checks.
+- **Expected:** CES understands the repo, plans safely, validates existing commands, and preserves tracked git cleanliness.
+- **Actual:** CES correctly classified Auralis as a Node/Vite production candidate and generated a useful brownfield contract, but missed Electron desktop runtime evidence, flagged `package-lock.json` as a large-file maintainability risk, and `ces proof` surfaced prior local proof without enough freshness/objective warning.
+- **Severity:** High for signal quality, low for repo safety.
+- **Status:** Partially fixed.
+- **Fix:** MRI now infers Electron runtime declarations from package `main`, Electron deps/scripts, and desktop smoke scripts; large-file risk ignores dependency lockfiles.
+- **Remaining:** Add proof freshness/objective binding so stale `.ces` evidence cannot look like proof for a new read-only objective.
+- **Evidence after fix:** `tests/unit/test_verification/test_mri.py::test_project_mri_infers_electron_runtime_from_package_json` and `::test_project_mri_does_not_flag_lockfiles_as_large_source_files`; Auralis tracked git status stayed clean before/after trial.
+
+## FL-015: Greenfield `ces diff` crashed on bracketed paths
+
+- **Step attempted:** After a failed greenfield runtime attempt, run `ces diff` to inspect drift.
+- **Expected:** CES prints the git name-status output or `(no changes)`.
+- **Actual:** Rich interpreted bracketed file/path text as markup and raised `MarkupError`.
+- **Severity:** High for recovery/debugging.
+- **Status:** Fixed.
+- **Fix:** `ces diff` now escapes git diff text before rendering it inside a Rich panel.
+- **Evidence after fix:** `tests/unit/test_cli/test_diff_cmd.py::test_diff_output_escapes_rich_markup_characters`.
+
+## FL-016: Brownfield scan and baseline could write through symlinked `.ces`
+
+- **Step attempted:** Inspect/write brownfield scan and baseline local-state artifacts in a repo with an existing `.ces` path.
+- **Expected:** CES refuses local state that escapes the project root before writing governance artifacts.
+- **Actual:** `ces scan` and `ces baseline` had write paths that did not consistently validate an existing `.ces` directory.
+- **Severity:** High for brownfield safety and local-state hygiene.
+- **Status:** Fixed.
+- **Fix:** `ces scan` and `ces baseline` now validate `.ces` and the concrete nested state write path with the shared state-path guard before writing; dry-run scan remains read-only.
+- **Evidence after fix:** `tests/unit/test_cli/test_scan_cmd.py::test_scan_rejects_symlinked_ces_dir_before_writing`, `::test_scan_rejects_symlinked_brownfield_dir_before_writing`, `::test_scan_dry_run_does_not_touch_symlinked_ces_dir`, `tests/unit/test_cli/test_baseline_cmd.py::test_baseline_rejects_symlinked_ces_dir_before_writing`, and `::test_baseline_rejects_symlinked_baseline_dir_before_writing`.
+
+## FL-017: Workspace delta followed symlinked files during runtime-change capture
+
+- **Step attempted:** Inspect runtime workspace-delta capture used to decide what changed.
+- **Expected:** CES should not hash or track files that escape a brownfield repo through symlinks.
+- **Actual:** `Path.is_file()` followed symlinks, so external files could be hashed as if they were project files.
+- **Severity:** Medium-high for messy brownfield repos.
+- **Status:** Fixed.
+- **Fix:** Workspace snapshots now skip symlinks, ignore out-of-root resolved files, and continue on unreadable files.
+- **Evidence after fix:** `tests/unit/test_execution/test_workspace_delta.py::test_workspace_snapshot_skips_symlinks_to_outside_files` and `::test_workspace_snapshot_ignores_broken_symlink`.
+
+## FL-018: Brownfield guide documented dispositions the CLI does not accept
+
+- **Step attempted:** Compare `docs/Brownfield_Guide.md` with `ces brownfield review --help`.
+- **Expected:** Documented dispositions match the CLI-supported values.
+- **Actual:** The guide used `migrate` and `remove`, while the CLI supports `change`, `new`, `preserve`, `retire`, and `under_investigation`.
+- **Severity:** Medium.
+- **Status:** Fixed.
+- **Fix:** Brownfield guide now documents the actual CLI dispositions.
+- **Evidence after fix:** `docs/Brownfield_Guide.md` uses `<preserve|change|retire|new|under_investigation>`.
+
+## FL-019: Pytest was inferred from a `tests/` directory alone
+
+- **Step attempted:** Inspect verification command inference against the verification-profile docs and brownfield projects with tests but no pytest setup.
+- **Expected:** CES infers `python -m pytest -q` only when pytest is configured or declared.
+- **Actual:** Any Python-ish project with a `tests/` directory received a pytest verification command, even without pytest config/dependency evidence.
+- **Severity:** Medium-high for brownfield adoption because it can create false blockers in non-pytest repos.
+- **Status:** Fixed.
+- **Fix:** Python verification inference now requires pytest evidence from `pyproject.toml`, dependency groups, optional dependencies, `pytest.ini`, common requirements files, `tox.ini`, `noxfile.py`, `setup.cfg`, or `setup.py` before adding a pytest command.
+- **Evidence after fix:** `tests/unit/test_verification/test_command_inference.py::test_does_not_infer_pytest_from_tests_directory_alone`, `::test_infers_pytest_from_requirements_file`, and `::test_infers_pytest_from_tox_config`.
+
+## FL-020: CI dependency audit command used an invalid `pip-audit` flag combination
+
+- **Step attempted:** Run local CI-parity dependency audit from the workflow command.
+- **Expected:** `pip-audit` audits the exported requirements file and exits cleanly when no CVEs are present.
+- **Actual:** Current `pip-audit` rejects `--disable-pip` unless the requirements file is hashed or `--no-deps` is used.
+- **Severity:** High because CI and release workflows can fail before testing CES.
+- **Status:** Fixed.
+- **Fix:** CI, TestPyPI, and PyPI workflows now run `uv run pip-audit --strict -r ...`; `uv.lock` was refreshed to idna 3.15 to clear CVE-2026-45409.
+- **Evidence after fix:** Local `uv export --frozen --group ci ... && uv run pip-audit --strict -r /tmp/ces-ci-requirements.txt` reports `No known vulnerabilities found`; latest-bounds worktree audit also passes.

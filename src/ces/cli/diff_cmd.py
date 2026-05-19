@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 import typer
+from rich.markup import escape
 from rich.panel import Panel
 
 from ces.cli._async import run_async
@@ -80,6 +81,6 @@ async def show_diff(
         prefix = ""
         if since_approval:
             prefix = f"Baseline packet: {packet_id}\nManifest: {manifest_id}\nBaseline HEAD: {baseline}\n\n"
-        console.print(Panel(prefix + diff, title=title, border_style="cyan"))
+        console.print(Panel(escape(prefix + diff), title=title, border_style="cyan"))
     except (RuntimeError, OSError, ValueError) as exc:
         handle_error(exc)

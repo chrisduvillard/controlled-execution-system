@@ -48,9 +48,15 @@ class WorkspaceSnapshot(CESBaseModel):
         resolved = root.resolve()
         files: dict[str, str] = {}
         for path in resolved.rglob("*"):
+            if path.is_symlink():
+                continue
             if not path.is_file():
                 continue
-            rel = path.relative_to(resolved)
+            try:
+                path.resolve(strict=False).relative_to(resolved)
+                rel = path.relative_to(resolved)
+            except ValueError:
+                continue
             rel_posix = rel.as_posix()
             if (
                 any(part in _EXCLUDED_DIRS for part in rel.parts)
@@ -58,7 +64,10 @@ class WorkspaceSnapshot(CESBaseModel):
                 or rel_posix in _EXCLUDED_PATHS
             ):
                 continue
-            files[rel_posix] = _hash_file(path)
+            try:
+                files[rel_posix] = _hash_file(path)
+            except OSError:
+                continue
         return cls(root=str(resolved), files=files)
 
     def diff(self, after: WorkspaceSnapshot) -> WorkspaceDelta:

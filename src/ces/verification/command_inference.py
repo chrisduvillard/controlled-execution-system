@@ -40,7 +40,7 @@ def infer_verification_commands(
 def _python_commands(project_root: Path, project_type: str) -> tuple[VerificationCommand, ...]:
     prefix = "uv run " if (project_root / "uv.lock").is_file() else ""
     commands: list[VerificationCommand] = []
-    if (project_root / "tests").is_dir():
+    if (project_root / "tests").is_dir() and _python_has_pytest_evidence(project_root):
         commands.append(
             VerificationCommand(id=_command_id(commands), kind="test", command=f"{prefix}python -m pytest -q")
         )
@@ -69,6 +69,66 @@ def _python_commands(project_root: Path, project_type: str) -> tuple[Verificatio
                 )
             )
     return tuple(commands)
+
+
+def _python_has_pytest_evidence(project_root: Path) -> bool:
+    """Return true when pytest is configured or declared, not merely when tests/ exists."""
+    pyproject = _read_toml(project_root / "pyproject.toml")
+    tool = pyproject.get("tool", {}) if isinstance(pyproject.get("tool"), dict) else {}
+    if isinstance(tool, dict) and "pytest" in tool:
+        return True
+    project = pyproject.get("project", {}) if isinstance(pyproject.get("project"), dict) else {}
+    dependency_text = "\n".join(
+        str(value)
+        for value in (
+            *(project.get("dependencies", []) if isinstance(project.get("dependencies"), list) else []),
+            *_optional_dependency_values(project.get("optional-dependencies", {})),
+            *_dependency_group_values(pyproject.get("dependency-groups", {})),
+        )
+    ).casefold()
+    if "pytest" in dependency_text or (project_root / "pytest.ini").is_file():
+        return True
+    for path in _pytest_evidence_files(project_root):
+        try:
+            if "pytest" in path.read_text(encoding="utf-8", errors="ignore").casefold():
+                return True
+        except OSError:
+            continue
+    return False
+
+
+def _pytest_evidence_files(project_root: Path) -> tuple[Path, ...]:
+    candidates = [
+        project_root / "tox.ini",
+        project_root / "noxfile.py",
+        project_root / "setup.cfg",
+        project_root / "setup.py",
+        project_root / "requirements.txt",
+        project_root / "dev-requirements.txt",
+        project_root / "requirements-dev.txt",
+    ]
+    candidates.extend(sorted(project_root.glob("requirements/*.txt")))
+    return tuple(path for path in candidates if path.is_file())
+
+
+def _optional_dependency_values(optional_dependencies: object) -> tuple[object, ...]:
+    if not isinstance(optional_dependencies, dict):
+        return ()
+    values: list[object] = []
+    for group in optional_dependencies.values():
+        if isinstance(group, list):
+            values.extend(group)
+    return tuple(values)
+
+
+def _dependency_group_values(dependency_groups: object) -> tuple[object, ...]:
+    if not isinstance(dependency_groups, dict):
+        return ()
+    values: list[object] = []
+    for group in dependency_groups.values():
+        if isinstance(group, list):
+            values.extend(group)
+    return tuple(values)
 
 
 def _node_commands(project_root: Path) -> tuple[VerificationCommand, ...]:

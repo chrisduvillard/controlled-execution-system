@@ -15,7 +15,7 @@ def test_source_checkout_separate_target_pattern_documented() -> None:
     assert 'CES="$CES_SRC/.venv/bin/ces"' in getting_started
     assert "TARGET=/tmp/ces-taskledger" in getting_started
     assert '"$CES" init --project-root "$TARGET" --yes' in getting_started
-    assert '"$CES" build "Create a small Python CLI app named TaskLedger"' in getting_started
+    assert '"$CES" build --from-scratch "Create a small Python CLI app named TaskLedger"' in getting_started
     assert '--project-root "$TARGET"' in getting_started
     assert "Do not build inside the CES repository" in getting_started
     assert "runs from your current working directory unless you pass `--project-root`" in getting_started

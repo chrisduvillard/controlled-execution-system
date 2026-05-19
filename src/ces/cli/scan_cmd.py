@@ -30,6 +30,7 @@ import typer
 from rich.panel import Panel
 
 from ces.cli._output import console, is_json_mode
+from ces.cli._state_path import validate_ces_state_dir, validate_ces_state_path
 from ces.cli.init_cmd import derive_project_name, initialize_local_project
 from ces.cli.ownership import parse_codeowners
 
@@ -202,11 +203,22 @@ def scan(
     if not dry_run:
         if not ces_dir.exists():
             initialize_local_project(root, name=derive_project_name(root.name))
+            validate_ces_state_dir(root, ces_dir)
+        elif ces_dir.is_symlink():
+            try:
+                validate_ces_state_dir(root, ces_dir)
+            except ValueError as exc:
+                raise typer.BadParameter(str(exc)) from exc
         elif not (ces_dir / "config.yaml").is_file():
             raise typer.BadParameter(
                 f"{ces_dir} exists but is not a complete CES project. "
                 "Move it aside or restore .ces/config.yaml before scanning."
             )
+        else:
+            try:
+                validate_ces_state_dir(root, ces_dir)
+            except ValueError as exc:
+                raise typer.BadParameter(str(exc)) from exc
 
     modules, generated = _walk_repo(root)
     codeowners = _find_codeowners(root)
@@ -224,6 +236,10 @@ def scan(
 
     if not dry_run:
         out_dir = out_path.parent
+        try:
+            validate_ces_state_path(root, out_path)
+        except ValueError as exc:
+            raise typer.BadParameter(str(exc)) from exc
         out_dir.mkdir(parents=True, exist_ok=True)
         out_path.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
 
