@@ -18,10 +18,12 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 
+import typer
 from rich.panel import Panel
 
 from ces.cli._async import run_async
 from ces.cli._output import console
+from ces.cli._state_path import validate_ces_state_dir, validate_ces_state_path
 from ces.harness.sensors import ALL_SENSORS
 
 _EXCLUDED_DIRS = {".git", ".ces", ".venv", "node_modules", "__pycache__", ".mypy_cache", ".pytest_cache", ".ruff_cache"}
@@ -80,6 +82,11 @@ async def baseline() -> None:
     recorded as such rather than treated as failures.
     """
     project_root = Path.cwd().resolve()
+    ces_dir = project_root / ".ces"
+    try:
+        validate_ces_state_dir(project_root, ces_dir)
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc)) from exc
     entries = await _run_all_sensors(project_root)
 
     captured_at = datetime.now(timezone.utc)
@@ -89,7 +96,11 @@ async def baseline() -> None:
         "sensors": entries,
     }
 
-    baseline_dir = project_root / ".ces" / "baseline"
+    baseline_dir = ces_dir / "baseline"
+    try:
+        validate_ces_state_path(project_root, baseline_dir)
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc)) from exc
     baseline_dir.mkdir(parents=True, exist_ok=True)
 
     # Filename-safe timestamp with microseconds so rapid re-runs

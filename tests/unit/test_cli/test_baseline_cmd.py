@@ -91,3 +91,33 @@ class TestCesBaseline:
         # After two runs there are two snapshot-*.json history files.
         history = list((tmp_path / ".ces" / "baseline").glob("snapshot-*.json"))
         assert len(history) == 2
+
+    def test_baseline_rejects_symlinked_ces_dir_before_writing(self, tmp_path: Path, monkeypatch: object) -> None:
+        """Baseline snapshots must not write through symlinked CES state."""
+        monkeypatch.chdir(tmp_path)  # type: ignore[attr-defined]
+        outside_state = tmp_path / "outside-state"
+        outside_state.mkdir()
+        (tmp_path / ".ces").symlink_to(outside_state, target_is_directory=True)
+
+        result = runner.invoke(_get_app(), ["baseline"])
+
+        assert result.exit_code != 0
+        combined_output = f"{result.stdout}\n{result.stderr}\n{result.exception}"
+        assert "symlinked .ces" in combined_output
+        assert not (outside_state / "baseline").exists()
+
+    def test_baseline_rejects_symlinked_baseline_dir_before_writing(self, tmp_path: Path, monkeypatch: object) -> None:
+        """Baseline snapshots must not write through a symlink below .ces."""
+        monkeypatch.chdir(tmp_path)  # type: ignore[attr-defined]
+        ces_dir = tmp_path / ".ces"
+        ces_dir.mkdir()
+        outside_state = tmp_path / "outside-baseline"
+        outside_state.mkdir()
+        (ces_dir / "baseline").symlink_to(outside_state, target_is_directory=True)
+
+        result = runner.invoke(_get_app(), ["baseline"])
+
+        assert result.exit_code != 0
+        combined_output = f"{result.stdout}\n{result.stderr}\n{result.exception}"
+        assert "outside the project root" in combined_output or "symlinked CES state path" in combined_output
+        assert not list(outside_state.iterdir())

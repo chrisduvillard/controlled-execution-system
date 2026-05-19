@@ -8,16 +8,29 @@ workflow surfaces inside one repository.
 
 ## 1. Install CES
 
+For normal day-to-day use, install the published CLI as a `uv` tool:
+
+```bash
+uv tool install controlled-execution-system
+uv tool update-shell
+ces --help
+ces doctor
+```
+
+If your ambient `python3` is Python 3.11, ask `uv` for a supported interpreter explicitly:
+
+```bash
+uv tool install --python 3.13 controlled-execution-system
+```
+
+Use a source checkout only when you are developing CES itself:
+
 ```bash
 git clone https://github.com/chrisduvillard/controlled-execution-system.git
 cd controlled-execution-system
 uv sync
 uv run ces --help
 ```
-
-If you are working from a source checkout, use `uv run ces ...` unless you have
-installed the package as a tool. For normal day-to-day use, prefer the PyPI tool
-install shown in the Quickstart.
 
 ### Using a source checkout against another target directory
 
@@ -40,9 +53,8 @@ mkdir -p "$TARGET"
 "$CES" doctor --runtime-safety --project-root "$TARGET"
 "$CES" doctor --verify-runtime --runtime all --project-root "$TARGET"
 
-"$CES" build "Create a small Python CLI app named TaskLedger" \
+"$CES" build --from-scratch "Create a small Python CLI app named TaskLedger" \
   --project-root "$TARGET" \
-  --greenfield \
   --yes \
   --accept-runtime-side-effects \
   --acceptance "The CLI is runnable with python -m taskledger --help." \
@@ -105,7 +117,15 @@ runtime requirement for `ces build` or `ces execute`.
 ## 3. Start in Your Repo
 
 ```bash
+# Greenfield: start a new project from an empty folder.
 mkdir freshcart && cd freshcart
+ces build --from-scratch "Create a grocery price tracker with tests and run instructions"
+
+# Brownfield: change an existing repo with behavior to preserve.
+cd path/to/existing-repo
+ces mri
+ces next-prompt "Fix null pointer in product search when category is empty" \
+  --must-not-break "Existing successful product search results."
 ces build "Fix null pointer in product search when category is empty"
 ```
 

@@ -38,8 +38,9 @@ CES will ask additional questions in brownfield mode:
 # Force brownfield mode (useful for repos with only config files)
 ces build "Add monitoring" --brownfield
 
-# Force greenfield mode (useful when you want to ignore existing code)
-ces build "Rewrite from scratch" --greenfield
+# Start a new project from an empty folder instead of rewriting an existing repo
+mkdir ../replacement-project && cd ../replacement-project
+ces build --from-scratch "Create the replacement project"
 ```
 
 ## The Brownfield Review Flow
@@ -79,14 +80,16 @@ ces brownfield list
 For each registered behavior, decide its disposition:
 
 ```bash
-# Review a specific entry — decide to preserve, migrate, or remove
+# Review a specific entry and choose one CLI-supported disposition.
 ces brownfield review OLB-<entry-id> --disposition preserve
 ```
 
 Dispositions:
-- **Preserve**: behavior must be maintained exactly as-is
-- **Migrate**: behavior will be updated as part of the change
-- **Remove**: behavior is intentionally being retired
+- **preserve**: behavior must be maintained exactly as-is
+- **change**: behavior will be updated as part of the change
+- **retire**: behavior is intentionally being retired
+- **new**: behavior is a newly accepted requirement
+- **under_investigation**: behavior needs more review before promotion or retirement
 
 ### Promote to PRL
 
@@ -166,7 +169,7 @@ Look for:
 - Use `ces build` for day-to-day changes — brownfield mode is automatic
 - Use `ces continue` when CES pauses during grouped brownfield review
 - Use `ces brownfield register` when you discover undocumented behavior
-- Use `ces brownfield review ... --disposition <preserve|migrate|remove>` for explicit expert decisions
+- Use `ces brownfield review ... --disposition <preserve|change|retire|new|under_investigation>` for explicit expert decisions
 - Use `ces brownfield promote` when behavior should become a formal requirement
 - Use `ces explain --view brownfield` to see brownfield context for the current session
 

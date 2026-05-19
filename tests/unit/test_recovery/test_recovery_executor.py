@@ -130,6 +130,10 @@ def test_auto_evidence_refreshes_stale_empty_contract_after_greenfield_files_exi
     tests_dir = project_root / "tests"
     tests_dir.mkdir()
     (tests_dir / "test_smoke.py").write_text("def test_smoke():\n    assert True\n", encoding="utf-8")
+    (project_root / "pyproject.toml").write_text(
+        '[project]\nname = "demo"\nversion = "0.1.0"\ndependencies = ["pytest"]\n',
+        encoding="utf-8",
+    )
     contract = CompletionContract(
         request="Build demo",
         acceptance_criteria=(AcceptanceCriterion(id="AC-001", text="Running pytest passes."),),

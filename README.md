@@ -103,6 +103,16 @@ uv tool install --python 3.13 controlled-execution-system
 
 Run `ces` with no arguments to print the Start Here guide. Use `ces --help` when you want the full command reference.
 
+CES governs a local coding runtime; it does not bundle one. Before the first mutating `ces build`, make sure one runtime is installed and authenticated:
+
+```bash
+codex --version   # for Codex CLI
+claude --version  # for Claude Code
+ces doctor --runtime-safety
+```
+
+Prefer Claude Code when you need enforceable tool allowlists. Prefer Codex when you accept the sandbox/side-effect boundary and will explicitly pass `--accept-runtime-side-effects` after reading the notice.
+
 ### 2. Choose your path
 
 | Situation | Start with |
@@ -189,6 +199,17 @@ ces proof
 ```
 
 You know the brownfield path worked when CES identifies the repo as brownfield, the contract/proof includes must-not-break behavior, changed files stay inside the declared scope, verification evidence is fresh, and `ces proof` reports `proven` or names the exact blocker.
+
+For non-interactive brownfield automation, `--yes` is intentionally stricter. Include the source of truth and at least one critical flow so CES does not silently preserve inferred behavior:
+
+```bash
+ces build "Add invoice notes to CSV exports" \
+  --yes \
+  --source-of-truth "tests/test_export.py and docs/export-format.md" \
+  --critical-flow "Existing CSV exports remain import-compatible" \
+  --acceptance "CSV exports include invoice notes when present." \
+  --must-not-break "Existing CSV export columns and import compatibility."
+```
 
 ## Quality gates: how to know it worked
 
