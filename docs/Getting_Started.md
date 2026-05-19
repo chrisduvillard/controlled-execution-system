@@ -104,6 +104,12 @@ Copy this checklist into your issue/PR description for novice operators:
 
 If any box is unchecked, do not run mutating commands yet.
 
+### Objective-bound proof
+
+`ces proof` is bound to the exact objective context verified by `ces verify`: objective text, acceptance criteria, must-not-break constraints, brownfield source of truth, critical flows, behavior delta, and verification commands. If any of those change after verification, the proof becomes unproven with `freshness: stale-objective` or `binding_status: mismatched`. Rerun `ces verify --json`, then rerun `ces proof`, before approval.
+
+Legacy verification evidence without a proof binding hash is intentionally not approval-safe. This prevents an old `.ces/latest-verification.json` from looking like proof for a new brownfield objective.
+
 ## 2. Verify a Local Runtime
 
 ```bash

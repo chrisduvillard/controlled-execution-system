@@ -13,6 +13,7 @@ from typing import Any
 
 from ces.execution.secrets import scrub_secrets_recursive
 from ces.verification.completion_contract import BehaviorDelta, CompletionContract, RiskTrack, VerificationCommand
+from ces.verification.proof_binding import proof_binding_hash
 
 _SCHEMA_VERSION = "1.0"
 _VERIFICATION_RESULT_PATH = Path(".ces") / "latest-verification.json"
@@ -136,12 +137,20 @@ def build_proof_card(project_root: str | Path) -> ProofCardReport:
     execution_contract = _load_execution_contract(root)
     verification = _load_latest_verification(root)
     verification_fresh = _verification_is_fresh(root, contract_path, verification)
+    binding_status = _proof_binding_status(contract, verification)
     missing = _missing_required_artifacts(root, contract, verification)
     behavior_delta = _behavior_delta(contract, execution_contract)
     risk_track = contract.risk_track if contract else RiskTrack()
-    unproven = _unproven_areas(contract, missing, verification, root=root, behavior_delta=behavior_delta)
+    unproven = _unproven_areas(
+        contract,
+        missing,
+        verification,
+        root=root,
+        behavior_delta=behavior_delta,
+        binding_status=binding_status,
+    )
     verification_passed = _verification_passed(verification)
-    verification_matches = _verification_matches_contract(contract, verification, root)
+    verification_matches = _verification_matches_contract(contract, verification, root) and binding_status == "matched"
     status = (
         "candidate"
         if contract
@@ -161,7 +170,12 @@ def build_proof_card(project_root: str | Path) -> ProofCardReport:
         missing=missing,
         unproven=unproven,
     )
-    approval_safety = _approval_safety(proof_status, verification=verification, verification_fresh=verification_fresh)
+    approval_safety = _approval_safety(
+        proof_status,
+        verification=verification,
+        verification_fresh=verification_fresh,
+        binding_status=binding_status,
+    )
     recommendation = "candidate" if status == "candidate" else "no-ship"
     review_summary = _review_summary(
         contract=contract,
@@ -173,6 +187,7 @@ def build_proof_card(project_root: str | Path) -> ProofCardReport:
         unproven=unproven,
         behavior_delta=behavior_delta,
         risk_track=risk_track,
+        binding_status=binding_status,
     )
     return ProofCardReport(
         project_root=root,
@@ -224,6 +239,7 @@ def _unproven_areas(
     *,
     root: Path,
     behavior_delta: BehaviorDelta,
+    binding_status: str,
 ) -> list[str]:
     if contract is None:
         message = "No completion contract found; run `ces build --from-scratch ...` or `ces ship ...` first."
@@ -241,6 +257,10 @@ def _unproven_areas(
         areas.append("Latest persisted verification run did not pass.")
     elif not _verification_is_fresh(root, root / ".ces" / "completion-contract.json", verification):
         areas.append("Latest persisted verification run is not fresh for the current completion contract.")
+    elif binding_status == "missing":
+        areas.append("Latest persisted verification run is missing a proof binding hash; rerun `ces verify --json`.")
+    elif binding_status == "mismatched":
+        areas.append("Latest persisted verification run was produced for a different objective context.")
     elif not _verification_matches_contract(contract, verification, root):
         areas.append("Latest persisted verification run does not match the current completion contract.")
     if contract.proof_requirements and missing:
@@ -303,14 +323,20 @@ def _proof_status(
     return "proven"
 
 
-def _approval_safety(proof_status: str, *, verification: dict[str, Any] | None, verification_fresh: bool) -> str:
+def _approval_safety(
+    proof_status: str,
+    *,
+    verification: dict[str, Any] | None,
+    verification_fresh: bool,
+    binding_status: str,
+) -> str:
     """Return a compact approval safety hint for the current proof state."""
 
     if proof_status == "proven":
         return "safe-to-review"
     if proof_status == "contradicted":
         return "blocked"
-    if verification is None or not verification_fresh:
+    if verification is None or not verification_fresh or binding_status in {"missing", "mismatched"}:
         return "needs-fresh-verification"
     return "needs-evidence"
 
@@ -326,6 +352,7 @@ def _review_summary(
     unproven: list[str],
     behavior_delta: BehaviorDelta,
     risk_track: RiskTrack,
+    binding_status: str,
 ) -> dict[str, Any]:
     """Return reviewer-facing decision metadata for the proof card."""
 
@@ -333,7 +360,8 @@ def _review_summary(
         "decision": _review_decision(proof_status, approval_safety),
         "approval_gate": "open" if proof_status == "proven" and approval_safety == "safe-to-review" else "closed",
         "primary_blocker": _primary_blocker(proof_status, missing, unproven),
-        "freshness": _freshness_label(contract, verification, verification_fresh),
+        "freshness": _freshness_label(contract, verification, verification_fresh, binding_status),
+        "binding_status": binding_status,
         "command_coverage": _command_coverage(contract, verification),
         "artifact_coverage": _artifact_coverage(contract, missing),
         "behavior_delta_coverage": _behavior_delta_coverage(behavior_delta),
@@ -365,12 +393,19 @@ def _freshness_label(
     contract: CompletionContract | None,
     verification: dict[str, Any] | None,
     verification_fresh: bool,
+    binding_status: str,
 ) -> str:
     if contract is None:
         return "no-contract"
     if verification is None:
         return "missing-verification"
-    return "fresh" if verification_fresh else "stale"
+    if not verification_fresh:
+        return "stale"
+    if binding_status == "mismatched":
+        return "stale-objective"
+    if binding_status == "missing":
+        return "missing-binding"
+    return "fresh"
 
 
 def _command_coverage(contract: CompletionContract | None, verification: dict[str, Any] | None) -> str:
@@ -508,6 +543,19 @@ def _verification_payload(verification: dict[str, Any] | None) -> dict[str, Any]
 def _verification_passed(verification: dict[str, Any] | None) -> bool:
     payload = _verification_payload(verification)
     return bool(payload and payload.get("passed") is True)
+
+
+def _proof_binding_status(contract: CompletionContract | None, verification: dict[str, Any] | None) -> str:
+    """Return whether persisted verification is bound to the current objective context."""
+
+    if contract is None:
+        return "no-contract"
+    if verification is None:
+        return "missing"
+    recorded = verification.get("proof_binding_hash")
+    if not isinstance(recorded, str) or not recorded:
+        return "missing"
+    return "matched" if recorded == proof_binding_hash(contract) else "mismatched"
 
 
 def _verification_matches_contract(

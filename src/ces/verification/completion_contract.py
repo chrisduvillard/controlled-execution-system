@@ -116,6 +116,7 @@ class CompletionContract:
     proof_requirements: tuple[str, ...] = ()
     behavior_delta: BehaviorDelta = field(default_factory=BehaviorDelta)
     risk_track: RiskTrack = field(default_factory=RiskTrack)
+    proof_binding_hash: str | None = None
     next_ces_command: str = "ces verify --json"
     version: int = 1
 
@@ -155,6 +156,9 @@ class CompletionContract:
             risk_track=RiskTrack.from_dict(risk_track_payload)
             if risk_track_payload is not None
             else infer_risk_track(behavior_delta),
+            proof_binding_hash=str(payload["proof_binding_hash"])
+            if isinstance(payload.get("proof_binding_hash"), str)
+            else None,
             next_ces_command=str(payload.get("next_ces_command", "ces verify --json") or "ces verify --json"),
         )
 

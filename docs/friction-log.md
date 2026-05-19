@@ -137,10 +137,9 @@ This log records friction found during the production-readiness dogfood pass. Fr
 - **Expected:** CES understands the repo, plans safely, validates existing commands, and preserves tracked git cleanliness.
 - **Actual:** CES correctly classified Auralis as a Node/Vite production candidate and generated a useful brownfield contract, but missed Electron desktop runtime evidence, flagged `package-lock.json` as a large-file maintainability risk, and `ces proof` surfaced prior local proof without enough freshness/objective warning.
 - **Severity:** High for signal quality, low for repo safety.
-- **Status:** Partially fixed.
-- **Fix:** MRI now infers Electron runtime declarations from package `main`, Electron deps/scripts, and desktop smoke scripts; large-file risk ignores dependency lockfiles.
-- **Remaining:** Add proof freshness/objective binding so stale `.ces` evidence cannot look like proof for a new read-only objective.
-- **Evidence after fix:** `tests/unit/test_verification/test_mri.py::test_project_mri_infers_electron_runtime_from_package_json` and `::test_project_mri_does_not_flag_lockfiles_as_large_source_files`; Auralis tracked git status stayed clean before/after trial.
+- **Status:** Fixed.
+- **Fix:** MRI now infers Electron runtime declarations from package `main`, Electron deps/scripts, and desktop smoke scripts; large-file risk ignores dependency lockfiles; proof evidence is now bound to a deterministic objective/context fingerprint.
+- **Evidence after fix:** `tests/unit/test_verification/test_mri.py::test_project_mri_infers_electron_runtime_from_package_json`, `::test_project_mri_does_not_flag_lockfiles_as_large_source_files`, `tests/unit/test_verification/test_proof_binding.py`, `tests/unit/test_verification/test_proof_card.py::test_proof_card_rejects_latest_verification_for_different_objective_binding`, and `::test_proof_card_rejects_legacy_verification_without_binding_hash`; Auralis tracked git status stayed clean before/after trial.
 
 ## FL-015: Greenfield `ces diff` crashed on bracketed paths
 

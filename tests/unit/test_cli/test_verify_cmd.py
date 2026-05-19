@@ -33,6 +33,8 @@ def test_verify_infers_contract_without_writing_by_default(tmp_path: Path, monke
     assert payload["contract_persisted"] is False
     latest = json.loads((tmp_path / ".ces" / "latest-verification.json").read_text(encoding="utf-8"))
     assert latest["verification"]["passed"] is True
+    assert latest["proof_binding_hash"]
+    assert latest["objective"] == "Independent verification"
     assert not (tmp_path / ".ces" / "completion-contract.json").exists()
 
 
@@ -51,6 +53,8 @@ def test_verify_writes_inferred_contract_when_requested(tmp_path: Path, monkeypa
     assert payload["verification"]["passed"] is True
     assert payload["contract_persisted"] is True
     assert (tmp_path / ".ces" / "completion-contract.json").is_file()
+    contract = json.loads((tmp_path / ".ces" / "completion-contract.json").read_text(encoding="utf-8"))
+    assert contract["proof_binding_hash"] == payload["proof_binding_hash"]
 
 
 def test_verify_accepts_project_root(tmp_path: Path, monkeypatch) -> None:
@@ -81,6 +85,41 @@ def test_verify_json_exits_nonzero_when_no_commands_are_inferred(tmp_path: Path,
     payload = json.loads(result.stdout)
     assert payload["verification"]["passed"] is False
     assert payload["verification"]["commands"] == []
+
+
+def test_verify_json_scrubs_secret_like_objective_in_latest_evidence(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / ".ces").mkdir()
+    (tmp_path / ".ces" / "completion-contract.json").write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "request": "Verify OPENAI_API_KEY=sk-test-secret-value stays hidden",
+                "project_type": "unknown",
+                "acceptance_criteria": [],
+                "inferred_commands": [
+                    {
+                        "id": "smoke",
+                        "kind": "smoke",
+                        "command": "true",
+                        "expected_exit_codes": [0],
+                    }
+                ],
+                "runtime": {"name": "manual"},
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    result = runner.invoke(_get_app(), ["verify", "--json"])
+
+    assert result.exit_code == 0, result.stdout
+    assert "sk-test-secret-value" not in result.stdout
+    payload = json.loads(result.stdout)
+    assert payload["objective"] == "Verify OPENAI_API_KEY=<REDACTED> stays hidden"
+    latest = json.loads((tmp_path / ".ces" / "latest-verification.json").read_text(encoding="utf-8"))
+    assert latest["objective"] == "Verify OPENAI_API_KEY=<REDACTED> stays hidden"
 
 
 def test_verify_refuses_to_write_latest_evidence_through_symlinked_ces_dir(tmp_path: Path, monkeypatch) -> None:

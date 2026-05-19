@@ -163,6 +163,9 @@ Look for:
 - behavior deltas marked `added`, `modified`, `removed`, or `preserved`
 - no unresolved `unknown` behavior deltas before approval
 - `ces proof` status `proven` with recommendation `safe-to-review`
+- `ces proof --json` reports `review_summary.binding_status == "matched"`
+
+If you change the objective, source of truth, critical flows, must-not-break list, behavior dispositions, or verification commands after running `ces verify`, old proof is no longer reusable. `ces proof` will report `stale-objective`, `missing-binding`, or `mismatched`; rerun `ces verify --json` and then `ces proof` before approval.
 
 ### Ongoing brownfield governance
 

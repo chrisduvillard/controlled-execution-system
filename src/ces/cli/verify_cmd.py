@@ -15,8 +15,10 @@ from ces.cli import _output as _output_mod
 from ces.cli._context import find_project_root
 from ces.cli._errors import handle_error
 from ces.cli._output import console, set_json_mode
+from ces.execution.secrets import scrub_secrets_recursive
 from ces.verification.build_contract import build_completion_contract
 from ces.verification.completion_contract import CompletionContract
+from ces.verification.proof_binding import proof_binding_hash
 from ces.verification.runner import run_verification_commands
 
 
@@ -62,11 +64,14 @@ def verify_project(
                 _write_contract_safely(resolved_root, resolved_contract_path, contract)
                 contract_persisted = True
         verification = run_verification_commands(resolved_root, contract.inferred_commands)
+        binding_hash = proof_binding_hash(contract)
         payload = {
             "project_root": str(resolved_root),
             "contract_path": str(resolved_contract_path),
             "contract_persisted": contract_persisted,
             "project_type": contract.project_type,
+            "objective": scrub_secrets_recursive(contract.request),
+            "proof_binding_hash": binding_hash,
             "verification": verification.to_dict(),
         }
         _write_latest_verification(resolved_root, payload)

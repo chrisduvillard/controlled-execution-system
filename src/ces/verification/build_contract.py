@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -14,6 +15,7 @@ from ces.verification.completion_contract import (
     infer_risk_track,
 )
 from ces.verification.project_detector import detect_project_type
+from ces.verification.proof_binding import proof_binding_hash
 
 GREENFIELD_REQUIRED_ARTIFACTS = ("README.md", "run command", "test command", "verification evidence")
 GREENFIELD_PROOF_REQUIREMENTS = (
@@ -39,7 +41,7 @@ def build_completion_contract(
     if runtime_metadata:
         runtime.update(runtime_metadata)
     delta = behavior_delta or BehaviorDelta()
-    return CompletionContract(
+    contract = CompletionContract(
         request=request,
         project_type=project_type,
         acceptance_criteria=criteria_from_texts(acceptance_criteria),
@@ -53,6 +55,7 @@ def build_completion_contract(
         risk_track=risk_track or infer_risk_track(delta),
         next_ces_command="ces verify --json",
     )
+    return replace(contract, proof_binding_hash=proof_binding_hash(contract))
 
 
 def write_completion_contract(
