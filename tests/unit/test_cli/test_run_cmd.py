@@ -3003,6 +3003,91 @@ def test_completion_summary_includes_actionable_next_command_for_blocked_build()
     assert "Next: ces recover --dry-run" in summary
 
 
+def test_noninteractive_from_scratch_missing_acceptance_does_not_bootstrap(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from ces.cli.run_cmd import _preflight_noninteractive_build_inputs_before_bootstrap
+
+    monkeypatch.chdir(tmp_path)
+
+    with pytest.raises(typer.BadParameter, match="--acceptance"):
+        _preflight_noninteractive_build_inputs_before_bootstrap(
+            requested_project_root=None,
+            yes=True,
+            description="Create a new app",
+            greenfield=True,
+            brownfield=False,
+            constraints=[],
+            acceptance=[],
+            must_not_break=[],
+            source_of_truth=None,
+            critical_flows=[],
+            reverse_preflight="off",
+        )
+
+    assert not (tmp_path / ".ces").exists()
+    assert not (tmp_path / ".gitignore").exists()
+
+
+def test_noninteractive_brownfield_missing_preservation_context_does_not_bootstrap(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from ces.cli.run_cmd import _preflight_noninteractive_build_inputs_before_bootstrap
+
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "pyproject.toml").write_text("[project]\nname = 'existing-app'\nversion = '0.1.0'\n")
+
+    with pytest.raises(typer.BadParameter, match="--source-of-truth"):
+        _preflight_noninteractive_build_inputs_before_bootstrap(
+            requested_project_root=None,
+            yes=True,
+            description="Add export notes",
+            greenfield=False,
+            brownfield=True,
+            constraints=[],
+            acceptance=["Export includes notes"],
+            must_not_break=["Existing exports stay compatible"],
+            source_of_truth=None,
+            critical_flows=[],
+            reverse_preflight="off",
+        )
+
+    assert not (tmp_path / ".ces").exists()
+    assert not (tmp_path / ".gitignore").exists()
+
+
+def test_build_auto_bootstrap_rejects_symlinked_gitignore_before_mutating(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    project = tmp_path / "project"
+    project.mkdir()
+    outside_gitignore = tmp_path / "outside.gitignore"
+    original = "# outside\n"
+    outside_gitignore.write_text(original, encoding="utf-8")
+    (project / ".gitignore").symlink_to(outside_gitignore)
+    monkeypatch.chdir(project)
+
+    result = runner.invoke(
+        _get_app(),
+        [
+            "build",
+            "Create app",
+            "--yes",
+            "--acceptance",
+            "App runs",
+            "--source-of-truth",
+            "README.md",
+            "--critical-flow",
+            "App starts",
+        ],
+    )
+
+    assert result.exit_code != 0
+    assert "symlinked .gitignore" in result.stdout
+    assert not (project / ".ces").exists()
+    assert outside_gitignore.read_text(encoding="utf-8") == original
+
+
 def test_build_from_scratch_conflicts_with_positional_description(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -3132,12 +3217,21 @@ def test_build_from_scratch_existing_project_greenfield_is_explicit_override(
         collect_brief.return_value = SimpleNamespace(
             request="Create replacement app",
             project_mode="greenfield",
-            acceptance_criteria=[],
+            acceptance_criteria=["Replacement app boots"],
             source_of_truth=None,
             critical_flows=[],
         )
         result = runner.invoke(
-            _get_app(), ["build", "--from-scratch", "Create replacement app", "--yes", "--greenfield"]
+            _get_app(),
+            [
+                "build",
+                "--from-scratch",
+                "Create replacement app",
+                "--yes",
+                "--greenfield",
+                "--acceptance",
+                "Replacement app boots",
+            ],
         )
 
     assert result.exit_code != 0
@@ -3172,11 +3266,13 @@ def test_build_legacy_gsd_alias_still_sets_greenfield_defaults(tmp_path: Path, m
         collect_brief.return_value = SimpleNamespace(
             request="Build PromptVault",
             project_mode="greenfield",
-            acceptance_criteria=[],
+            acceptance_criteria=["PromptVault opens"],
             source_of_truth=None,
             critical_flows=[],
         )
-        result = runner.invoke(_get_app(), ["build", "--gsd", "Build PromptVault", "--yes"])
+        result = runner.invoke(
+            _get_app(), ["build", "--gsd", "Build PromptVault", "--yes", "--acceptance", "PromptVault opens"]
+        )
 
     assert result.exit_code != 0
     call = collect_brief.call_args.kwargs
@@ -3212,11 +3308,14 @@ def test_build_from_scratch_sets_description_and_greenfield_defaults(
         collect_brief.return_value = SimpleNamespace(
             request="Build PromptVault",
             project_mode="greenfield",
-            acceptance_criteria=[],
+            acceptance_criteria=["PromptVault opens"],
             source_of_truth=None,
             critical_flows=[],
         )
-        result = runner.invoke(_get_app(), ["build", "--from-scratch", "Build PromptVault", "--yes"])
+        result = runner.invoke(
+            _get_app(),
+            ["build", "--from-scratch", "Build PromptVault", "--yes", "--acceptance", "PromptVault opens"],
+        )
 
     assert result.exit_code != 0
     call = collect_brief.call_args.kwargs
@@ -3311,3 +3410,26 @@ def test_build_from_scratch_in_existing_project_yes_does_not_bypass_guard(
     assert "already looks like an existing project" in result.stdout
     assert "--greenfield" in result.stdout
     assert not (tmp_path / ".ces").exists()
+
+
+def test_noninteractive_brownfield_missing_context_does_not_bootstrap(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "pyproject.toml").write_text("[project]\nname = 'existing-app'\nversion = '0.1.0'\n")
+
+    result = runner.invoke(
+        _get_app(),
+        [
+            "build",
+            "Add input validation",
+            "--yes",
+            "--acceptance",
+            "Validation errors are tested",
+        ],
+    )
+
+    assert result.exit_code != 0
+    assert "Non-interactive brownfield `--yes` builds require" in result.stdout
+    assert not (tmp_path / ".ces").exists()
+    assert not (tmp_path / ".gitignore").exists()

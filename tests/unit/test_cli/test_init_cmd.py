@@ -130,6 +130,24 @@ class TestCesInit:
         assert not (outside / "keys").exists()
         assert not (outside / "config.yaml").exists()
 
+    def test_init_rejects_symlinked_gitignore_before_bootstrap(self, tmp_path: Path, monkeypatch: object) -> None:
+        """Init must not append CES ignore entries through a symlinked .gitignore."""
+        project = tmp_path / "project"
+        project.mkdir()
+        outside_gitignore = tmp_path / "outside.gitignore"
+        original = "# outside\n"
+        outside_gitignore.write_text(original, encoding="utf-8")
+        (project / ".gitignore").symlink_to(outside_gitignore)
+        monkeypatch.chdir(project)  # type: ignore[attr-defined]
+        app = _get_app()
+
+        result = runner.invoke(app, ["init", "myproject"])
+
+        assert result.exit_code != 0
+        assert "symlinked .gitignore" in result.stdout
+        assert not (project / ".ces").exists()
+        assert outside_gitignore.read_text(encoding="utf-8") == original
+
     def test_displays_success_message(self, tmp_path: Path, monkeypatch: object) -> None:
         """ces init displays a success message mentioning the project name."""
         monkeypatch.chdir(tmp_path)  # type: ignore[attr-defined]

@@ -91,6 +91,41 @@ class TestRuntimeAdapterEnvScrubbing:
             assert stat.S_IMODE(transcript_path.stat().st_mode) == 0o600
             assert stat.S_IMODE(transcript_path.parent.stat().st_mode) == 0o700
 
+    def test_runtime_transcript_path_rejects_symlinked_ces_dir(self, tmp_path: Path) -> None:
+        outside = tmp_path / "outside"
+        outside.mkdir()
+        (tmp_path / ".ces").symlink_to(outside)
+
+        with pytest.raises(ValueError, match="symlinked .ces"):
+            CodexRuntimeAdapter._prepare_project_transcript_path(tmp_path, "inv")
+
+    def test_runtime_transcript_path_rejects_symlinked_transcript_dir(self, tmp_path: Path) -> None:
+        outside = tmp_path / "outside-transcripts"
+        outside.mkdir()
+        ces_dir = tmp_path / ".ces"
+        ces_dir.mkdir()
+        (ces_dir / "runtime-transcripts").symlink_to(outside)
+
+        with pytest.raises(ValueError, match="runtime-transcripts"):
+            CodexRuntimeAdapter._prepare_project_transcript_path(tmp_path, "inv")
+
+    def test_runtime_output_read_rejects_symlink_swap(self, tmp_path: Path) -> None:
+        outside = tmp_path / "outside.txt"
+        outside.write_text("outside", encoding="utf-8")
+        link = tmp_path / "message.txt"
+        link.symlink_to(outside)
+
+        with pytest.raises(ValueError, match="symlinked path"):
+            CodexRuntimeAdapter._read_scrubbed_limited_path(link)
+
+    def test_runtime_version_timeout_returns_safe_fallback(self) -> None:
+        adapter = CodexRuntimeAdapter()
+        with (
+            patch.object(adapter, "detect", return_value=True),
+            patch("ces.execution.runtimes.adapters.subprocess.run", side_effect=subprocess.TimeoutExpired("codex", 10)),
+        ):
+            assert adapter.version() == "unknown-timeout"
+
     @patch.dict("os.environ", {"PATH": "/usr/bin", "CES_CODEX_SANDBOX": "workspace-write"}, clear=True)
     def test_codex_runtime_can_opt_into_configured_sandbox(self, tmp_path: Path) -> None:
         adapter = CodexRuntimeAdapter()

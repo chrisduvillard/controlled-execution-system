@@ -149,3 +149,26 @@ def test_sensor_id_and_pack_values(sensor_cls: type, expected_id: str, expected_
     sensor = sensor_cls()
     assert sensor.sensor_id == expected_id
     assert sensor.sensor_pack == expected_pack
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "sensitive_path",
+    [".aws/credentials", ".ssh/id_ed25519", ".npmrc", ".pypirc", ".env.staging", ".envrc", ".kube/config"],
+)
+async def test_security_sensor_flags_sensitive_path_patterns(tmp_path, sensitive_path: str) -> None:
+    sensor = SecuritySensor()
+
+    result = await sensor.run({"project_root": str(tmp_path), "affected_files": [sensitive_path]})
+
+    assert result.passed is False
+    assert any(finding.location == sensitive_path for finding in result.findings)
+
+
+@pytest.mark.asyncio
+async def test_security_sensor_allows_env_example(tmp_path) -> None:
+    sensor = SecuritySensor()
+
+    result = await sensor.run({"project_root": str(tmp_path), "affected_files": [".env.example"]})
+
+    assert result.passed is True

@@ -103,6 +103,8 @@ uv tool install --python 3.13 controlled-execution-system
 
 Run `ces` with no arguments to print the Start Here guide. Use `ces --help` when you want the full command reference.
 
+Lifecycle shortcuts: install with `uv tool install controlled-execution-system`, update with `uv tool upgrade controlled-execution-system`, uninstall the global CLI with `uv tool uninstall controlled-execution-system`, and clean project-local CES state with `ces cleanup --project-root path/to/project`.
+
 CES governs a local coding runtime; it does not bundle one. Before the first mutating `ces build`, make sure one runtime is installed and authenticated:
 
 ```bash
@@ -170,6 +172,8 @@ ces ship "Create a small task tracker app with add/list/complete tasks, tests, a
 ces build --from-scratch "Create a small task tracker app with add/list/complete tasks, tests, and a README"
 ces verify
 ces proof
+# If `ces proof` is proven and recommends safe-to-review:
+ces approve --yes
 ```
 
 If you use Codex, `ces build` stops before subprocess launch unless you explicitly accept the runtime boundary. After reading the prompt, rerun with:
@@ -196,6 +200,8 @@ ces next-prompt "Add invoice notes to CSV exports" \
 ces build "Add invoice notes to CSV exports"
 ces verify
 ces proof
+# If `ces proof` is proven and recommends safe-to-review:
+ces approve --yes
 ```
 
 You know the brownfield path worked when CES identifies the repo as brownfield, the contract/proof includes must-not-break behavior, changed files stay inside the declared scope, verification evidence is fresh, and `ces proof` reports `proven` or names the exact blocker.
@@ -345,7 +351,27 @@ Upgrade later:
 
 ```bash
 uv tool upgrade controlled-execution-system
+ces --version
+ces doctor
 ```
+
+Uninstall the global CLI when you no longer want CES installed:
+
+```bash
+uv tool uninstall controlled-execution-system
+```
+
+Clean CES out of a project before abandoning a trial or starting over:
+
+```bash
+# Preview first: no files are removed.
+ces cleanup --project-root path/to/project
+
+# Apply: removes `.ces/` and only the CES-managed `.gitignore` block.
+ces cleanup --project-root path/to/project --yes
+```
+
+`ces cleanup` does not delete your source files, tests, docs, reports outside `.ces/`, virtualenvs you created manually, or the globally installed package. It refuses symlinked `.ces` state and symlinked `.gitignore` files so cleanup cannot be redirected outside the project.
 
 ### Verify the runtime boundary
 
@@ -532,6 +558,7 @@ Unattended `--yes` runs remain evidence-gated. CES should block auto-approval wh
 | `ces status` | Show read-only builder-first status by default. |
 | `ces why` | Diagnose a blocked builder run. |
 | `ces recover --dry-run` | Preview recovery before mutation. |
+| `ces cleanup [--project-root PATH] [--yes]` | Preview or remove project-local `.ces/` state and only the CES-managed `.gitignore` block; does not uninstall CES. |
 | `ces verify` | Independently verify the current project. |
 | `ces mri` | Diagnose maturity, readiness score, risk findings, missing signals, and recommended next actions. |
 | `ces next` | Show the next safest production-readiness action. |

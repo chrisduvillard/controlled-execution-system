@@ -184,6 +184,16 @@ jobs:
           assert "--limit" in payload["error"]["message"]
           PY
 
+          printf '\n# user-authored ignore\nlocal-only.log\n' >> "$smoke_dir/.gitignore"
+          "$smoke_venv/bin/ces" cleanup --project-root "$smoke_dir" > "$smoke_dir/cleanup-preview.txt"
+          grep -F "ces cleanup --project-root" "$smoke_dir/cleanup-preview.txt"
+          grep -F -- "--yes" "$smoke_dir/cleanup-preview.txt"
+          test -d "$smoke_dir/.ces"
+          "$smoke_venv/bin/ces" cleanup --project-root "$smoke_dir" --yes
+          test ! -e "$smoke_dir/.ces"
+          grep -F "local-only.log" "$smoke_dir/.gitignore"
+          ! grep -F "CES local state" "$smoke_dir/.gitignore"
+
   latest-dependency-bounds:
     runs-on: ubuntu-latest
     steps:
@@ -209,3 +219,4 @@ jobs:
         run: |
           uv run ces --help
           uv run ces build --help
+          uv run ces cleanup --help

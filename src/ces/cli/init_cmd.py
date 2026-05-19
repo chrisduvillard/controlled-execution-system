@@ -93,6 +93,7 @@ def initialize_local_project(project_root: Path, *, name: str) -> dict[str, Any]
         )
 
     ces_dir = project_root / ".ces"
+    _validate_project_gitignore_path(project_root)
     validate_ces_state_dir(project_root, ces_dir)
     profile_bootstrap_only = _has_only_profile_bootstrap_state(ces_dir)
     if ces_dir.exists() and not profile_bootstrap_only:
@@ -152,9 +153,20 @@ _DEFAULT_GITIGNORE_ENTRIES = (
 )
 
 
+def _validate_project_gitignore_path(project_root: Path) -> None:
+    """Reject project .gitignore paths that could redirect writes outside the repo."""
+    gitignore_path = project_root / ".gitignore"
+    if gitignore_path.is_symlink():
+        raise ValueError(
+            "Refusing to update a symlinked .gitignore. Replace it with a regular project-local "
+            ".gitignore before initializing CES."
+        )
+
+
 def _ensure_local_gitignore_entries(project_root: Path) -> tuple[str, ...]:
     """Ensure CES local state/secrets and common generated artifacts are ignored."""
     gitignore_path = project_root / ".gitignore"
+    _validate_project_gitignore_path(project_root)
     existing = gitignore_path.read_text(encoding="utf-8") if gitignore_path.exists() else ""
     existing_lines = {line.strip() for line in existing.splitlines()}
     missing = tuple(entry for entry in _DEFAULT_GITIGNORE_ENTRIES if entry not in existing_lines)
@@ -229,6 +241,7 @@ async def init_project(
     ces_dir = cwd / ".ces"
     try:
         validate_ces_state_dir(cwd, ces_dir)
+        _validate_project_gitignore_path(cwd)
     except ValueError as exc:
         console.print(
             Panel(

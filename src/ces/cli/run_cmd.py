@@ -128,6 +128,64 @@ def _validate_noninteractive_brief(brief: BuilderBriefDraft) -> None:
         )
 
 
+def _preflight_noninteractive_build_inputs_before_bootstrap(
+    *,
+    requested_project_root: Path | None,
+    yes: bool,
+    description: str | None,
+    greenfield: bool,
+    brownfield: bool,
+    constraints: list[str] | None,
+    acceptance: list[str] | None,
+    must_not_break: list[str] | None,
+    source_of_truth: str | None,
+    critical_flows: list[str] | None,
+    reverse_preflight: str,
+) -> None:
+    """Reject missing unattended inputs before creating `.ces/` or editing `.gitignore`.
+
+    Full brief collection needs initialized services, but the common fail-closed
+    input contract can be checked from CLI arguments and a read-only project
+    mode probe. This keeps invalid brownfield `--yes` attempts non-mutating.
+    """
+    if not yes or not description:
+        return
+    mode = _normalize_reverse_preflight_mode(reverse_preflight)
+    if mode not in {"off", "llm"}:
+        preflight = _deterministic_intent_preflight_for_brief(
+            BuilderBriefDraft(
+                request=description,
+                project_mode="greenfield" if greenfield else "brownfield",
+                constraints=_normalize_option_values(constraints),
+                acceptance_criteria=_normalize_option_values(acceptance),
+                must_not_break=_normalize_option_values(must_not_break),
+                open_questions={},
+                source_of_truth=(source_of_truth or "").strip(),
+                critical_flows=_normalize_option_values(critical_flows),
+            ),
+            non_interactive=True,
+        )
+        if mode == "strict":
+            preflight = _strict_intent_preflight(preflight)
+        if preflight.decision in {"ask", "blocked"}:
+            raise typer.BadParameter(_format_intent_gate_block(preflight))
+    if not _normalize_option_values(acceptance):
+        raise typer.BadParameter(
+            "Non-interactive `--yes` builds with a description require at least one "
+            "`--acceptance` value so CES can judge what done means."
+        )
+    if greenfield:
+        return
+    target_root = (requested_project_root or Path.cwd()).resolve()
+    project_type = _from_scratch_guard_project_type(target_root, allow_deep_scan=True)
+    is_brownfield = brownfield or project_type is not None
+    if is_brownfield and (not (source_of_truth or "").strip() or not _normalize_option_values(critical_flows)):
+        raise typer.BadParameter(
+            "Non-interactive brownfield `--yes` builds require `--source-of-truth` "
+            "and at least one `--critical-flow` so CES does not silently preserve inferred behavior."
+        )
+
+
 _REVERSE_PREFLIGHT_MODES = {"off", "rules", "strict", "llm"}
 
 
@@ -1759,6 +1817,19 @@ async def run_task(
             requested_project_root=requested_project_root,
             from_scratch_request=greenfield_request,
             explicit_greenfield=explicit_greenfield,
+        )
+        _preflight_noninteractive_build_inputs_before_bootstrap(
+            requested_project_root=requested_project_root,
+            yes=yes,
+            description=description,
+            greenfield=greenfield,
+            brownfield=brownfield,
+            constraints=constraints,
+            acceptance=acceptance,
+            must_not_break=must_not_break,
+            source_of_truth=source_of_truth,
+            critical_flows=critical_flows,
+            reverse_preflight=reverse_preflight_mode,
         )
         project_root, project_config, bootstrapped = _ensure_builder_project(requested_project_root)
         reverse_preflight_mode = _resolve_reverse_preflight_mode(

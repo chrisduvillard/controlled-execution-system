@@ -20,6 +20,7 @@ from ces.execution._subprocess_env import build_subprocess_env
 from ces.execution.runtime_safety import codex_sandbox_mode
 from ces.execution.runtimes.protocol import AgentRuntimeResult
 from ces.execution.secrets import scrub_secrets_from_text
+from ces.local_state_path import validate_ces_state_dir, validate_ces_state_path
 
 _MAX_RUNTIME_OUTPUT_BYTES = 1_048_576
 _TRUNCATION_MARKER = "\n...[truncated]"
@@ -310,7 +311,12 @@ class _BaseRuntimeAdapter:
         output to cross-user reads and symlink clobbering. Keep transcripts
         inside `.ces/runtime-transcripts` with restrictive permissions instead.
         """
-        transcript_dir = working_dir / ".ces" / "runtime-transcripts"
+        ces_dir = working_dir / ".ces"
+        validate_ces_state_dir(working_dir, ces_dir)
+        transcript_dir = ces_dir / "runtime-transcripts"
+        validate_ces_state_path(working_dir, transcript_dir)
+        if transcript_dir.exists() and transcript_dir.is_symlink():
+            raise ValueError("Refusing to write runtime transcript through a symlinked .ces/runtime-transcripts path.")
         transcript_dir.mkdir(parents=True, exist_ok=True)
         try:
             os.chmod(transcript_dir, 0o700)
@@ -371,6 +377,8 @@ class _BaseRuntimeAdapter:
 
     @classmethod
     def _read_scrubbed_limited_path(cls, path: Path) -> str:
+        if path.is_symlink():
+            raise ValueError(f"Refusing to read runtime output through symlinked path: {path}")
         text = scrub_secrets_from_text(cls._read_limited_path(path))
         path.write_text(text, encoding="utf-8")
         try:
@@ -382,13 +390,17 @@ class _BaseRuntimeAdapter:
     def version(self) -> str:
         if not self.detect():
             return "not-installed"
-        result = subprocess.run(
-            [self._resolved_binary(), *self.version_args],
-            capture_output=True,
-            text=True,
-            check=False,
-            env=self._build_env(),
-        )
+        try:
+            result = subprocess.run(
+                [self._resolved_binary(), *self.version_args],
+                capture_output=True,
+                text=True,
+                check=False,
+                env=self._build_env(),
+                timeout=10,
+            )
+        except subprocess.TimeoutExpired:
+            return "unknown-timeout"
         return (result.stdout or result.stderr).strip() or "unknown"
 
     def summarize_evidence(self, evidence_context: dict) -> tuple[str, str]:

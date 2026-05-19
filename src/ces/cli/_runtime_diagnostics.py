@@ -7,6 +7,7 @@ import re
 from pathlib import Path
 from typing import Any
 
+from ces.cli._state_path import validate_ces_state_dir, validate_ces_state_path
 from ces.execution.secrets import scrub_secrets_from_text
 
 _MAX_SECTION_CHARS = 4000
@@ -18,6 +19,23 @@ _SAFE_FILENAME_RE = re.compile(r"[^A-Za-z0-9._-]+")
 def _safe_part(value: object, fallback: str) -> str:
     rendered = str(value or fallback).strip() or fallback
     return _SAFE_FILENAME_RE.sub("-", rendered).strip("._-") or fallback
+
+
+def _display_transcript_path(value: object, project_root: Path | None = None) -> str:
+    """Render transcript locations without leaking local absolute paths."""
+    if not value:
+        return "(none)"
+    raw = Path(str(value))
+    if project_root is not None:
+        try:
+            return f"<project>/{raw.resolve(strict=False).relative_to(project_root.resolve()).as_posix()}"
+        except ValueError:
+            pass
+    text = raw.as_posix()
+    marker = ".ces/runtime-transcripts/"
+    if marker in text:
+        return f"<project>/{text[text.index(marker) :]}"
+    return scrub_and_truncate_runtime_output(str(value), max_chars=300)
 
 
 def scrub_and_truncate_runtime_output(text: str, *, max_chars: int = _MAX_SECTION_CHARS) -> str:
@@ -46,13 +64,17 @@ def summarize_runtime_failure(execution: dict[str, Any], *, max_chars: int = _MA
         lines.extend(["", f"Invocation: {invocation_ref}"])
     transcript_path = execution.get("transcript_path")
     if transcript_path:
-        lines.append(f"Transcript: {transcript_path}")
+        lines.append(f"Transcript: {_display_transcript_path(transcript_path)}")
     return "\n".join(lines)
 
 
 def write_runtime_diagnostics(project_root: Path, manifest_id: str, execution: dict[str, Any]) -> Path:
     """Write a redacted runtime failure artifact and return its absolute path."""
+    validate_ces_state_dir(project_root, project_root / ".ces")
     diagnostics_dir = project_root / ".ces" / "runtime-diagnostics"
+    validate_ces_state_path(project_root, diagnostics_dir)
+    if diagnostics_dir.exists() and diagnostics_dir.is_symlink():
+        raise ValueError("Refusing to write runtime diagnostics through a symlinked .ces/runtime-diagnostics path.")
     diagnostics_dir.mkdir(parents=True, exist_ok=True)
     try:
         os.chmod(diagnostics_dir, 0o700)
@@ -68,7 +90,7 @@ def write_runtime_diagnostics(project_root: Path, manifest_id: str, execution: d
             f"Runtime version: {execution.get('runtime_version') or 'unknown'}",
             f"Exit code: {execution.get('exit_code')}",
             f"Invocation: {execution.get('invocation_ref') or 'unknown'}",
-            f"Transcript: {execution.get('transcript_path') or '(none)'}",
+            f"Transcript: {_display_transcript_path(execution.get('transcript_path'), project_root)}",
             "",
             "## stderr",
             scrub_and_truncate_runtime_output(str(execution.get("stderr") or "")) or "(empty)",
