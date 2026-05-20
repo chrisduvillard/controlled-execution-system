@@ -8,9 +8,11 @@ import pytest
 from ces.cli._builder_flow import BuilderBriefDraft
 from ces.cli._run_prompting import build_prompt_pack
 from ces.codebase_mapping import (
+    CodebaseContextEvalCase,
     CodebaseInvariant,
     CodebaseInvariantStore,
     build_codebase_context,
+    evaluate_codebase_context,
     render_codebase_context,
     scan_codebase,
     select_relevant_areas,
@@ -253,6 +255,131 @@ def test_relevance_selector_does_not_select_unrelated_tests_for_non_test_objecti
     selected = {area.path for area in selection.high_confidence + selection.secondary}
     assert "src/sample/payment.py" in selected
     assert "tests/test_unrelated_cli.py" not in selected
+
+
+def test_relevance_selector_expands_to_graph_adjacent_import_dependencies(tmp_path: Path) -> None:
+    _write(tmp_path / "pyproject.toml", '[project]\nname = "sample"\n[project.scripts]\nsample = "sample.cli:main"\n')
+    _write(
+        tmp_path / "src/sample/cli.py",
+        "from sample.prompting import build_prompt\n\ndef main():\n    return build_prompt('hello')\n",
+    )
+    _write(
+        tmp_path / "src/sample/prompting.py",
+        "from sample.templates import render\n\ndef build_prompt(text):\n    return render(text)\n",
+    )
+    _write(tmp_path / "src/sample/templates.py", "def render(text):\n    return text\n")
+    codebase_map = scan_codebase(tmp_path)
+
+    selection = select_relevant_areas(codebase_map, "Change CLI prompt generation", limit=6)
+
+    selected = {area.path: area for area in selection.high_confidence + selection.secondary}
+    assert "src/sample/cli.py" in selected
+    assert "src/sample/prompting.py" in selected
+    assert "src/sample/templates.py" in selected
+    assert selected["src/sample/prompting.py"].score >= 3
+    assert "Graph-adjacent" in selected["src/sample/prompting.py"].why
+
+
+def test_relevance_selector_resolves_relative_import_graph_edges(tmp_path: Path) -> None:
+    _write(tmp_path / "pyproject.toml", '[project]\nname = "sample"\n[project.scripts]\nsample = "sample.cli:main"\n')
+    _write(
+        tmp_path / "src/sample/cli.py",
+        "from .prompting import build_prompt\n\ndef main():\n    return build_prompt('hello')\n",
+    )
+    _write(
+        tmp_path / "src/sample/prompting.py",
+        "from . import templates\n\ndef build_prompt(text):\n    return templates.render(text)\n",
+    )
+    _write(tmp_path / "src/sample/templates.py", "def render(text):\n    return text\n")
+    codebase_map = scan_codebase(tmp_path)
+
+    selection = select_relevant_areas(codebase_map, "Change CLI prompt generation", limit=6)
+
+    selected = {area.path for area in selection.high_confidence + selection.secondary}
+    assert "src/sample/prompting.py" in selected
+    assert "src/sample/templates.py" in selected
+
+
+def test_relevance_selector_resolves_from_package_import_submodule_edges(tmp_path: Path) -> None:
+    _write(tmp_path / "pyproject.toml", '[project]\nname = "sample"\n[project.scripts]\nsample = "sample.cli:main"\n')
+    _write(
+        tmp_path / "src/sample/cli.py",
+        "from sample import helpers\n\ndef main():\n    return helpers.render_prompt('hello')\n",
+    )
+    _write(tmp_path / "src/sample/helpers.py", "def render_prompt(text):\n    return text\n")
+    codebase_map = scan_codebase(tmp_path)
+
+    selection = select_relevant_areas(codebase_map, "Change CLI prompt generation", limit=6)
+
+    selected = {area.path: area for area in selection.high_confidence + selection.secondary}
+    assert "src/sample/helpers.py" in selected
+    assert "Graph-adjacent" in selected["src/sample/helpers.py"].why
+
+
+def test_codebase_context_eval_cases_capture_realistic_objective_quality(tmp_path: Path) -> None:
+    _write(tmp_path / "pyproject.toml", '[project]\nname = "sample"\n[project.scripts]\nsample = "sample.cli:main"\n')
+    _write(
+        tmp_path / "src/sample/cli.py",
+        "from sample.prompting import build_prompt\n\ndef main():\n    return build_prompt('hello')\n",
+    )
+    _write(tmp_path / "src/sample/prompting.py", "def build_prompt(text):\n    return text\n")
+    _write(tmp_path / "src/sample/verification.py", "def infer_command():\n    return 'pytest'\n")
+    _write(tmp_path / "tests/test_cli.py", "def test_cli():\n    assert True\n")
+    _write(tmp_path / "tests/test_verification.py", "def test_verification():\n    assert True\n")
+    codebase_map = scan_codebase(tmp_path)
+
+    report = evaluate_codebase_context(
+        codebase_map,
+        [
+            CodebaseContextEvalCase(
+                name="cli prompt path",
+                objective="Change CLI prompt generation",
+                expected_high_confidence=("src/sample/cli.py",),
+                expected_selected=("src/sample/prompting.py", "tests/test_cli.py"),
+                forbidden_selected=("tests/test_verification.py",),
+                max_selected=5,
+            ),
+            CodebaseContextEvalCase(
+                name="verification command path",
+                objective="Update verification command inference",
+                expected_high_confidence=("src/sample/verification.py",),
+                expected_selected=("tests/test_verification.py",),
+                max_high_confidence=4,
+            ),
+        ],
+    )
+
+    assert report["passed"] is True
+    assert report["summary"] == {"passed": 2, "total": 2}
+    assert report["cases"][0]["selected_paths"][0] == "src/sample/cli.py"
+    assert "src/sample/prompting.py" in report["cases"][0]["selected_paths"]
+    assert report["cases"][0]["unexpected_selected"] == []
+    assert report["cases"][0]["too_many_selected"] is False
+
+
+def test_codebase_context_eval_cases_fail_on_forbidden_or_too_broad_selection(tmp_path: Path) -> None:
+    _write(tmp_path / "pyproject.toml", '[project]\nname = "sample"\n[project.scripts]\nsample = "sample.cli:main"\n')
+    _write(tmp_path / "src/sample/cli.py", "def main():\n    return None\n")
+    _write(tmp_path / "src/sample/support.py", "def helper():\n    return None\n")
+    codebase_map = scan_codebase(tmp_path)
+
+    report = evaluate_codebase_context(
+        codebase_map,
+        [
+            CodebaseContextEvalCase(
+                name="over broad guard",
+                objective="Change CLI command behavior",
+                expected_high_confidence=("src/sample/cli.py",),
+                forbidden_selected=("pyproject.toml",),
+                max_selected=1,
+            )
+        ],
+    )
+
+    assert report["passed"] is False
+    case = report["cases"][0]
+    assert case["unexpected_selected"] == ["pyproject.toml"]
+    assert case["too_many_selected"] is True
 
 
 def test_rendered_context_quotes_untrusted_metadata(tmp_path: Path) -> None:

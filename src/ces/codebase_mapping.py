@@ -124,6 +124,19 @@ class CodebaseContext:
     artifact_paths: dict[str, str]
 
 
+@dataclass(frozen=True)
+class CodebaseContextEvalCase:
+    """A deterministic dogfood/eval case for objective-specific context quality."""
+
+    name: str
+    objective: str
+    expected_high_confidence: tuple[str, ...] = ()
+    expected_selected: tuple[str, ...] = ()
+    forbidden_selected: tuple[str, ...] = ()
+    max_high_confidence: int | None = None
+    max_selected: int | None = None
+
+
 class CodebaseInvariantStore:
     """Persist and update codebase invariants as a simple JSON artifact."""
 
@@ -226,15 +239,21 @@ def select_relevant_areas(codebase_map: CodebaseMap, objective: str, *, limit: i
     """Select focused codebase areas for an objective without stuffing the full repo."""
 
     objective_terms = _terms(objective)
-    scored: list[tuple[int, CodebaseArea, list[str]]] = []
+    area_by_path = {area.path: area for area in codebase_map.areas}
+    scored: dict[str, tuple[int, CodebaseArea, list[str]]] = {}
     for area in codebase_map.areas:
-        haystack = " ".join((area.path, area.kind, area.responsibility, *area.signals)).casefold()
-        haystack_terms = _terms(haystack)
-        matched_terms = sorted(term for term in objective_terms if term in haystack_terms)
-        score = len(matched_terms) * 4
+        path_terms = _terms(area.path)
+        semantic_terms = _terms(f"{Path(area.path).stem} {area.kind}".casefold())
+        matched_terms = sorted(term for term in objective_terms if term in path_terms or term in semantic_terms)
+        strong_terms = sorted(term for term in objective_terms if term in semantic_terms)
+        weak_terms = sorted(term for term in matched_terms if term not in strong_terms)
+        score = len(strong_terms) * 4 + len(weak_terms)
         reasons: list[str] = []
         if matched_terms:
             reasons.append("Objective matched " + ", ".join(matched_terms[:5]))
+        if strong_terms and area.kind in {"code", "entrypoint"}:
+            score += 2
+            reasons.append("Source area directly names requested behavior")
         if (
             area.kind == "entrypoint"
             and area.path.startswith("src/")
@@ -245,16 +264,25 @@ def select_relevant_areas(codebase_map: CodebaseMap, objective: str, *, limit: i
         if area.kind == "test" and ({"test", "verify", "validation"} & objective_terms or matched_terms):
             score += 2
             reasons.append("Validation surface for nearby behavior")
-        if area.kind == "config" and {"config", "cli", "command", "dependency", "test"} & objective_terms:
-            score += 3
-            reasons.append("Configuration may define command, dependency, or test contracts")
+        if (
+            area.kind == "config"
+            and area.path in CONFIG_NAMES
+            and {"config", "cli", "command", "dependency", "test", "verify", "verification"} & objective_terms
+        ):
+            score += 6
+            reasons.append("Root configuration may define command, dependency, or test contracts")
         if score > 0:
-            scored.append((score, area, reasons or ["Possible supporting context"]))
+            scored[area.path] = (score, area, reasons or ["Possible supporting context"])
 
-    scored.sort(key=lambda item: (-item[0], item[1].path))
+    _add_graph_adjacent_areas(scored, codebase_map, area_by_path, objective_terms, max_depth=2)
+
+    ranked = sorted(scored.values(), key=lambda item: (-item[0], item[1].path))
     high: list[RelevantArea] = []
     secondary: list[RelevantArea] = []
-    for score, area, reasons in scored:
+    selected_paths: set[str] = set()
+    for score, area, reasons in ranked:
+        if area.path in selected_paths:
+            continue
         selected = RelevantArea(path=area.path, kind=area.kind, why="; ".join(reasons), score=score)
         secondary_only = (
             area.kind == "test" and "test" not in objective_terms and "verify" not in objective_terms
@@ -267,12 +295,15 @@ def select_relevant_areas(codebase_map: CodebaseMap, objective: str, *, limit: i
         if secondary_only:
             if len(secondary) < limit:
                 secondary.append(selected)
+                selected_paths.add(area.path)
         elif score >= 6 and len(high) < limit:
             high.append(selected)
+            selected_paths.add(area.path)
         elif len(secondary) < limit:
             secondary.append(selected)
+            selected_paths.add(area.path)
     if not high:
-        selected_paths = {area.path for area in secondary}
+        selected_paths.update(area.path for area in secondary)
         for area in codebase_map.areas:
             if area.path in selected_paths or area.kind in {"test", "doc"}:
                 continue
@@ -283,6 +314,55 @@ def select_relevant_areas(codebase_map: CodebaseMap, objective: str, *, limit: i
             if len(secondary) >= min(3, len(codebase_map.areas)):
                 break
     return RelevantAreaSelection(objective=objective, high_confidence=tuple(high), secondary=tuple(secondary))
+
+
+def evaluate_codebase_context(
+    codebase_map: CodebaseMap,
+    cases: Iterable[CodebaseContextEvalCase],
+    *,
+    limit: int = 8,
+) -> dict[str, object]:
+    """Evaluate selector quality against deterministic objective fixtures."""
+
+    results: list[dict[str, object]] = []
+    passed_count = 0
+    total = 0
+    for case in cases:
+        total += 1
+        selection = select_relevant_areas(codebase_map, case.objective, limit=limit)
+        high_paths = [area.path for area in selection.high_confidence]
+        selected_paths = high_paths + [area.path for area in selection.secondary]
+        missing_high = [path for path in case.expected_high_confidence if path not in high_paths]
+        missing_selected = [path for path in case.expected_selected if path not in selected_paths]
+        unexpected_selected = [path for path in case.forbidden_selected if path in selected_paths]
+        too_many_high_confidence = case.max_high_confidence is not None and len(high_paths) > case.max_high_confidence
+        too_many_selected = case.max_selected is not None and len(selected_paths) > case.max_selected
+        passed = not (
+            missing_high or missing_selected or unexpected_selected or too_many_high_confidence or too_many_selected
+        )
+        if passed:
+            passed_count += 1
+        results.append(
+            {
+                "name": case.name,
+                "objective": case.objective,
+                "passed": passed,
+                "high_confidence_paths": high_paths,
+                "selected_paths": selected_paths,
+                "missing_high_confidence": missing_high,
+                "missing_selected": missing_selected,
+                "unexpected_selected": unexpected_selected,
+                "max_high_confidence": case.max_high_confidence,
+                "max_selected": case.max_selected,
+                "too_many_high_confidence": too_many_high_confidence,
+                "too_many_selected": too_many_selected,
+            }
+        )
+    return {
+        "passed": passed_count == total,
+        "summary": {"passed": passed_count, "total": total},
+        "cases": results,
+    }
 
 
 def derive_invariants(codebase_map: CodebaseMap) -> tuple[CodebaseInvariant, ...]:
@@ -449,6 +529,102 @@ def _write_json_artifact(root: Path, path: Path, payload: Any) -> None:
     path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 
+def _add_graph_adjacent_areas(
+    scored: dict[str, tuple[int, CodebaseArea, list[str]]],
+    codebase_map: CodebaseMap,
+    area_by_path: dict[str, CodebaseArea],
+    objective_terms: set[str],
+    *,
+    max_depth: int,
+) -> None:
+    """Add nearby import/command-flow areas without broad repo stuffing."""
+
+    if not scored:
+        return
+    adjacency = _relationship_adjacency(codebase_map, area_by_path)
+    frontier = [path for path, (score, _area, _reasons) in scored.items() if score >= 6] or list(scored)
+    visited = set(frontier)
+    for depth in range(1, max_depth + 1):
+        next_frontier: list[str] = []
+        for source in frontier:
+            for target in sorted(adjacency.get(source, set())):
+                area = area_by_path.get(target)
+                if area is None or area.path.endswith("/__init__.py"):
+                    continue
+                if area.kind in {"doc", "config"} and not {"doc", "docs", "config"} & objective_terms:
+                    continue
+                if area.kind == "test" and not {"test", "verify", "validation"} & objective_terms:
+                    continue
+                reason = f"Graph-adjacent to selected area via repository relationships at depth {depth}"
+                if target in scored:
+                    score, existing_area, reasons = scored[target]
+                    adjacent_score = max(2, 5 - depth)
+                    if any(existing_reason.startswith("Source area directly") for existing_reason in reasons):
+                        adjacent_score += 4
+                    updated_score = max(score, adjacent_score)
+                    if reason not in reasons:
+                        scored[target] = (updated_score, existing_area, [*reasons, reason])
+                    else:
+                        scored[target] = (updated_score, existing_area, reasons)
+                    continue
+                if target in visited:
+                    continue
+                score = max(2, 5 - depth)
+                scored[target] = (score, area, [reason])
+                visited.add(target)
+                next_frontier.append(target)
+        frontier = next_frontier
+        if not frontier:
+            break
+
+
+def _relationship_adjacency(
+    codebase_map: CodebaseMap,
+    area_by_path: dict[str, CodebaseArea],
+) -> dict[str, set[str]]:
+    adjacency: dict[str, set[str]] = {}
+    for relationship in codebase_map.relationships:
+        if relationship.source not in area_by_path or relationship.source.endswith("/__init__.py"):
+            continue
+        for target in _relationship_target_paths(relationship.target, relationship.source, area_by_path):
+            if target == relationship.source:
+                continue
+            adjacency.setdefault(relationship.source, set()).add(target)
+    return adjacency
+
+
+def _relationship_target_paths(target: str, source: str, area_by_path: dict[str, CodebaseArea]) -> list[str]:
+    candidates = [target]
+    if target.endswith(".py"):
+        candidates.append(target.removeprefix("./"))
+    if target.startswith("."):
+        resolved_target = _resolve_relative_module_target(target, source)
+        if resolved_target:
+            module_path = _module_to_path(resolved_target)
+            candidates.extend((module_path, f"src/{module_path}"))
+    if "." in target:
+        module_path = _module_to_path(target.lstrip("."))
+        candidates.extend((module_path, f"src/{module_path}"))
+    return [candidate for candidate in candidates if candidate in area_by_path]
+
+
+def _resolve_relative_module_target(target: str, source: str) -> str:
+    level = len(target) - len(target.lstrip("."))
+    if level == 0:
+        return target
+    remainder = target[level:]
+    source_module = source.removeprefix("src/").removesuffix(".py").replace("/", ".")
+    package_parts = source_module.split(".")[:-1]
+    if level > 1:
+        package_parts = package_parts[: -(level - 1)]
+    if not package_parts and not remainder:
+        return ""
+    parts = [*package_parts]
+    if remainder:
+        parts.extend(part for part in remainder.split(".") if part)
+    return ".".join(parts)
+
+
 def _classify_file(path: Path, rel: str) -> str:
     name = path.name
     parts = rel.split("/")
@@ -538,9 +714,28 @@ def _relationships_for_file(root: Path, path: Path, rel: str) -> list[CodebaseRe
                 relationships.append(
                     CodebaseRelationship(rel, alias.name, "import", f"{module_name} imports {alias.name}")
                 )
-        elif isinstance(node, ast.ImportFrom) and node.module:
-            target = "." * node.level + node.module if node.level else node.module
-            relationships.append(CodebaseRelationship(rel, target, "import", f"{module_name} imports from {target}"))
+        elif isinstance(node, ast.ImportFrom):
+            if node.module:
+                target = "." * node.level + node.module if node.level else node.module
+                relationships.append(
+                    CodebaseRelationship(rel, target, "import", f"{module_name} imports from {target}")
+                )
+                for alias in node.names:
+                    alias_target = f"{target}.{alias.name}"
+                    relationships.append(
+                        CodebaseRelationship(
+                            rel,
+                            alias_target,
+                            "import",
+                            f"{module_name} imports {alias.name} from {target}",
+                        )
+                    )
+            elif node.level:
+                for alias in node.names:
+                    target = "." * node.level + alias.name
+                    relationships.append(
+                        CodebaseRelationship(rel, target, "import", f"{module_name} imports from {target}")
+                    )
     return relationships
 
 
@@ -577,6 +772,7 @@ STOPWORDS = {
     "make",
     "behavior",
     "behaviour",
+    "ces",
 }
 
 
@@ -595,6 +791,10 @@ def _terms(text: str) -> set[str]:
         terms.add("prompting")
     if "verify" in terms:
         terms.add("verification")
+    if "verification" in terms:
+        terms.add("verify")
+    if "cmd" in terms:
+        terms.add("command")
     return terms
 
 
