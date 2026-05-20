@@ -11,6 +11,7 @@ from ces.execution.secrets import scrub_secrets_from_text
 from ces.review.models import GithubReviewComment, ReviewArtifactBundle
 
 _MAX_COMMENT_CHARS = 6000
+_STABLE_UPDATE_MARKER = "<!-- ces-semantic-review -->"
 
 
 def render_github_comment(
@@ -18,7 +19,7 @@ def render_github_comment(
 ) -> GithubReviewComment:
     """Render a concise, redacted GitHub PR comment body."""
 
-    marker = f"<!-- ces-semantic-review:fingerprint={bundle.metadata.diff_fingerprint};review_id={bundle.metadata.review_id} -->"
+    review_marker = f"<!-- ces-semantic-review:fingerprint={bundle.metadata.diff_fingerprint};review_id={bundle.metadata.review_id} -->"
     top = bundle.risk_map.review_first[:5]
     coverage = (
         ", ".join(f"{status}={count}" for status, count in sorted(bundle.intent_coverage.summary.items())) or "unknown"
@@ -30,7 +31,8 @@ def render_github_comment(
         if bundle.metadata.stale
         else ""
     )
-    body = f"""{marker}
+    body = f"""{_STABLE_UPDATE_MARKER}
+{review_marker}
 ## CES Semantic Review
 {stale_warning}
 **Bottom line:** risk `{bundle.risk_map.overall_level}`, verification `{verification}`.
@@ -53,7 +55,7 @@ _Regenerate locally with `ces review generate` if this artifact is stale._
         dry_run=True,
         pr=pr,
         stale=bundle.metadata.stale,
-        update_marker=marker,
+        update_marker=_STABLE_UPDATE_MARKER,
     )
 
 
@@ -70,10 +72,14 @@ def post_github_comment(
     with tempfile.NamedTemporaryFile("w", encoding="utf-8", suffix=".md", delete=False) as handle:
         handle.write(comment.body)
         body_file = Path(handle.name)
+    payload_file: Path | None = None
     try:
         if update_existing:
             comment_id = _find_existing_semantic_comment_id(pr, comment.update_marker, cwd=cwd)
             if comment_id:
+                with tempfile.NamedTemporaryFile("w", encoding="utf-8", suffix=".json", delete=False) as payload_handle:
+                    json.dump({"body": comment.body}, payload_handle)
+                    payload_file = Path(payload_handle.name)
                 result = run_sync_command(
                     [
                         "gh",
@@ -81,8 +87,8 @@ def post_github_comment(
                         f"repos/:owner/:repo/issues/comments/{comment_id}",
                         "--method",
                         "PATCH",
-                        "--field",
-                        f"body={comment.body}",
+                        "--input",
+                        str(payload_file),
                     ],
                     cwd=cwd,
                     timeout_seconds=60,
@@ -100,6 +106,11 @@ def post_github_comment(
             body_file.unlink()
         except OSError:
             pass
+        if payload_file is not None:
+            try:
+                payload_file.unlink()
+            except OSError:
+                pass
 
 
 def _find_existing_semantic_comment_id(pr: int, marker: str, *, cwd: Path | None) -> str | None:
@@ -108,8 +119,13 @@ def _find_existing_semantic_comment_id(pr: int, marker: str, *, cwd: Path | None
         raise RuntimeError(user_result.stderr.strip() or "gh api viewer lookup failed")
     viewer = user_result.stdout.strip()
     marker_literal = json.dumps(marker)
+    legacy_prefix_literal = json.dumps("<!-- ces-semantic-review:")
     viewer_literal = json.dumps(viewer)
-    jq = f'.[] | select((.body // "") | contains({marker_literal})) | select(.user.login == {viewer_literal}) | .id'
+    jq = (
+        f'.[] | select(((.body // "") | contains({marker_literal})) '
+        f'or ((.body // "") | contains({legacy_prefix_literal}))) '
+        f"| select(.user.login == {viewer_literal}) | .id"
+    )
     result = run_sync_command(
         [
             "gh",

@@ -170,3 +170,18 @@ def test_verify_write_contract_refuses_symlinked_ces_dir_before_contract_write(t
     assert not (outside / "completion-contract.json").exists()
     combined_output = f"{result.stdout}\n{result.stderr}"
     assert "project root" in combined_output or "symlinked" in combined_output
+
+
+def test_verify_rich_output_suggests_semantic_review_next_step(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / ".ces").mkdir()
+    (tmp_path / ".ces" / "config.yaml").write_text("project_id: demo\npreferred_runtime: codex\n")
+    (tmp_path / "pyproject.toml").write_text("[project]\nname='demo'\n", encoding="utf-8")
+    (tmp_path / "tests").mkdir()
+    (tmp_path / "tests" / "test_demo.py").write_text("def test_demo():\n    assert True\n", encoding="utf-8")
+
+    result = runner.invoke(_get_app(), ["verify"])
+
+    assert result.exit_code == 0, result.stdout
+    assert "ces review generate" in result.stdout
+    assert "ces review show" in result.stdout

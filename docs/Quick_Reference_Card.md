@@ -88,7 +88,9 @@ ces manifest "Fix null pointer in product search" --yes
 ces classify M-<manifest-id>
 ces execute M-<manifest-id> --runtime auto
 ces review generate --base HEAD~1 --head HEAD --objective "Fix null pointer in product search"
+ces review generate --from-build <session-or-manifest-or-runtime-id> --base HEAD~1 --head HEAD
 ces review show --section path
+ces review export --format json
 ces review
 ces triage
 ces approve
@@ -97,6 +99,8 @@ ces approve
 Notes:
 
 - `ces review generate` creates local semantic review artifacts under `.ces/reviews/`; use `ces review show --section path` before approving a high-risk diff.
+- Add `--from-build <session-or-manifest-or-runtime-id>` when the diff came from a CES builder run; CES binds intent/provenance to that exact run and fails if the ID is unknown.
+- `ces review export --format json` exports the full machine-readable semantic bundle; omit `--format` for the Markdown brief.
 - `ces review` can target a manifest ID or use the current builder session manifest when omitted.
 - `ces triage` and `ces approve` operate on evidence packets or the current builder session evidence when omitted.
 - Prefer current-builder omission when you are continuing a builder-first chain; pass explicit IDs only when you are intentionally operating on a different artifact.

@@ -19,10 +19,17 @@ def build_intent_coverage(
     *,
     objective: str | None = None,
     deferred_scope: tuple[str, ...] = (),
+    extra_requirement_texts: tuple[str, ...] = (),
+    extra_source: str = "builder_context",
 ) -> IntentCoverageMap:
-    """Derive coverage items from CES contracts or objective fallback."""
+    """Derive coverage items from CES contracts, builder context, or objective fallback."""
 
     requirement_texts, sources = _load_requirements(project_root, objective)
+    for text in extra_requirement_texts:
+        clean = scrub_secrets_from_text(str(text).strip())
+        if clean and clean not in requirement_texts:
+            requirement_texts.append(clean)
+            sources.append(extra_source)
     return build_intent_coverage_from_items(
         objective=objective or (requirement_texts[0] if requirement_texts else None),
         requirement_texts=tuple(requirement_texts or (objective or "Review local diff",)),

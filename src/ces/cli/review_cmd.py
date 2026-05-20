@@ -13,6 +13,8 @@ Exports:
 from __future__ import annotations
 
 import json
+import os
+import tempfile
 from pathlib import Path
 
 import typer
@@ -648,23 +650,58 @@ def show_semantic_review(
 def export_semantic_review(
     review_id: str | None = typer.Option(None, "--review-id", help="Review ID to export; defaults to latest."),
     output: Path | None = typer.Option(None, "--output", "-o", help="Optional output file. Defaults to stdout."),
+    export_format: str = typer.Option("markdown", "--format", help="Export format: markdown or json."),
     project_root: Path | None = typer.Option(None, "--project-root", help="Repository root to inspect."),
 ) -> None:
-    """Export the review brief markdown."""
+    """Export the semantic review bundle as markdown or JSON."""
 
     try:
         from ces.review.artifacts import SemanticReviewArtifactStore
 
         root = _resolve_semantic_project_root(project_root)
-        text = SemanticReviewArtifactStore(root).review_brief_text(review_id)
+        store = SemanticReviewArtifactStore(root)
+        normalized_format = export_format.strip().lower()
+        if normalized_format == "markdown":
+            text = store.review_brief_text(review_id)
+        elif normalized_format == "json":
+            bundle = store.load_bundle(review_id)
+            text = json.dumps(bundle.model_dump(mode="json"), indent=2) + "\n"
+        else:
+            raise typer.BadParameter("--format must be 'markdown' or 'json'.")
         if output is None:
             typer.echo(text)
             return
-        target = output.resolve()
-        target.write_text(text, encoding="utf-8")
+        target = _write_semantic_export(output, text)
         console.print(f"Wrote {target}")
     except (typer.BadParameter, ValueError, RuntimeError, OSError) as exc:
         handle_error(exc)
+
+
+def _write_semantic_export(output: Path, text: str) -> Path:
+    """Atomically write an explicit semantic review export without following final symlinks."""
+
+    target = output.expanduser()
+    if target.exists() and target.is_symlink():
+        raise ValueError("Refusing to write semantic review export through a symlink.")
+    parent = target.parent if str(target.parent) else Path(".")
+    if parent.exists() and parent.is_symlink():
+        raise ValueError("Refusing to write semantic review export through a symlinked parent directory.")
+    parent.mkdir(parents=True, exist_ok=True)
+    resolved_parent = parent.resolve()
+    fd, temp_name = tempfile.mkstemp(prefix=f".{target.name}.", suffix=".tmp", dir=resolved_parent)
+    temp_path = Path(temp_name)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(text)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temp_path, resolved_parent / target.name)
+    except BaseException:
+        try:
+            temp_path.unlink(missing_ok=True)
+        finally:
+            raise
+    return (resolved_parent / target.name).resolve()
 
 
 @review_app.command(name="open")
