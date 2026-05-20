@@ -10,6 +10,10 @@ The layer builds three artifacts:
 2. **Relevant-area selection**: an objective-specific shortlist of repo areas that matter for the current request, split into high-confidence and possible secondary areas.
 3. **Persisted invariants**: short factual repo facts CES can reuse later in the run, such as CLI entrypoints, source packages, config surfaces, and test surfaces.
 
+The selector starts with direct objective matches, then performs a small graph-adjacent expansion across repository relationships such as imports and command-flow links. This lets CES include likely support modules near a selected entrypoint without stuffing the entire tree into the next prompt.
+
+The layer also exposes deterministic dogfood/eval fixtures via `CodebaseContextEvalCase` and `evaluate_codebase_context()`. These fixtures assert that known objectives select expected high-confidence and secondary paths, giving future selector changes a compact regression harness.
+
 The mapper is deterministic and local. It does not call an LLM and does not modify files during scanning. Persistence is explicit and limited to `.ces/codebase/` artifacts created during the CES build context-preparation stage. CES refuses to write these artifacts through symlinked `.ces`, `.ces/codebase`, or artifact files so repository-controlled links cannot redirect writes outside the project.
 
 ## When it runs
@@ -41,6 +45,52 @@ These files are operator-readable and agent-usable. They are intentionally compa
 
 This keeps runtime context focused on the objective rather than stuffing the whole repository into the prompt. Rendered values are normalized and framed as untrusted repository metadata, not instructions.
 
+## Graph-adjacent expansion
+
+After scoring direct objective matches, the selector follows repository relationships for a bounded depth of two hops. It resolves Python import targets and command-flow targets back to known mapped files, then adds nearby support modules as secondary context unless they already earned high confidence from direct terms.
+
+This is intentionally conservative:
+
+- graph expansion only uses relationships discovered during the read-only scan
+- docs and configs are only pulled through graph expansion for doc/config objectives
+- tests are only pulled through graph expansion for test, verify, or validation objectives
+- direct objective matches still outrank graph-only neighbors
+
+For example, if `src/sample/cli.py` imports `sample.prompting`, an objective such as `Change CLI prompt generation` can select both the CLI boundary and `src/sample/prompting.py` without including unrelated source files.
+
+## Dogfood/eval harness
+
+Selector changes should be dogfooded with deterministic objective fixtures before relying on them in runtime prompts. The helper API is:
+
+```python
+from ces.codebase_mapping import CodebaseContextEvalCase, evaluate_codebase_context, scan_codebase
+
+codebase_map = scan_codebase(project_root)
+report = evaluate_codebase_context(
+    codebase_map,
+    [
+        CodebaseContextEvalCase(
+            name="CLI prompt path",
+            objective="Change CES build CLI run prompt generation",
+            expected_high_confidence=(
+                "src/ces/cli/run_cmd.py",
+                "src/ces/cli/_run_prompting.py",
+            ),
+            expected_selected=(),
+        ),
+        CodebaseContextEvalCase(
+            name="verification command path",
+            objective="Update verification command inference",
+            expected_high_confidence=("src/ces/cli/verify_cmd.py",),
+            expected_selected=("pyproject.toml",),
+        ),
+    ],
+)
+assert report["passed"]
+```
+
+Use these cases as lightweight selector regression tests. They should capture representative objectives, expected selected paths, forbidden paths, and optional breadth caps (`max_high_confidence`, `max_selected`), not exact full prompt text.
+
 ## Realistic examples
 
 ### Example 1: CLI behavior change
@@ -48,7 +98,7 @@ This keeps runtime context focused on the objective rather than stuffing the who
 Objective:
 
 ```text
-Change the CLI command behavior and prompt output.
+Change CES build CLI run prompt generation.
 ```
 
 Typical high-confidence areas:
@@ -101,7 +151,14 @@ Full local CI parity remains the normal CES quality gate:
 uv run ruff check src/ tests/
 uv run ruff format --check src/ tests/
 uv run mypy src/ces/ --ignore-missing-imports
-uv run pytest tests/ -m "not integration" -q
+uv run pytest tests/ -m "not integration" --cov=ces --cov-fail-under=90 --cov-report=term-missing -q -W error
+uv run --no-sync vulture src tests --min-confidence 80
+uv export --frozen --group ci --format requirements-txt --no-emit-project --no-hashes --output-file /tmp/ces-ci-requirements.txt
+uv run pip-audit --strict -r /tmp/ces-ci-requirements.txt
+uv build
+uvx twine check dist/*
 ```
+
+For dependency-boundary dogfood, run the same checks in a temporary worktree after `uv lock --upgrade` and include a small installed-wheel smoke test for graph expansion.
 
 If the map seems too broad, inspect `.ces/codebase/selection.json` first. The selector should prefer exact objective terms and entrypoint/config/test boundaries over broad context stuffing.
