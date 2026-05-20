@@ -74,10 +74,22 @@ def test_publish_workflows_upload_checked_distribution_artifacts() -> None:
     publish = (WORKFLOWS / "publish.yml").read_text(encoding="utf-8")
     testpypi = (WORKFLOWS / "publish-testpypi.yml").read_text(encoding="utf-8")
 
-    assert "actions/upload-artifact@v4" in publish
+    assert "actions/upload-artifact@v7" in publish
+    assert "actions/upload-artifact@v4" not in publish
     assert "controlled-execution-system-${{ github.ref_name }}-dist" in publish
-    assert "actions/upload-artifact@v4" in testpypi
+    assert "actions/upload-artifact@v7" in testpypi
+    assert "actions/upload-artifact@v4" not in testpypi
     assert "controlled-execution-system-${{ inputs.package-version }}-testpypi-dist" in testpypi
+
+
+def test_generated_github_ci_template_uses_node24_action_majors() -> None:
+    template = (ROOT / "src" / "ces" / "cli" / "templates" / "ci" / "github.yml").read_text(encoding="utf-8")
+
+    assert "actions/checkout@v6" in template
+    assert "actions/setup-python@v6" in template
+    assert "astral-sh/setup-uv@v7" in template
+    assert "actions/upload-artifact@v7" in template
+    assert "actions/upload-artifact@v4" not in template
 
 
 def test_release_runbook_uses_pip_for_published_index_smoke_tests() -> None:
