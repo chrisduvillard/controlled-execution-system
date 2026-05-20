@@ -8,8 +8,8 @@ from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
-from ces.execution.secrets import scrub_secrets_recursive
 from ces.harness.services.evidence_quality import compute_evidence_quality_state
+from ces.shared.secrets import scrub_secrets_recursive
 
 
 @dataclass(frozen=True)

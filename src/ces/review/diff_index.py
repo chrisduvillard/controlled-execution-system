@@ -7,9 +7,9 @@ import json
 from pathlib import Path
 
 from ces.execution.processes import ProcessResult, run_sync_command
-from ces.execution.secrets import scrub_secrets_from_text
 from ces.review.file_classifier import classify_path
 from ces.review.models import ChangedFile, DiffIndex, DiffStats
+from ces.shared.secrets import scrub_secrets_from_text
 
 _MAX_EXCERPT_BYTES = 64_000
 _BINARY_EXTS = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".pdf", ".zip", ".gz", ".ico"}

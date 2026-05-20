@@ -47,7 +47,7 @@ untracked unless you intentionally share an exported report.
 
 ## 2. Verify your runtime
 
-Run `ces` with no arguments to print the Start Here guide. Use `ces --help` when you want the full command reference.
+Run `ces` or `ces --help` to print the Start Here guide and command reference.
 
 ```bash
 ces

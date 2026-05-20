@@ -7,8 +7,8 @@ import tempfile
 from pathlib import Path
 
 from ces.execution.processes import run_sync_command
-from ces.execution.secrets import scrub_secrets_from_text
 from ces.review.models import GithubReviewComment, ReviewArtifactBundle
+from ces.shared.secrets import scrub_secrets_from_text
 
 _MAX_COMMENT_CHARS = 6000
 _STABLE_UPDATE_MARKER = "<!-- ces-semantic-review -->"

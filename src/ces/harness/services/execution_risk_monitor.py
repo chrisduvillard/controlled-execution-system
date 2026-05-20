@@ -11,13 +11,13 @@ import re
 from collections import Counter
 from collections.abc import Iterable, Sequence
 
-from ces.execution.secrets import scrub_secrets_from_text
 from ces.harness.models.execution_risk import (
     ExecutionCommandEvent,
     ExecutionRiskFinding,
     ExecutionRiskKind,
     ExecutionRiskSeverity,
 )
+from ces.shared.secrets import scrub_secrets_from_text
 
 _PROXY_VALIDATION_RE = re.compile(r"\b(validation passed|looks good|import ok|smoke ok|compiles?)\b", re.IGNORECASE)
 _TEST_COMMAND_RE = re.compile(

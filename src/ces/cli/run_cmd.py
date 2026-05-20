@@ -60,7 +60,6 @@ from ces.execution.runtime_safety import (
     runtime_side_effects_require_pre_execution_consent,
     safety_profile_for_runtime,
 )
-from ces.execution.secrets import scrub_secrets_from_text
 from ces.execution.workspace_delta import WorkspaceDelta, WorkspaceSnapshot
 from ces.harness.sensors.security import SecuritySensor
 from ces.harness.services.control_plane_status import build_control_plane_status
@@ -92,6 +91,7 @@ from ces.shared.enums import (
     TrustStatus,
     WorkflowState,
 )
+from ces.shared.secrets import scrub_secrets_from_text
 from ces.verification.build_contract import (
     write_completion_contract,
 )

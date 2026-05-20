@@ -7,7 +7,7 @@ import json
 from dataclasses import asdict, dataclass
 from typing import Any
 
-from ces.execution.secrets import scrub_secrets_recursive
+from ces.shared.secrets import scrub_secrets_recursive
 from ces.verification.completion_contract import CompletionContract
 
 _SCHEMA_VERSION = "1.0"

@@ -3,7 +3,7 @@
 Re-exports all model classes for convenient access via ces.harness.models.
 """
 
-from ces.harness.models.control_plane_status import ControlPlaneStatus, GovernanceState
+from ces.control.models.control_plane_status import ControlPlaneStatus, GovernanceState
 from ces.harness.models.disclosure_set import DisclosureSet
 from ces.harness.models.guide_pack import (
     GuidePackBudget,

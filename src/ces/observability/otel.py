@@ -12,7 +12,6 @@ try:
     from opentelemetry import trace as otel_trace
     from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
     from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
-    from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
     from opentelemetry.instrumentation.sqlalchemy import SQLAlchemyInstrumentor
     from opentelemetry.sdk.metrics import MeterProvider
     from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
@@ -64,7 +63,6 @@ def configure_otel() -> bool:
     otel_metrics.set_meter_provider(meter_provider)
     _meter_provider = meter_provider
 
-    HTTPXClientInstrumentor().instrument()
     SQLAlchemyInstrumentor().instrument()
 
     _otel_initialized = True

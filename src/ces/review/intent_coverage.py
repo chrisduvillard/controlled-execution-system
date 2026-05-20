@@ -6,8 +6,8 @@ import json
 import re
 from pathlib import Path
 
-from ces.execution.secrets import scrub_secrets_from_text
 from ces.review.models import DiffIndex, IntentCoverageItem, IntentCoverageMap, VerificationSummary
+from ces.shared.secrets import scrub_secrets_from_text
 
 _TOKEN_RE = re.compile(r"[A-Za-z0-9_./-]{3,}")
 

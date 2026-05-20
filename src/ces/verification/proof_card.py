@@ -11,7 +11,7 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
-from ces.execution.secrets import scrub_secrets_recursive
+from ces.shared.secrets import scrub_secrets_recursive
 from ces.verification.completion_contract import BehaviorDelta, CompletionContract, RiskTrack, VerificationCommand
 from ces.verification.proof_binding import proof_binding_hash
 

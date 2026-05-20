@@ -27,7 +27,6 @@ except ImportError:  # pragma: no cover
 from ces.brownfield.records import LegacyBehaviorRecord
 from ces.control.models.audit_entry_record import AuditEntryRecord
 from ces.control.services.evidence_integrity import compute_reviewed_evidence_hash
-from ces.execution.secrets import scrub_secrets_from_text
 from ces.harness_evolution.manifest_io import manifest_to_stable_json
 from ces.harness_evolution.memory import HarnessMemoryLesson
 from ces.harness_evolution.models import HarnessChangeManifest, HarnessChangeVerdict
@@ -78,6 +77,7 @@ from ces.local_store.writes import (
     insert_builder_session,
     update_builder_session,
 )
+from ces.shared.secrets import scrub_secrets_from_text
 
 if TYPE_CHECKING:
     from ces.control.models.manifest import TaskManifest

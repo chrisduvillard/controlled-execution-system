@@ -181,7 +181,7 @@ gh run download --repo chrisduvillard/controlled-execution-system \
 # ignored `dist/*` files left over from an earlier HEAD.
 rm -rf dist
 uv build
-uvx twine check dist/*
+uv run --no-sync twine check dist/*
 test "$(find dist -maxdepth 1 -type f ! -name .gitignore | wc -l)" -eq 2
 
 # Extract the 0.1.Y section from the CHANGELOG as the Release body:

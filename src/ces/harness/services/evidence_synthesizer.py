@@ -21,7 +21,6 @@ import json
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Literal
 
-from ces.execution.secrets import scrub_secrets_from_text
 from ces.harness.models.disclosure_set import DisclosureSet
 from ces.harness.models.execution_risk import ExecutionRiskFinding
 from ces.harness.models.sensor_result import SensorFinding, SensorResult
@@ -39,6 +38,7 @@ from ces.shared.enums import (
     RiskTier,
     TrustStatus,
 )
+from ces.shared.secrets import scrub_secrets_from_text
 
 if TYPE_CHECKING:
     from ces.execution.providers.multi_model import MultiModelConfig

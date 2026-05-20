@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from ces.execution.processes import run_sync_command
-from ces.execution.secrets import scrub_secrets_from_text
+from ces.shared.secrets import scrub_secrets_from_text
 from ces.verification.completion_contract import VerificationCommand
 
 

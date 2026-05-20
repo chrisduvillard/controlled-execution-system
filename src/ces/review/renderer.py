@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from ces.execution.secrets import scrub_secrets_from_text
 from ces.review.models import IntentCoverageMap, ReviewArtifactBundle, ReviewPath, RiskMap, VerificationSummary
+from ces.shared.secrets import scrub_secrets_from_text
 
 
 def render_review_brief(bundle: ReviewArtifactBundle) -> str:

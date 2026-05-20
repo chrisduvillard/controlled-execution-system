@@ -1,4 +1,4 @@
-from ces.harness.models.control_plane_status import ControlPlaneStatus, GovernanceState
+from ces.control.models.control_plane_status import ControlPlaneStatus, GovernanceState
 from ces.harness.services.control_plane_status import build_control_plane_status, derive_governance_state
 
 

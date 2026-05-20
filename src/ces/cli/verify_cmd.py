@@ -15,7 +15,7 @@ from ces.cli import _output as _output_mod
 from ces.cli._context import find_project_root
 from ces.cli._errors import handle_error
 from ces.cli._output import console, set_json_mode
-from ces.execution.secrets import scrub_secrets_recursive
+from ces.shared.secrets import scrub_secrets_recursive
 from ces.verification.build_contract import build_completion_contract
 from ces.verification.completion_contract import CompletionContract
 from ces.verification.proof_binding import proof_binding_hash

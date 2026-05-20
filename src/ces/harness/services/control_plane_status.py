@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Iterable
 
-from ces.harness.models.control_plane_status import ControlPlaneStatus, GovernanceState
+from ces.control.models.control_plane_status import ControlPlaneStatus, GovernanceState
 
 
 def derive_governance_state(

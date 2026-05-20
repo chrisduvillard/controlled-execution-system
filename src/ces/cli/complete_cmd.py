@@ -14,8 +14,8 @@ from ces.cli._errors import handle_error
 from ces.cli._factory import get_services
 from ces.cli._output import console
 from ces.control.services.workflow_engine import WorkflowEngine
-from ces.execution.secrets import scrub_secrets_from_text
 from ces.shared.enums import ActorType, WorkflowState
+from ces.shared.secrets import scrub_secrets_from_text
 
 MAX_MANUAL_EVIDENCE_BYTES = 1_048_576
 TRUNCATED_MANUAL_EVIDENCE_MARKER = "\n...[truncated manual evidence]"

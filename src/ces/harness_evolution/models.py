@@ -8,8 +8,8 @@ from typing import Literal
 
 from pydantic import ConfigDict, Field, ValidationInfo, field_validator, model_validator
 
-from ces.execution.secrets import scrub_secrets_from_text
 from ces.shared.base import CESBaseModel
+from ces.shared.secrets import scrub_secrets_from_text
 
 
 class HarnessComponentType(StrEnum):

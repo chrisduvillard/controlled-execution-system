@@ -18,7 +18,7 @@ from ces.cli._context import find_project_root
 from ces.cli._errors import handle_error
 from ces.cli._factory import get_services
 from ces.cli._output import console
-from ces.execution.secrets import scrub_secrets_from_text
+from ces.shared.secrets import scrub_secrets_from_text
 
 MAX_ATTACHED_EVIDENCE_BYTES = 1_048_576
 TRUNCATED_ATTACHED_EVIDENCE_MARKER = "\n...[truncated attached evidence]"

@@ -412,7 +412,7 @@ ces brownfield promote OLB-<entry-id>
 | `ces triage <id>` | Pre-screen evidence |
 | `ces approve <id>` | Approve/reject evidence |
 | `ces gate <phase> <scope>` | Evaluate phase gate |
-| `ces intake <phase>` | Run intake interview |
+| `ces intake interview <phase>` | Run legacy intake interview |
 | `ces vault query <topic>` | Query knowledge vault |
 | `ces vault write <cat>` | Write vault note |
 | `ces vault health` | Vault health check |

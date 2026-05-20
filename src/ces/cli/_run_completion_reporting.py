@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from ces.cli._builder_flow import BuilderBriefDraft
-from ces.harness.models.control_plane_status import ControlPlaneStatus
+from ces.control.models.control_plane_status import ControlPlaneStatus
 from ces.harness.services.control_plane_status import build_control_plane_status
 from ces.verification.completion_contract import CompletionContract
 

@@ -37,6 +37,16 @@ def test_build_backend_and_direct_runtime_imports_are_declared() -> None:
 
     assert "hatchling>=1.27.0,<2" in build_requires
     assert "click>=8.3.2,<9" in dependencies
+    assert all(not dependency.startswith("httpx") for dependency in dependencies)
+    observability_dependencies = pyproject["project"]["optional-dependencies"]["observability"]
+    assert all("httpx" not in dependency.lower() for dependency in observability_dependencies)
+
+
+def test_dependabot_updates_uv_lockfile_dependencies() -> None:
+    dependabot = (_REPO_ROOT / ".github" / "dependabot.yml").read_text(encoding="utf-8")
+
+    assert 'package-ecosystem: "uv"' in dependabot
+    assert 'package-ecosystem: "pip"' not in dependabot
 
 
 def test_every_integration_test_file_is_marked_integration() -> None:

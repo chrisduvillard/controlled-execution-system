@@ -8,7 +8,6 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-from ces.execution.secrets import scrub_secrets_from_text, scrub_secrets_recursive
 from ces.local_state_path import validate_ces_state_dir, validate_ces_state_path
 from ces.review.models import (
     AgentProvenance,
@@ -19,6 +18,7 @@ from ces.review.models import (
     RiskMap,
     VerificationSummary,
 )
+from ces.shared.secrets import scrub_secrets_from_text, scrub_secrets_recursive
 
 _JSON_ARTIFACTS = {
     "metadata": "metadata.json",

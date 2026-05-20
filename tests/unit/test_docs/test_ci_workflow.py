@@ -37,13 +37,16 @@ def test_ci_runs_high_confidence_dead_code_ratchet() -> None:
     assert "uv run --no-sync vulture src tests --min-confidence 80" in workflow_text
 
 
-def test_ci_builds_distribution_and_checks_package_metadata() -> None:
-    """CI must verify the built distribution metadata before publication."""
-    repo_root = Path(__file__).resolve().parents[3]
-    workflow_text = (repo_root / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+def test_distribution_workflows_build_and_check_package_metadata_with_project_twine() -> None:
+    """Every distribution workflow must verify built metadata with the locked project twine."""
+    workflow_names = ["ci.yml", "publish.yml", "publish-testpypi.yml"]
 
-    assert "uv build" in workflow_text
-    assert "uvx twine check dist/*" in workflow_text
+    for workflow_name in workflow_names:
+        workflow_text = (ROOT / ".github" / "workflows" / workflow_name).read_text(encoding="utf-8")
+
+        assert "uv build" in workflow_text, workflow_name
+        assert "uv run --no-sync twine check dist/*" in workflow_text, workflow_name
+        assert "uvx twine check" not in workflow_text, workflow_name
 
 
 def test_distribution_workflows_refuse_dirty_trees_before_building() -> None:

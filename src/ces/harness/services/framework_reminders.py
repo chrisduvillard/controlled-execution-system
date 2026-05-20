@@ -8,10 +8,10 @@ from typing import Literal
 
 from pydantic import Field, ValidationError
 
-from ces.execution.secrets import scrub_secrets_from_text
 from ces.harness.models.sensor_result import SensorResult
 from ces.shared.base import CESBaseModel
 from ces.shared.crypto import sha256_hash
+from ces.shared.secrets import scrub_secrets_from_text
 
 _ROLE_PREFIX_RE = re.compile(r"\b(system|developer|assistant|user)\s*:", re.IGNORECASE)
 _CONTROL_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]+")

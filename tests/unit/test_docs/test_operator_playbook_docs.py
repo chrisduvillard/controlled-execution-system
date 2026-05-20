@@ -140,5 +140,5 @@ def test_entry_docs_explain_zero_argument_help_front_door() -> None:
     quickstart = (ROOT / "docs" / "Quickstart.md").read_text(encoding="utf-8")
 
     for text in (readme, quickstart):
-        assert "Run `ces` with no arguments to print the Start Here guide" in text
+        assert "Run `ces` or `ces --help` to print the Start Here guide and command reference." in text
         assert "ces --help" in text

@@ -156,7 +156,7 @@ uv run --no-sync vulture src tests --min-confidence 80
 uv export --frozen --group ci --format requirements-txt --no-emit-project --no-hashes --output-file /tmp/ces-ci-requirements.txt
 uv run pip-audit --strict -r /tmp/ces-ci-requirements.txt
 uv build
-uvx twine check dist/*
+uv run --no-sync twine check dist/*
 ```
 
 For dependency-boundary dogfood, run the same checks in a temporary worktree after `uv lock --upgrade` and include a small installed-wheel smoke test for graph expansion.

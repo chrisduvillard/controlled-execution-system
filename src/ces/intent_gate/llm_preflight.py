@@ -8,8 +8,8 @@ from typing import Any
 from pydantic import ValidationError
 
 from ces.execution.providers.protocol import LLMProviderProtocol
-from ces.execution.secrets import scrub_secrets_from_text
 from ces.intent_gate.models import IntentGatePreflight
+from ces.shared.secrets import scrub_secrets_from_text
 
 FALLBACK_NOTE = "LLM preflight unavailable; deterministic Intent Gate rules used."
 

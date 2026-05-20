@@ -6,13 +6,13 @@ from collections import Counter, defaultdict
 from dataclasses import dataclass
 from typing import Literal
 
-from ces.execution.secrets import scrub_secrets_from_text
 from ces.harness_evolution.repository import HarnessEvolutionRepository
 from ces.local_store.records import (
     LocalHarnessChangeRecord,
     LocalHarnessChangeVerdictRecord,
     LocalHarnessMemoryLessonRecord,
 )
+from ces.shared.secrets import scrub_secrets_from_text
 
 ReportFormat = Literal["markdown", "json"]
 

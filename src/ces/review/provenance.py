@@ -9,8 +9,8 @@ from typing import Any
 
 import yaml
 
-from ces.execution.secrets import scrub_secrets_from_text, scrub_secrets_recursive
 from ces.review.models import AgentProvenance
+from ces.shared.secrets import scrub_secrets_from_text, scrub_secrets_recursive
 
 _DEFAULT_PROJECT_ID = "default"
 

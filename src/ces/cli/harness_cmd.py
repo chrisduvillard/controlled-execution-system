@@ -10,7 +10,6 @@ from pydantic import ValidationError
 from rich.table import Table
 
 from ces.cli._output import console
-from ces.execution.secrets import scrub_secrets_from_text
 from ces.harness_evolution.attribution import compute_change_verdict
 from ces.harness_evolution.distiller import distill_transcript_file
 from ces.harness_evolution.manifest_io import read_manifest
@@ -20,6 +19,7 @@ from ces.harness_evolution.report import ReportFormat, build_harness_operator_re
 from ces.harness_evolution.repository import HarnessEvolutionRepository
 from ces.harness_evolution.verdicts import read_trajectory_report
 from ces.local_store import LocalProjectStore
+from ces.shared.secrets import scrub_secrets_from_text
 
 harness_app = typer.Typer(
     help="Inspect and initialize local harness evolution artifacts.",

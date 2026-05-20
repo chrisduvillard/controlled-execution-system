@@ -202,7 +202,7 @@ Start Here:
   `ces status`    Show builder-first status; add `--expert` for the full expert view
 
 Advanced Governance:
-  `ces manifest`, `classify`, `review`, `triage`, `approve`, `audit`, `gate`
+  `ces manifest`, `ces classify`, `ces review`, `ces triage`, `ces approve`, `ces audit`, `ces gate`
 """
 
 app = typer.Typer(

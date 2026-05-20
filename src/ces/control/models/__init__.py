@@ -21,6 +21,7 @@ from ces.control.models.architecture_blueprint import (
 )
 from ces.control.models.audit_entry import AuditEntry, AuditScope, CostImpact
 from ces.control.models.cascade_result import CascadeResult
+from ces.control.models.control_plane_status import ControlPlaneStatus, GovernanceState
 from ces.control.models.debt_entry import DebtEntry
 
 # Operational artifact models (SS2.6-SS2.9)
@@ -144,6 +145,8 @@ __all__ = [
     "KillSwitchState",
     "OracleClassificationResult",
     "CascadeResult",
+    "ControlPlaneStatus",
+    "GovernanceState",
     "GateEvaluationResult",
     "MergeCheck",
     "MergeDecision",

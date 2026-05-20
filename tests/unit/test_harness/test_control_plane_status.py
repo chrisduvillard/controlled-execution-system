@@ -1,4 +1,10 @@
-from ces.harness.models.control_plane_status import ControlPlaneStatus, GovernanceState
+from ces.control.models.control_plane_status import ControlPlaneStatus, GovernanceState
+from ces.harness.models import control_plane_status as legacy_control_plane_status
+
+
+def test_harness_control_plane_status_module_is_compatibility_reexport() -> None:
+    assert legacy_control_plane_status.ControlPlaneStatus is ControlPlaneStatus
+    assert legacy_control_plane_status.GovernanceState is GovernanceState
 
 
 def test_ready_to_ship_requires_governance_clear() -> None:

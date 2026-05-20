@@ -7,8 +7,8 @@ import json
 from pathlib import Path
 from typing import Any
 
-from ces.execution.secrets import scrub_secrets_from_text
 from ces.review.models import VerificationCommandResult, VerificationSummary
+from ces.shared.secrets import scrub_secrets_from_text
 
 
 def verification_evidence_fingerprint(project_root: Path) -> str:

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from ces.execution.secrets import scrub_secrets_from_text
 from ces.harness_evolution.patterns import (
     classify_failure,
     classify_outcome,
@@ -15,6 +14,7 @@ from ces.harness_evolution.patterns import (
     suspected_root_cause,
 )
 from ces.harness_evolution.trajectory import TrajectoryReport
+from ces.shared.secrets import scrub_secrets_from_text
 
 
 def distill_transcript(transcript: str, *, source_path: str | None = None) -> TrajectoryReport:

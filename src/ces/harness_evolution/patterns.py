@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 
-from ces.execution.secrets import scrub_secrets_from_text
+from ces.shared.secrets import scrub_secrets_from_text
 
 _RUN_ID_RE = re.compile(r"\b(?:run[_ -]?id|task[_ -]?id|manifest[_ -]?id)\s*[:=]\s*([A-Za-z0-9_.:-]+)", re.IGNORECASE)
 _COMMAND_PREFIX_RE = re.compile(r"^\s*(?:command|cmd|\$|>)\s*[: ]\s*(.+?)\s*$", re.IGNORECASE)

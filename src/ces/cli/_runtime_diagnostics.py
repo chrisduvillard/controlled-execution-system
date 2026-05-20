@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from ces.cli._state_path import validate_ces_state_dir, validate_ces_state_path
-from ces.execution.secrets import scrub_secrets_from_text
+from ces.shared.secrets import scrub_secrets_from_text
 
 _MAX_SECTION_CHARS = 4000
 _MAX_SUMMARY_CHARS = 1200

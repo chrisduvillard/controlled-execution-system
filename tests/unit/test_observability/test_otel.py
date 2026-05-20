@@ -28,7 +28,6 @@ def _patch_otel_runtime():
     return (
         patch("ces.observability.otel.OTLPSpanExporter"),
         patch("ces.observability.otel.OTLPMetricExporter"),
-        patch("ces.observability.otel.HTTPXClientInstrumentor"),
         patch("ces.observability.otel.SQLAlchemyInstrumentor"),
     )
 
@@ -36,7 +35,7 @@ def _patch_otel_runtime():
 class TestConfigureOtel:
     def test_returns_true_when_enabled(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.delenv("OTEL_SDK_DISABLED", raising=False)
-        with _patch_otel_runtime()[0], _patch_otel_runtime()[1], _patch_otel_runtime()[2], _patch_otel_runtime()[3]:
+        with _patch_otel_runtime()[0], _patch_otel_runtime()[1], _patch_otel_runtime()[2]:
             result = otel_module.configure_otel()
         assert result is True
 
@@ -46,21 +45,19 @@ class TestConfigureOtel:
 
     def test_sets_providers(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.delenv("OTEL_SDK_DISABLED", raising=False)
-        with _patch_otel_runtime()[0], _patch_otel_runtime()[1], _patch_otel_runtime()[2], _patch_otel_runtime()[3]:
+        with _patch_otel_runtime()[0], _patch_otel_runtime()[1], _patch_otel_runtime()[2]:
             otel_module.configure_otel()
         assert otel_module._tracer_provider is not None
         assert otel_module._meter_provider is not None
 
-    def test_instruments_httpx_and_sqlalchemy(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_instruments_sqlalchemy(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.delenv("OTEL_SDK_DISABLED", raising=False)
         with (
             patch("ces.observability.otel.OTLPSpanExporter"),
             patch("ces.observability.otel.OTLPMetricExporter"),
-            patch("ces.observability.otel.HTTPXClientInstrumentor") as mock_httpx,
             patch("ces.observability.otel.SQLAlchemyInstrumentor") as mock_sqla,
         ):
             otel_module.configure_otel()
-        mock_httpx.return_value.instrument.assert_called_once()
         mock_sqla.return_value.instrument.assert_called_once()
 
     def test_double_initialization_is_guarded(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -68,12 +65,11 @@ class TestConfigureOtel:
         with (
             patch("ces.observability.otel.OTLPSpanExporter"),
             patch("ces.observability.otel.OTLPMetricExporter"),
-            patch("ces.observability.otel.HTTPXClientInstrumentor") as mock_httpx,
-            patch("ces.observability.otel.SQLAlchemyInstrumentor"),
+            patch("ces.observability.otel.SQLAlchemyInstrumentor") as mock_sqla,
         ):
             assert otel_module.configure_otel() is True
             assert otel_module.configure_otel() is True
-        assert mock_httpx.return_value.instrument.call_count == 1
+        assert mock_sqla.return_value.instrument.call_count == 1
 
 
 class TestShutdownOtel:
@@ -82,7 +78,6 @@ class TestShutdownOtel:
         with (
             patch("ces.observability.otel.OTLPSpanExporter"),
             patch("ces.observability.otel.OTLPMetricExporter"),
-            patch("ces.observability.otel.HTTPXClientInstrumentor"),
             patch("ces.observability.otel.SQLAlchemyInstrumentor"),
         ):
             otel_module.configure_otel()
@@ -94,7 +89,6 @@ class TestShutdownOtel:
         with (
             patch("ces.observability.otel.OTLPSpanExporter"),
             patch("ces.observability.otel.OTLPMetricExporter"),
-            patch("ces.observability.otel.HTTPXClientInstrumentor"),
             patch("ces.observability.otel.SQLAlchemyInstrumentor"),
         ):
             otel_module.configure_otel()
@@ -115,7 +109,6 @@ class TestResourceServiceName:
         with (
             patch("ces.observability.otel.OTLPSpanExporter"),
             patch("ces.observability.otel.OTLPMetricExporter"),
-            patch("ces.observability.otel.HTTPXClientInstrumentor"),
             patch("ces.observability.otel.SQLAlchemyInstrumentor"),
         ):
             otel_module.configure_otel()
@@ -129,7 +122,6 @@ class TestResourceServiceName:
         with (
             patch("ces.observability.otel.OTLPSpanExporter"),
             patch("ces.observability.otel.OTLPMetricExporter"),
-            patch("ces.observability.otel.HTTPXClientInstrumentor"),
             patch("ces.observability.otel.SQLAlchemyInstrumentor"),
         ):
             otel_module.configure_otel()

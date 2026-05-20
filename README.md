@@ -101,7 +101,7 @@ If your ambient `python3` is Python 3.11, direct `pip install controlled-executi
 uv tool install --python 3.13 controlled-execution-system
 ```
 
-Run `ces` with no arguments to print the Start Here guide. Use `ces --help` when you want the full command reference.
+Run `ces` or `ces --help` to print the Start Here guide and command reference.
 
 Lifecycle shortcuts: install with `uv tool install controlled-execution-system`, update with `uv tool upgrade controlled-execution-system`, uninstall the global CLI with `uv tool uninstall controlled-execution-system`, and clean project-local CES state with `ces cleanup --project-root path/to/project`.
 
@@ -310,10 +310,10 @@ Intake writes:
 - `docs/contracts/<contract-id>.md`
 - `docs/specs/<contract-id>.md`, a generated CES spec sidecar for the existing `--from-spec` path
 
-After intake, the intended loop is:
+After intake, preview the generated spec build order before running verification and approval gates:
 
 ```bash
-ces build --from-contract
+ces build --from-contract  # preview the latest intake contract's generated spec build order
 ces verify
 ces proof
 ces approve
@@ -462,7 +462,7 @@ ces report builder
 |---|---|
 | `ces build "<request>"` | Start a governed local task from a natural-language request. |
 | `ces intake "<request>"` / `ces intake docs/prd.md` | Persist a narrow execution contract from inline intent, a local Markdown PRD, or `--from-github-issue`. |
-| `ces build --from-contract` | Continue from the latest intake contract's generated CES spec sidecar. |
+| `ces build --from-contract` | Preview the latest intake contract's generated CES spec build order. |
 | `ces continue` | Resume the latest saved builder session from the right stage. |
 | `ces explain` | Read the current request, blockers, evidence, and next step. |
 | `ces explain --view decisioning` | Inspect the governance decision path for the active request. |
@@ -606,7 +606,7 @@ uv run ruff format --check src/ tests/
 uv run mypy src/ces/ --ignore-missing-imports
 uv run pytest tests/ -m "not integration" --cov=ces --cov-fail-under=90 --cov-report=term-missing -q -W error
 uv build
-uvx twine check dist/*
+uv run --no-sync twine check dist/*
 ```
 
 Run local integration tests:
