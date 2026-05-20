@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.30] - 2026-05-20
+
+Semantic review, proof freshness, and production-readiness release.
+
+### Added
+
+- Add semantic codebase mapping context and selector evaluations so implementation prompts can carry repo-aware evidence.
+- Add approach deliberation briefs and domain-aware challenge prompts for stronger pre-build planning.
+- Add the Semantic Review Layer with diff indexing, risk maps, review paths, intent coverage, provenance, proof-card references, approval warnings, artifact export, and GitHub PR comments.
+
+### Changed
+
+- Rename the deliberation grill terminology to product-native challenge language.
+- Improve Quickstart, beginner journey, guardrails, scenario-matrix, and friction-log documentation for production-readiness workflows.
+
+### Fixed
+
+- Harden CES lifecycle workflows, production-readiness commands, and release smoke paths.
+- Bind proof evidence to objective/context fingerprints so stale or mismatched verification evidence is treated as unproven.
+- Close Semantic Review PRD gaps for build-bound provenance, stable comment updates, JSON/Markdown export, installed-wheel smoke coverage, and post-merge CI verification.
+
 ## [0.1.29] - 2026-05-17
 
 Public-readiness, proof-governance, and CLI maintainability release.
