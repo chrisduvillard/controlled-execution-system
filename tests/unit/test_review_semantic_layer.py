@@ -214,7 +214,7 @@ def test_classifier_risk_and_intent_coverage_are_evidence_bounded() -> None:
 
 
 def test_renderer_and_github_comment_redact_secret_values(tmp_path: Path) -> None:
-    from ces.review.github_comment import render_github_comment
+    from ces.review.github_comment import _public_path, render_github_comment
     from ces.review.renderer import render_review_brief
     from ces.review.service import ReviewGenerationOptions, SemanticReviewService
 
@@ -228,6 +228,7 @@ def test_renderer_and_github_comment_redact_secret_values(tmp_path: Path) -> Non
 
     markdown = render_review_brief(bundle)
     comment = render_github_comment(bundle)
+    truncated_comment = render_github_comment(bundle, max_chars=120)
 
     for heading in [
         "# CES Review Brief:",
@@ -247,6 +248,9 @@ def test_renderer_and_github_comment_redact_secret_values(tmp_path: Path) -> Non
         assert heading in markdown
     assert "sk-test-secret-value" not in markdown
     assert "sk-test-secret-value" not in comment.body
+    assert "<REDACTED>" in markdown
+    assert "Comment truncated by CES length cap" in truncated_comment.body
+    assert _public_path(Path("review-brief.md")) == "review-brief.md"
     assert "<!-- ces-semantic-review:" in comment.body
 
 
@@ -616,3 +620,403 @@ def test_agent_provenance_reads_state_db_without_local_store_side_effects(tmp_pa
     assert provenance.runtime == "codex"
     assert provenance.model == "gpt-5.5"
     assert "session_id:session-1" in provenance.source_refs
+
+
+def test_file_classifier_covers_primary_roles_and_source_areas() -> None:
+    from ces.review.file_classifier import classify_path
+
+    cases = {
+        "uv.lock": ("lockfile", "packaging", "unknown", True),
+        ".github/workflows/ci.yml": ("ci", "ci", "yaml", False),
+        "pyproject.toml": ("config", "packaging", "toml", False),
+        "docs/guide.md": ("doc", "docs", "markdown", False),
+        "tests/test_runner.py": ("test", "tests", "python", False),
+        "src/ces/execution/runner.py": ("source", "execution", "python", False),
+        "src/ces/cli/app.py": ("source", "cli", "python", False),
+        "src/ces/local_store/store.py": ("source", "persistence", "python", False),
+        "src/ces/harness/review.py": ("source", "harness", "python", False),
+        "src/ces/verification/proof_card.py": ("source", "verification", "python", False),
+        "src/ces/intake/contracts.py": ("source", "intake", "python", False),
+        "src/ces/control/services/audit.py": ("source", "governance", "python", False),
+        "src/ces/review/service.py": ("source", "review", "python", False),
+        "src/ces/observability/metrics.py": ("source", "sensors", "python", False),
+        "src/ces/brownfield/register.py": ("source", "brownfield", "python", False),
+        "src/ces/emergency/sla.py": ("source", "safety", "python", False),
+        "assets/logo.png": ("asset", "assets", "unknown", False),
+        "build/generated/client.py": ("source", "source", "python", False),
+        "tools/credential_loader.py": ("source", "security", "python", False),
+        "tools/runtime_adapter.py": ("source", "runtime", "python", False),
+    }
+
+    for relpath, expected in cases.items():
+        classification = classify_path(relpath)
+        assert (
+            classification.role,
+            classification.conceptual_area,
+            classification.language,
+            classification.lockfile,
+        ) == expected
+
+    assert classify_path("build/generated/client.py").generated is True
+    assert classify_path("unknown.bin").signals == ("no deterministic classifier matched",)
+
+
+def test_intent_coverage_extracts_contract_requirements_and_statuses(tmp_path: Path) -> None:
+    from ces.review.intent_coverage import build_intent_coverage
+    from ces.review.models import ChangedFile, DiffIndex, DiffStats, VerificationCommandResult, VerificationSummary
+
+    (tmp_path / ".ces" / "contracts").mkdir(parents=True)
+    (tmp_path / ".ces" / "contracts" / "latest.json").write_text(
+        json.dumps(
+            {
+                "objective": "REQ-42 update review_cmd command",
+                "acceptance_criteria": [
+                    {"text": "tests cover cli behavior"},
+                    "defer non-goal telemetry",
+                ],
+                "behavior_delta": {"changed": ["review command emits json"]},
+            }
+        ),
+        encoding="utf-8",
+    )
+    diff_index = DiffIndex(
+        base_ref="HEAD~1",
+        head_ref="HEAD",
+        diff_fingerprint="abc",
+        stats=DiffStats(files_changed=2, insertions=12, deletions=1),
+        changed_files=(
+            ChangedFile(path="src/ces/cli/review_cmd.py", classification={"role": "source", "conceptual_area": "cli"}),
+            ChangedFile(
+                path="tests/unit/test_review_cmd.py", classification={"role": "test", "conceptual_area": "tests"}
+            ),
+        ),
+    )
+    verification = VerificationSummary(
+        status="passed",
+        commands=(VerificationCommandResult(command="pytest tests/unit/test_review_cmd.py", status="passed"),),
+    )
+
+    coverage = build_intent_coverage(
+        tmp_path,
+        diff_index,
+        verification,
+        objective="REQ-1 cli review command",
+        deferred_scope=("telemetry",),
+    )
+
+    by_id = {item.requirement_id: item for item in coverage.items}
+    assert by_id["REQ-1"].status == "implemented"
+    assert set(by_id["REQ-1"].changed_files) == {"src/ces/cli/review_cmd.py", "tests/unit/test_review_cmd.py"}
+    assert by_id["REQ-42"].status == "implemented"
+    assert any(item.status == "intentionally_deferred" for item in coverage.items)
+    assert coverage.sources[:2] == ("objective", "execution_contract")
+    assert coverage.summary["implemented"] >= 2
+
+
+def test_risk_map_scores_high_risk_patterns_and_review_path() -> None:
+    from ces.review.models import ChangedFile, DiffIndex, DiffStats, VerificationSummary
+    from ces.review.risk import build_review_path, build_risk_map
+
+    diff_index = DiffIndex(
+        base_ref="HEAD~1",
+        head_ref="HEAD",
+        diff_fingerprint="abc",
+        warnings=("diff was truncated",),
+        stats=DiffStats(files_changed=5, insertions=800, deletions=30),
+        changed_files=(
+            ChangedFile(
+                path="src/ces/execution/runner.py",
+                status="modified",
+                additions=620,
+                deletions=10,
+                classification={"role": "source", "conceptual_area": "execution"},
+                content_excerpt="subprocess.run(command, shell=True) secret token write_text unlink asyncio",
+            ),
+            ChangedFile(
+                path="pyproject.toml",
+                status="modified",
+                additions=3,
+                classification={"role": "config", "conceptual_area": "packaging"},
+            ),
+            ChangedFile(
+                path="uv.lock",
+                status="modified",
+                additions=10,
+                classification={"role": "lockfile", "conceptual_area": "packaging", "lockfile": True},
+            ),
+            ChangedFile(
+                path="docs/old.md",
+                status="deleted",
+                deletions=2,
+                classification={"role": "doc", "conceptual_area": "docs"},
+            ),
+            ChangedFile(
+                path="dist/generated.js",
+                additions=3,
+                classification={"role": "generated", "conceptual_area": "unknown", "generated": True},
+            ),
+        ),
+    )
+
+    risk_map = build_risk_map(diff_index, VerificationSummary(status="failed"))
+    review_path = build_review_path(risk_map)
+
+    assert risk_map.overall_level == "critical"
+    assert risk_map.review_first[0].path == "src/ces/execution/runner.py"
+    assert any("subprocess" in checkpoint.lower() for checkpoint in risk_map.checkpoints)
+    assert any(area.area == "packaging" for area in risk_map.area_risks)
+    assert review_path.steps[0].target == "src/ces/execution/runner.py"
+    assert (
+        build_review_path(build_risk_map(diff_index.model_copy(update={"changed_files": ()}), VerificationSummary()))
+        .steps[0]
+        .kind
+        == "summary"
+    )
+
+
+def test_verification_summary_handles_missing_invalid_and_command_shapes(tmp_path: Path) -> None:
+    from ces.review.verification import load_verification_summary, verification_evidence_fingerprint
+
+    missing = load_verification_summary(tmp_path)
+    assert missing.status == "not_run"
+    assert verification_evidence_fingerprint(tmp_path) == "latest-verification:absent"
+
+    symlink_project = tmp_path / "symlink-project"
+    (symlink_project / ".ces").mkdir(parents=True)
+    symlink_target = tmp_path / "outside-verification.json"
+    symlink_target.write_text("{}", encoding="utf-8")
+    (symlink_project / ".ces" / "latest-verification.json").symlink_to(symlink_target)
+    assert verification_evidence_fingerprint(symlink_project) == "latest-verification:symlinked"
+    assert load_verification_summary(symlink_project).status == "not_run"
+
+    latest = tmp_path / ".ces" / "latest-verification.json"
+    latest.parent.mkdir()
+    latest.write_text("not-json", encoding="utf-8")
+    invalid = load_verification_summary(tmp_path)
+    assert invalid.status == "unknown"
+
+    latest.write_text(json.dumps({"verification": "not-a-mapping"}), encoding="utf-8")
+    non_mapping = load_verification_summary(tmp_path)
+    assert non_mapping.status == "unknown"
+
+    latest.write_text(
+        json.dumps(
+            {
+                "verification": {
+                    "passed": False,
+                    "commands": [
+                        {"command": "pytest", "exit_code": 1, "duration_seconds": 1.25, "stderr_summary": "failed"},
+                        {"command": "ruff", "skipped": True},
+                        "custom smoke",
+                    ],
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    failed = load_verification_summary(tmp_path)
+    assert failed.status == "failed"
+    assert [command.status for command in failed.commands] == ["failed", "skipped", "unknown"]
+    assert verification_evidence_fingerprint(tmp_path).startswith("latest-verification:sha256:")
+
+
+def test_diff_index_covers_worktree_statuses_untracked_and_helpers(tmp_path: Path) -> None:
+    from ces.review.diff_index import (
+        _git_optional,
+        _normalize_rename_path,
+        _parse_numstat,
+        _path_from_diff_header,
+        _safe_ref,
+        build_diff_index,
+    )
+
+    _git(tmp_path, "init")
+    _git(tmp_path, "config", "user.email", "test@example.com")
+    _git(tmp_path, "config", "user.name", "Test User")
+    (tmp_path / "src" / "ces" / "review").mkdir(parents=True)
+    (tmp_path / "docs").mkdir()
+    (tmp_path / "src" / "ces" / "review" / "alpha.py").write_text("VALUE = 1\n", encoding="utf-8")
+    (tmp_path / "docs" / "old.md").write_text("old\n", encoding="utf-8")
+    (tmp_path / "remove.txt").write_text("remove me\n", encoding="utf-8")
+    (tmp_path / "image.png").write_bytes(b"PNG base")
+    _git(tmp_path, "add", ".")
+    _git(tmp_path, "commit", "-m", "base")
+
+    (tmp_path / "src" / "ces" / "review" / "alpha.py").write_text("import subprocess\nVALUE = 2\n", encoding="utf-8")
+    _git(tmp_path, "mv", "docs/old.md", "docs/new.md")
+    (tmp_path / "remove.txt").unlink()
+    (tmp_path / "image.png").write_bytes(b"PNG changed")
+    (tmp_path / "untracked.py").write_text("print('new')\n", encoding="utf-8")
+    (tmp_path / ".ces").mkdir()
+    (tmp_path / ".ces" / "ignored.json").write_text("{}\n", encoding="utf-8")
+
+    diff_index = build_diff_index(tmp_path, base_ref="HEAD", include_untracked=True)
+    by_path = {item.path: item for item in diff_index.changed_files}
+
+    assert by_path["src/ces/review/alpha.py"].status == "modified"
+    assert by_path["src/ces/review/alpha.py"].content_hash
+    assert "subprocess" in by_path["src/ces/review/alpha.py"].content_excerpt
+    assert by_path["docs/new.md"].status == "renamed"
+    assert by_path["docs/new.md"].old_path == "docs/old.md"
+    assert by_path["remove.txt"].status == "deleted"
+    assert by_path["remove.txt"].patch_available is False
+    assert by_path["image.png"].binary is True
+    assert by_path["image.png"].content_excerpt == ""
+    assert by_path["untracked.py"].status == "untracked"
+    assert by_path["untracked.py"].additions == 1
+    assert ".ces/ignored.json" not in by_path
+    assert diff_index.head_ref == "WORKTREE"
+    assert diff_index.diff_fingerprint
+
+    assert _safe_ref(" HEAD ") == "HEAD"
+    with pytest.raises(ValueError, match="Invalid git ref"):
+        _safe_ref("-bad")
+    assert _git_optional(tmp_path, "rev-parse", "--verify", "does-not-exist") is None
+    assert _parse_numstat("1\t2\tsrc/{old => new}.py\n-\t-\tassets/logo.png\n") == {
+        "src/new.py": (1, 2, False),
+        "assets/logo.png": (0, 0, True),
+    }
+    assert _normalize_rename_path("src/{old => new}/file.py") == "src/new/file.py"
+    assert _path_from_diff_header("diff --git a/src/a.py b/src/a.py") == "src/a.py"
+
+
+def test_diff_index_empty_repo_diff_warns(tmp_path: Path) -> None:
+    from ces.review.diff_index import build_diff_index
+
+    _git(tmp_path, "init")
+    _git(tmp_path, "config", "user.email", "test@example.com")
+    _git(tmp_path, "config", "user.name", "Test User")
+    (tmp_path / "README.md").write_text("# Demo\n", encoding="utf-8")
+    _git(tmp_path, "add", ".")
+    _git(tmp_path, "commit", "-m", "base")
+
+    diff_index = build_diff_index(tmp_path, base_ref="HEAD", include_untracked=False)
+
+    assert diff_index.changed_files == ()
+    assert diff_index.stats.files_changed == 0
+    assert diff_index.warnings == ("No changed files detected for the requested diff.",)
+
+
+def test_github_comment_posts_new_comment_and_surfaces_failures(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    import ces.review.github_comment as github_comment_module
+    from ces.execution.processes import ProcessResult
+    from ces.review.github_comment import post_github_comment
+    from ces.review.models import GithubReviewComment
+
+    calls: list[tuple[str, ...]] = []
+
+    def fake_run(command, **kwargs):
+        del kwargs
+        command_tuple = tuple(str(part) for part in command)
+        calls.append(command_tuple)
+        if command_tuple == ("gh", "api", "user", "--jq", ".login"):
+            return ProcessResult(command=command_tuple, exit_code=0, stdout="vega\n", stderr="")
+        if command_tuple[:2] == ("gh", "api") and "issues/77/comments" in command_tuple[2]:
+            return ProcessResult(command=command_tuple, exit_code=0, stdout="\n", stderr="")
+        if command_tuple[:3] == ("gh", "pr", "comment"):
+            return ProcessResult(command=command_tuple, exit_code=0, stdout="created\n", stderr="")
+        return ProcessResult(command=command_tuple, exit_code=0, stdout="", stderr="")
+
+    monkeypatch.setattr(github_comment_module, "run_sync_command", fake_run)
+    comment = GithubReviewComment(review_id="review-1", body="body", update_marker="marker")
+
+    post_github_comment(comment, pr=77, repo_root=tmp_path, update_existing=True)
+
+    assert any(command[:3] == ("gh", "pr", "comment") for command in calls)
+    assert not any("--edit-last" in command for command in calls)
+    assert any(command[:3] == ("gh", "pr", "comment") and "--body-file" in command for command in calls)
+
+    def failing_run(command, **kwargs):
+        del kwargs
+        command_tuple = tuple(str(part) for part in command)
+        return ProcessResult(command=command_tuple, exit_code=1, stdout="", stderr="boom")
+
+    monkeypatch.setattr(github_comment_module, "run_sync_command", failing_run)
+    with pytest.raises(RuntimeError, match="boom"):
+        post_github_comment(comment, pr=77, repo_root=tmp_path, update_existing=False)
+
+
+def test_diff_index_error_paths_fail_closed(tmp_path: Path) -> None:
+    from ces.review.diff_index import (
+        _git as diff_git,
+    )
+    from ces.review.diff_index import (
+        _parse_name_status,
+        _safe_excerpt,
+        _safe_ref,
+        build_diff_index,
+        resolve_git_root,
+    )
+
+    with pytest.raises(ValueError, match="Cannot generate semantic review"):
+        resolve_git_root(tmp_path)
+
+    _git(tmp_path, "init")
+    _git(tmp_path, "config", "user.email", "test@example.com")
+    _git(tmp_path, "config", "user.name", "Test User")
+    (tmp_path / "README.md").write_text("# Demo\n", encoding="utf-8")
+    _git(tmp_path, "add", ".")
+    _git(tmp_path, "commit", "-m", "base")
+
+    with pytest.raises(ValueError, match="Invalid git ref"):
+        build_diff_index(tmp_path, base_ref="-bad")
+    with pytest.raises(ValueError):
+        diff_git(tmp_path, "definitely-not-a-git-command")
+    assert _safe_ref(None) is None
+    assert _parse_name_status("malformed", {}, tmp_path, "", head_ref=None) == []
+    assert _safe_excerpt(tmp_path / "missing.py", binary=False, deleted=False) == ""
+
+
+def test_github_comment_lookup_failures_are_explicit(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    import ces.review.github_comment as github_comment_module
+    from ces.execution.processes import ProcessResult
+    from ces.review.github_comment import post_github_comment
+    from ces.review.models import GithubReviewComment
+
+    comment = GithubReviewComment(review_id="review-1", body="body", update_marker="marker")
+
+    def failing_viewer(command, **kwargs):
+        del kwargs
+        command_tuple = tuple(str(part) for part in command)
+        return ProcessResult(command=command_tuple, exit_code=1, stdout="", stderr="viewer boom")
+
+    monkeypatch.setattr(github_comment_module, "run_sync_command", failing_viewer)
+    with pytest.raises(RuntimeError, match="viewer boom"):
+        post_github_comment(comment, pr=88, repo_root=tmp_path, update_existing=True)
+
+    def failing_lookup(command, **kwargs):
+        del kwargs
+        command_tuple = tuple(str(part) for part in command)
+        if command_tuple == ("gh", "api", "user", "--jq", ".login"):
+            return ProcessResult(command=command_tuple, exit_code=0, stdout="vega\n", stderr="")
+        return ProcessResult(command=command_tuple, exit_code=1, stdout="", stderr="lookup boom")
+
+    monkeypatch.setattr(github_comment_module, "run_sync_command", failing_lookup)
+    with pytest.raises(RuntimeError, match="lookup boom"):
+        post_github_comment(comment, pr=88, repo_root=tmp_path, update_existing=True)
+
+
+def test_github_comment_update_failure_surfaces_patch_error(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    import ces.review.github_comment as github_comment_module
+    from ces.execution.processes import ProcessResult
+    from ces.review.github_comment import post_github_comment
+    from ces.review.models import GithubReviewComment
+
+    def fake_run(command, **kwargs):
+        del kwargs
+        command_tuple = tuple(str(part) for part in command)
+        if command_tuple == ("gh", "api", "user", "--jq", ".login"):
+            return ProcessResult(command=command_tuple, exit_code=0, stdout="vega\n", stderr="")
+        if command_tuple[:2] == ("gh", "api") and "issues/89/comments" in command_tuple[2]:
+            return ProcessResult(command=command_tuple, exit_code=0, stdout="456\n", stderr="")
+        if command_tuple[:3] == ("gh", "api", "repos/:owner/:repo/issues/comments/456"):
+            return ProcessResult(command=command_tuple, exit_code=1, stdout="", stderr="patch boom")
+        return ProcessResult(command=command_tuple, exit_code=0, stdout="", stderr="")
+
+    monkeypatch.setattr(github_comment_module, "run_sync_command", fake_run)
+    comment = GithubReviewComment(review_id="review-1", body="body", update_marker="marker")
+
+    with pytest.raises(RuntimeError, match="patch boom"):
+        post_github_comment(comment, pr=89, repo_root=tmp_path, update_existing=True)

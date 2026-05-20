@@ -31,7 +31,9 @@ _LANG_BY_EXT = {
 def classify_path(path: str) -> FileClassification:
     """Classify a repository path into a review role and conceptual area."""
 
-    normalized = path.replace("\\", "/").lstrip("./")
+    normalized = path.replace("\\", "/")
+    while normalized.startswith("./"):
+        normalized = normalized[2:]
     lowered = normalized.lower()
     pure = PurePosixPath(normalized)
     name = pure.name
