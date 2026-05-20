@@ -200,3 +200,13 @@ This log records friction found during the production-readiness dogfood pass. Fr
 - **Status:** Fixed.
 - **Fix:** CI, TestPyPI, and PyPI workflows now run `uv run pip-audit --strict -r ...`; `uv.lock` was refreshed to idna 3.15 to clear CVE-2026-45409.
 - **Evidence after fix:** Local `uv export --frozen --group ci ... && uv run pip-audit --strict -r /tmp/ces-ci-requirements.txt` reports `No known vulnerabilities found`; latest-bounds worktree audit also passes.
+
+## FL-021: Review command needed a semantic artifact layer without breaking legacy manifest review
+
+- **Step attempted:** Add the Semantic Review Layer while preserving existing `ces review` governance evidence review muscle memory.
+- **Expected:** `ces review generate/show/list/open/export/github-comment` create and expose local review artifacts, while `ces review` and `ces review <manifest-id>` still run the legacy manifest review flow.
+- **Actual:** The old single-command shape could not host the semantic review command family without an explicit compatibility route.
+- **Severity:** High for adoption and approval safety.
+- **Status:** Fixed.
+- **Fix:** `ces review` is now a command family; root argument rewriting routes legacy calls to hidden `ces review run`, semantic artifacts are written under `.ces/reviews/`, proof cards reference the latest semantic review, and approvals record semantic review evidence refs with stale/high-risk warnings.
+- **Evidence after fix:** `tests/unit/test_review_semantic_layer.py`, `uv run pytest tests/unit/test_review_semantic_layer.py -q`, and docs in `docs/Getting_Started.md` plus `docs/Quick_Reference_Card.md`.

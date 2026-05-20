@@ -7,7 +7,7 @@ import os
 import re
 import shutil
 import subprocess
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -40,6 +40,7 @@ class ProofCardReport:
     next_command: str
     execution_contract_id: str | None = None
     execution_contract_objective: str | None = None
+    semantic_review: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -65,6 +66,7 @@ class ProofCardReport:
                 "contract_id": self.execution_contract_id,
                 "objective": self.execution_contract_objective,
             },
+            "semantic_review": self.semantic_review,
         }
 
     def to_json(self) -> str:
@@ -87,6 +89,7 @@ class ProofCardReport:
                     f"Approval safety: **{payload['approval_safety']}**",
                     f"Ship recommendation: **{payload['ship_recommendation']}**",
                     f"Next command: `{payload['next_command']}`",
+                    f"Semantic review: {_semantic_review_markdown_line(payload['semantic_review'])}",
                     f"Execution contract: {payload['execution_contract']['contract_id'] or 'None'}",
                     "",
                     "## Review decision",
@@ -189,6 +192,7 @@ def build_proof_card(project_root: str | Path) -> ProofCardReport:
         risk_track=risk_track,
         binding_status=binding_status,
     )
+    semantic_review = _semantic_review_summary(root)
     return ProofCardReport(
         project_root=root,
         objective=contract.request if contract else None,
@@ -207,6 +211,7 @@ def build_proof_card(project_root: str | Path) -> ProofCardReport:
         next_command=contract.next_ces_command if contract else "ces ship",
         execution_contract_id=execution_contract.get("contract_id") if execution_contract else None,
         execution_contract_objective=execution_contract.get("objective") if execution_contract else None,
+        semantic_review=semantic_review,
     )
 
 
@@ -724,3 +729,58 @@ def _bullet(items: list[str] | tuple[str, ...] | Any) -> list[str]:
     if not values:
         return ["- None recorded."]
     return [f"- {item}" for item in values]
+
+
+def _semantic_review_summary(root: Path) -> dict[str, Any]:
+    """Return a compact latest semantic review summary for the proof card."""
+
+    try:
+        from ces.review.artifacts import SemanticReviewArtifactStore
+
+        store = SemanticReviewArtifactStore(root)
+        metadata = store.latest_bundle_metadata()
+        if metadata is None:
+            return {
+                "status": "missing",
+                "review_id": None,
+                "warning": "No semantic review artifact found; run `ces review generate` before approval.",
+            }
+        bundle = store.load_bundle(metadata.review_id)
+        stale = store.is_stale(metadata)
+        review_brief = _relative_artifact(root, bundle.review_brief_path)
+        return scrub_secrets_recursive(
+            {
+                "status": "stale" if stale else "current",
+                "review_id": metadata.review_id,
+                "review_brief": review_brief,
+                "risk_level": bundle.risk_map.overall_level,
+                "risk_score": bundle.risk_map.overall_score,
+                "intent_coverage": dict(bundle.intent_coverage.summary),
+                "diff_fingerprint": metadata.diff_fingerprint,
+                "stale": stale,
+            }
+        )
+    except (OSError, RuntimeError, ValueError):
+        return {
+            "status": "unavailable",
+            "review_id": None,
+            "warning": "Semantic review artifact could not be read safely.",
+        }
+
+
+def _semantic_review_markdown_line(summary: dict[str, Any]) -> str:
+    status = summary.get("status") or "missing"
+    review_id = summary.get("review_id")
+    if not review_id:
+        return str(summary.get("warning") or "No semantic review artifact found.")
+    path = summary.get("review_brief") or ".ces/reviews"
+    risk = summary.get("risk_level") or "unknown"
+    stale = " stale" if summary.get("stale") else ""
+    return f"`{path}` ({status}{stale}, risk: {risk}, id: {review_id})"
+
+
+def _relative_artifact(root: Path, path: Path) -> str:
+    try:
+        return str(path.resolve().relative_to(root.resolve()))
+    except (OSError, ValueError):
+        return path.name

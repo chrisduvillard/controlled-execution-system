@@ -225,6 +225,7 @@ class AuditLedgerService:
         decision: str,
         rationale: str,
         project_id: str | None = None,
+        evidence_refs: list[str] | None = None,
     ) -> AuditEntry:
         """Record an approval decision event.
 
@@ -245,6 +246,7 @@ class AuditLedgerService:
             decision=decision,
             rationale=rationale,
             scope=AuditScope(affected_manifests=(manifest_id,)),
+            evidence_refs=evidence_refs,
             project_id=project_id,
         )
 

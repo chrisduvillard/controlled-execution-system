@@ -15,6 +15,7 @@ Exports:
 from __future__ import annotations
 
 import json
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -51,6 +52,70 @@ _TRIAGE_COLOR_STYLES = {
     "yellow": "[yellow]YELLOW[/yellow]",
     "red": "[red]RED[/red]",
 }
+
+
+@dataclass(frozen=True)
+class SemanticReviewApprovalSupport:
+    """Latest semantic review state used to support an approval decision."""
+
+    review_id: str | None
+    review_brief: str | None
+    risk_level: str | None
+    evidence_refs: tuple[str, ...] = ()
+    warnings: tuple[str, ...] = ()
+
+
+def _semantic_review_for_approval(root: Path) -> SemanticReviewApprovalSupport:
+    """Load the latest semantic review and produce approval warnings/evidence refs."""
+
+    try:
+        from ces.review.artifacts import SemanticReviewArtifactStore
+
+        store = SemanticReviewArtifactStore(root)
+        metadata = store.latest_bundle_metadata()
+        if metadata is None:
+            return SemanticReviewApprovalSupport(
+                review_id=None,
+                review_brief=None,
+                risk_level=None,
+                warnings=("No current semantic review artifact exists; run `ces review generate` before approval.",),
+            )
+        bundle = store.load_bundle(metadata.review_id)
+        warnings: list[str] = []
+        if store.is_stale(metadata):
+            warnings.append(
+                "Semantic review artifact is stale relative to the current diff; regenerate before approval."
+            )
+        if bundle.risk_map.overall_level in {"high", "critical"} and bundle.verification_summary.status != "passed":
+            warnings.append("High-risk semantic review items exist without passed verification evidence.")
+        unknown_items = [
+            item.requirement_id
+            for item in bundle.intent_coverage.items
+            if item.status in {"unknown", "not_implemented"}
+        ]
+        if unknown_items:
+            warnings.append("Intent coverage has unresolved requirements: " + ", ".join(unknown_items[:5]))
+        return SemanticReviewApprovalSupport(
+            review_id=metadata.review_id,
+            review_brief=_relative_semantic_review_path(root, bundle.review_brief_path),
+            risk_level=bundle.risk_map.overall_level,
+            evidence_refs=(f"semantic-review:{metadata.review_id}",),
+            warnings=tuple(warnings),
+        )
+    except (OSError, RuntimeError, ValueError):
+        return SemanticReviewApprovalSupport(
+            review_id=None,
+            review_brief=None,
+            risk_level=None,
+            warnings=("Semantic review artifact could not be read safely; regenerate before approval.",),
+        )
+
+
+def _relative_semantic_review_path(root: Path, path: Path) -> str:
+    try:
+        return str(path.resolve().relative_to(root.resolve()))
+    except (OSError, ValueError):
+        return path.name
 
 
 def _has_unanimous_zero_findings(review_data: dict | None) -> bool:
@@ -204,6 +269,7 @@ async def approve_evidence(
     try:
         resolved_project_root = find_project_root(project_root)
         project_id = get_project_id(resolved_project_root)
+        semantic_review_support = _semantic_review_for_approval(resolved_project_root)
         _enforce_completion_contract_proof(resolved_project_root)
 
         services_context = (
@@ -353,6 +419,12 @@ async def approve_evidence(
                         "Rerun `ces approve` without --yes and make an explicit human decision."
                     )
                 approved = True
+                if semantic_review_support.warnings and not _output_mod._json_mode:
+                    console.print(
+                        "[yellow]Semantic Review Warnings:\n"
+                        + "\n".join(f"- {warning}" for warning in semantic_review_support.warnings)
+                        + "[/yellow]"
+                    )
             else:
                 # Show evidence panel for review
                 if not _output_mod._json_mode:
@@ -360,8 +432,14 @@ async def approve_evidence(
                         f"Triage: {color_display}\n"
                         f"Manifest: {manifest_id}\n"
                         f"Description: {description}\n\n"
+                        f"Semantic Review: {semantic_review_support.review_brief or 'missing'}\n"
+                        f"Semantic Review Risk: {semantic_review_support.risk_level or 'unknown'}\n\n"
                         f"Evidence Summary:\n{summary_preview}"
                     )
+                    if semantic_review_support.warnings:
+                        review_content += "\n\nSemantic Review Warnings:\n" + "\n".join(
+                            f"- {warning}" for warning in semantic_review_support.warnings
+                        )
                     if builder_run is not None:
                         review_content += "\n\n" + "\n".join(summarize_builder_run(builder_run))
                     console.print(
@@ -470,6 +548,7 @@ async def approve_evidence(
                 decision=decision_str,
                 rationale=rationale,
                 project_id=project_id,
+                evidence_refs=list(semantic_review_support.evidence_refs),
             )
 
             # Merge validation and workflow transitions
@@ -556,6 +635,12 @@ async def approve_evidence(
                     "decision": decision_str,
                     "triage_color": color_value,
                     "rationale": rationale,
+                    "semantic_review": {
+                        "review_id": semantic_review_support.review_id,
+                        "review_brief": semantic_review_support.review_brief,
+                        "risk_level": semantic_review_support.risk_level,
+                        "warnings": list(semantic_review_support.warnings),
+                    },
                 }
                 if review_data is not None:
                     data["review_findings"] = review_data["findings"]

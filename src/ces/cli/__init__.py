@@ -91,6 +91,47 @@ def _rewrite_intake_default(argv: Sequence[str]) -> list[str]:
     return rewritten
 
 
+def _rewrite_review_default(argv: Sequence[str]) -> list[str]:
+    """Rewrite legacy `ces review [MANIFEST_ID]` to `ces review run [MANIFEST_ID]`.
+
+    The Semantic Review Layer adds a first-class `ces review <subcommand>`
+    family. Existing expert/governance review calls remain valid by routing
+    non-subcommand tokens and legacy options to a hidden `run` subcommand.
+    """
+
+    rewritten = list(argv)
+    root_options_with_values = {"--config"}
+    stable = {
+        "generate",
+        "show",
+        "list",
+        "open",
+        "export",
+        "github-comment",
+        "run",
+        "--help",
+        "-h",
+    }
+    index = 0
+    while index < len(rewritten):
+        arg = rewritten[index]
+        if arg == "--":
+            return rewritten
+        if arg in root_options_with_values:
+            index += 2
+            continue
+        if arg.startswith("-"):
+            index += 1
+            continue
+        if arg != "review":
+            return rewritten
+        next_arg = rewritten[index + 1] if index + 1 < len(rewritten) else None
+        if next_arg not in stable:
+            rewritten.insert(index + 1, "run")
+        return rewritten
+    return rewritten
+
+
 class JsonAwareTyperGroup(typer.core.TyperGroup):
     """Typer group that preserves machine-readable usage errors under root --json."""
 
@@ -103,7 +144,7 @@ class JsonAwareTyperGroup(typer.core.TyperGroup):
         windows_expand_args: bool = True,
         **extra: Any,
     ) -> Any:
-        argv = _rewrite_intake_default(list(sys.argv[1:] if args is None else args))
+        argv = _rewrite_review_default(_rewrite_intake_default(list(sys.argv[1:] if args is None else args)))
         if not argv:
             argv = ["--help"]
         json_requested = _root_json_requested(argv)
@@ -244,7 +285,7 @@ app.command(name="classify", help="Classify a task manifest.")(classify_cmd.clas
 app.command(name="execute", help="Execute an agent task locally with manifest evidence and delta checks.")(
     execute_cmd.execute_task
 )
-app.command(name="review", help="Run review pipeline and display evidence summary.")(review_cmd.review_task)
+app.add_typer(review_cmd.review_app, name="review")
 app.command(name="verify", help="Run independent local verification for the current project.")(
     verify_cmd.verify_project
 )
