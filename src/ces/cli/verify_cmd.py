@@ -91,7 +91,10 @@ def verify_project(
             Panel(
                 f"Project type: {contract.project_type}\n"
                 f"Contract persisted: {contract_persisted}\n"
-                f"Passed: {verification.passed}\nNext: ces why",
+                f"Passed: {verification.passed}\n"
+                "Semantic review: ces review generate --base HEAD~1 --head HEAD\n"
+                "Review path: ces review show --section path\n"
+                f"Next: {'ces review generate' if verification.passed else 'ces why'}",
                 title="[green]Verification Complete[/green]"
                 if verification.passed
                 else "[red]Verification Failed[/red]",

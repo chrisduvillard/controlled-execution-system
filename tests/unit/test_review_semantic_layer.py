@@ -1020,3 +1020,428 @@ def test_github_comment_update_failure_surfaces_patch_error(monkeypatch: pytest.
 
     with pytest.raises(RuntimeError, match="patch boom"):
         post_github_comment(comment, pr=89, repo_root=tmp_path, update_existing=True)
+
+
+def _write_two_builder_sessions_state_db(project: Path) -> None:
+    ces_dir = project / ".ces"
+    ces_dir.mkdir(exist_ok=True)
+    conn = sqlite3.connect(ces_dir / "state.db")
+    try:
+        conn.executescript(
+            """
+            CREATE TABLE builder_sessions (
+                session_id TEXT, project_id TEXT, brief_id TEXT, request TEXT,
+                project_mode TEXT, stage TEXT, next_action TEXT, last_action TEXT,
+                source_of_truth TEXT, critical_flows TEXT, manifest_id TEXT,
+                runtime_manifest_id TEXT, evidence_packet_id TEXT,
+                created_at TEXT, updated_at TEXT
+            );
+            CREATE TABLE builder_briefs (
+                brief_id TEXT, project_id TEXT, request TEXT, project_mode TEXT,
+                constraints TEXT, acceptance_criteria TEXT, must_not_break TEXT,
+                open_questions TEXT, source_of_truth TEXT, critical_flows TEXT,
+                manifest_id TEXT, created_at TEXT, updated_at TEXT
+            );
+            CREATE TABLE manifests (
+                manifest_id TEXT, project_id TEXT, description TEXT, content_hash TEXT
+            );
+            CREATE TABLE runtime_executions (
+                manifest_id TEXT, project_id TEXT, runtime_name TEXT,
+                reported_model TEXT, invocation_ref TEXT, created_at TEXT
+            );
+            """
+        )
+        older = "2026-05-20T10:00:00+00:00"
+        newer = "2026-05-20T11:00:00+00:00"
+        rows = [
+            (
+                "session-target",
+                "brief-target",
+                "Target request: add semantic JSON export",
+                "manifest-target",
+                "run-target",
+                "Target acceptance: JSON export includes diff index",
+                older,
+            ),
+            (
+                "session-latest",
+                "brief-latest",
+                "Wrong latest request",
+                "manifest-latest",
+                "run-latest",
+                "Wrong latest acceptance",
+                newer,
+            ),
+        ]
+        for session_id, brief_id, request, manifest_id, run_id, acceptance, created_at in rows:
+            conn.execute(
+                "INSERT INTO builder_sessions VALUES (?, 'default', ?, ?, 'brownfield', 'completed', 'review', 'build', ?, ?, ?, ?, ?, ?, ?)",
+                (
+                    session_id,
+                    brief_id,
+                    request,
+                    json.dumps(["source of truth for " + session_id]),
+                    json.dumps(["critical flow for " + session_id]),
+                    manifest_id,
+                    manifest_id,
+                    "packet-" + session_id,
+                    created_at,
+                    created_at,
+                ),
+            )
+            conn.execute(
+                "INSERT INTO builder_briefs VALUES (?, 'default', ?, 'brownfield', ?, ?, ?, '{}', ?, ?, ?, ?, ?)",
+                (
+                    brief_id,
+                    request,
+                    json.dumps(["constraint for " + session_id]),
+                    json.dumps([acceptance]),
+                    json.dumps(["must not break " + session_id]),
+                    "source of truth text " + session_id,
+                    json.dumps(["critical flow text " + session_id]),
+                    manifest_id,
+                    created_at,
+                    created_at,
+                ),
+            )
+            conn.execute(
+                "INSERT INTO manifests VALUES (?, 'default', ?, ?)",
+                (manifest_id, request + " manifest", "hash-" + session_id),
+            )
+            conn.execute(
+                "INSERT INTO runtime_executions VALUES (?, 'default', 'codex', 'gpt-5.5', ?, ?)",
+                (manifest_id, run_id, created_at),
+            )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def test_generate_from_build_uses_requested_builder_snapshot_not_latest(tmp_path: Path) -> None:
+    from ces.review.service import ReviewGenerationOptions, SemanticReviewService
+
+    _make_repo(tmp_path)
+    _write_two_builder_sessions_state_db(tmp_path)
+
+    bundle = SemanticReviewService().generate(
+        tmp_path,
+        base_ref="HEAD~1",
+        head_ref="HEAD",
+        options=ReviewGenerationOptions(from_build="session-target"),
+    )
+
+    assert bundle.metadata.build_id == "session-target"
+    assert bundle.metadata.generation_options["from_build"] == "session-target"
+    assert bundle.agent_provenance.manifest_id == "manifest-target"
+    assert bundle.agent_provenance.runtime == "codex"
+    assert bundle.agent_provenance.model == "gpt-5.5"
+    assert "session_id:session-target" in bundle.agent_provenance.source_refs
+    assert "session_id:session-latest" not in bundle.agent_provenance.source_refs
+    assert bundle.intent_coverage.objective == "Target request: add semantic JSON export"
+    requirement_text = "\n".join(item.text for item in bundle.intent_coverage.items)
+    assert "Target acceptance: JSON export includes diff index" in requirement_text
+    assert "Wrong latest acceptance" not in requirement_text
+
+
+def test_generate_from_build_fails_closed_when_build_id_is_unknown(tmp_path: Path) -> None:
+    from ces.review.service import ReviewGenerationOptions, SemanticReviewService
+
+    _make_repo(tmp_path)
+    _write_two_builder_sessions_state_db(tmp_path)
+
+    with pytest.raises(ValueError, match="No CES builder metadata matched"):
+        SemanticReviewService().generate(
+            tmp_path,
+            base_ref="HEAD~1",
+            head_ref="HEAD",
+            options=ReviewGenerationOptions(from_build="missing-build"),
+        )
+
+
+def test_review_export_json_and_stable_github_comment_marker(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from ces.review.github_comment import render_github_comment
+    from ces.review.service import ReviewGenerationOptions, SemanticReviewService
+
+    _make_repo(tmp_path)
+    monkeypatch.chdir(tmp_path)
+    bundle = SemanticReviewService().generate(
+        tmp_path,
+        base_ref="HEAD~1",
+        head_ref="HEAD",
+        options=ReviewGenerationOptions(objective="Export semantic review JSON"),
+    )
+    app = _get_app()
+
+    exported = runner.invoke(app, ["review", "export", "--format", "json", "--review-id", bundle.metadata.review_id])
+
+    assert exported.exit_code == 0, exported.stdout
+    payload = json.loads(exported.stdout)
+    assert payload["metadata"]["review_id"] == bundle.metadata.review_id
+    assert payload["diff_index"]["changed_files"]
+    comment = render_github_comment(bundle)
+    assert "<!-- ces-semantic-review -->" in comment.body
+    assert "<!-- ces-semantic-review:" in comment.body
+    assert comment.update_marker == "<!-- ces-semantic-review -->"
+
+
+def test_build_completion_summary_points_to_semantic_review_artifacts() -> None:
+    from ces.cli._builder_flow import BuilderBriefDraft
+    from ces.cli._run_completion_reporting import build_completion_summary
+
+    brief = BuilderBriefDraft(
+        request="Add semantic review closure",
+        project_mode="brownfield",
+        constraints=[],
+        acceptance_criteria=[],
+        must_not_break=[],
+        open_questions={},
+    )
+
+    summary = build_completion_summary(
+        brief,
+        runtime_name="codex",
+        decision="approve",
+        merge_allowed=True,
+        triage_color="green",
+        governance=False,
+        manifest_id="M-123",
+    )
+
+    assert "ces review generate" in summary
+    assert "ces review show" in summary
+
+
+def test_generate_from_build_respects_project_id_config(tmp_path: Path) -> None:
+    from ces.review.service import ReviewGenerationOptions, SemanticReviewService
+
+    _make_repo(tmp_path)
+    _write_two_builder_sessions_state_db(tmp_path)
+    (tmp_path / ".ces" / "config.yaml").write_text("project_id: custom-project\n", encoding="utf-8")
+    conn = sqlite3.connect(tmp_path / ".ces" / "state.db")
+    try:
+        conn.execute("UPDATE builder_sessions SET project_id = 'custom-project'")
+        conn.execute("UPDATE builder_briefs SET project_id = 'custom-project'")
+        conn.execute("UPDATE manifests SET project_id = 'custom-project'")
+        conn.execute("UPDATE runtime_executions SET project_id = 'custom-project'")
+        conn.commit()
+    finally:
+        conn.close()
+
+    bundle = SemanticReviewService().generate(
+        tmp_path,
+        base_ref="HEAD~1",
+        head_ref="HEAD",
+        options=ReviewGenerationOptions(from_build="session-target"),
+    )
+
+    assert bundle.metadata.build_id == "session-target"
+    assert bundle.agent_provenance.manifest_id == "manifest-target"
+    assert bundle.intent_coverage.objective == "Target request: add semantic JSON export"
+
+
+def test_from_build_runtime_id_does_not_mix_unrelated_session(tmp_path: Path) -> None:
+    from ces.review.service import ReviewGenerationOptions, SemanticReviewService
+
+    _make_repo(tmp_path)
+    _write_two_builder_sessions_state_db(tmp_path)
+    conn = sqlite3.connect(tmp_path / ".ces" / "state.db")
+    try:
+        conn.execute(
+            "INSERT INTO builder_sessions VALUES ('session-conflict', 'default', 'brief-latest', 'Conflicting request', 'brownfield', 'completed', 'review', 'build', '[]', '[]', 'run-target', 'run-target', 'packet-conflict', '2026-05-20T12:00:00+00:00', '2026-05-20T12:00:00+00:00')"
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    bundle = SemanticReviewService().generate(
+        tmp_path,
+        base_ref="HEAD~1",
+        head_ref="HEAD",
+        options=ReviewGenerationOptions(from_build="run-target"),
+    )
+
+    assert bundle.agent_provenance.manifest_id == "manifest-target"
+    assert "session_id:session-conflict" not in bundle.agent_provenance.source_refs
+    assert "session_id:session-target" in bundle.agent_provenance.source_refs
+    assert bundle.intent_coverage.objective == "Target request: add semantic JSON export"
+
+
+def test_review_export_rejects_symlink_output(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from ces.review.service import ReviewGenerationOptions, SemanticReviewService
+
+    _make_repo(tmp_path)
+    monkeypatch.chdir(tmp_path)
+    bundle = SemanticReviewService().generate(
+        tmp_path,
+        base_ref="HEAD~1",
+        head_ref="HEAD",
+        options=ReviewGenerationOptions(objective="Export semantic review JSON"),
+    )
+    outside = tmp_path.parent / "outside-export.md"
+    outside.write_text("do not overwrite\n", encoding="utf-8")
+    link = tmp_path / "semantic-export.md"
+    link.symlink_to(outside)
+
+    result = runner.invoke(
+        _get_app(),
+        ["review", "export", "--format", "json", "--review-id", bundle.metadata.review_id, "--output", str(link)],
+    )
+
+    assert result.exit_code != 0
+    assert "Refusing to write semantic review export through a symlink" in result.stdout
+    assert outside.read_text(encoding="utf-8") == "do not overwrite\n"
+
+
+def test_github_comment_update_uses_json_input_file(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    import ces.review.github_comment as github_comment_module
+    from ces.execution.processes import ProcessResult
+    from ces.review.github_comment import post_github_comment
+    from ces.review.models import GithubReviewComment
+
+    calls: list[tuple[str, ...]] = []
+    json_payloads: list[dict[str, str]] = []
+
+    def fake_run(command, **kwargs):
+        del kwargs
+        command_tuple = tuple(str(part) for part in command)
+        calls.append(command_tuple)
+        if command_tuple == ("gh", "api", "user", "--jq", ".login"):
+            return ProcessResult(command=command_tuple, exit_code=0, stdout="vega\n", stderr="")
+        if command_tuple[:2] == ("gh", "api") and "issues/90/comments" in command_tuple[2]:
+            return ProcessResult(command=command_tuple, exit_code=0, stdout="123\n", stderr="")
+        if command_tuple[:3] == ("gh", "api", "repos/:owner/:repo/issues/comments/123"):
+            input_index = command_tuple.index("--input")
+            json_payloads.append(json.loads(Path(command_tuple[input_index + 1]).read_text(encoding="utf-8")))
+            return ProcessResult(command=command_tuple, exit_code=0, stdout="updated\n", stderr="")
+        return ProcessResult(command=command_tuple, exit_code=0, stdout="", stderr="")
+
+    monkeypatch.setattr(github_comment_module, "run_sync_command", fake_run)
+    comment = GithubReviewComment(review_id="review-1", body="long body", update_marker="<!-- ces-semantic-review -->")
+
+    post_github_comment(comment, pr=90, repo_root=tmp_path, update_existing=True)
+
+    patch_call = next(
+        command for command in calls if command[:3] == ("gh", "api", "repos/:owner/:repo/issues/comments/123")
+    )
+    assert "--input" in patch_call
+    assert not any(part.startswith("body=") for part in patch_call)
+    assert json_payloads == [{"body": "long body"}]
+
+
+def test_agent_provenance_fallback_and_latest_builder_snapshot(tmp_path: Path) -> None:
+    from ces.review.provenance import load_agent_provenance, load_build_context
+
+    fallback = load_agent_provenance(tmp_path, build_id="missing")
+    assert fallback.mode == "local_diff_limited"
+    assert fallback.build_id == "missing"
+    assert load_build_context(tmp_path, "missing") is None
+
+    _make_repo(tmp_path)
+    _write_two_builder_sessions_state_db(tmp_path)
+    provenance = load_agent_provenance(tmp_path)
+
+    assert provenance.mode == "ces_builder"
+    assert provenance.build_id == "run-latest"
+    assert provenance.manifest_id == "manifest-latest"
+    assert provenance.runtime == "codex"
+    assert "session_id:session-latest" in provenance.source_refs
+
+
+def test_from_build_brief_and_manifest_ids_resolve_consistently(tmp_path: Path) -> None:
+    from ces.review.provenance import load_build_context
+    from ces.review.service import ReviewGenerationOptions, SemanticReviewService
+
+    _make_repo(tmp_path)
+    _write_two_builder_sessions_state_db(tmp_path)
+
+    by_brief = SemanticReviewService().generate(
+        tmp_path,
+        base_ref="HEAD~1",
+        head_ref="HEAD",
+        options=ReviewGenerationOptions(from_build="brief-target"),
+    )
+    by_manifest = SemanticReviewService().generate(
+        tmp_path,
+        base_ref="HEAD~1",
+        head_ref="HEAD",
+        options=ReviewGenerationOptions(from_build="manifest-target"),
+    )
+    context = load_build_context(tmp_path, "manifest-target")
+
+    assert by_brief.agent_provenance.manifest_id == "manifest-target"
+    assert by_manifest.agent_provenance.manifest_id == "manifest-target"
+    assert by_brief.intent_coverage.objective == "Target request: add semantic JSON export"
+    assert by_manifest.intent_coverage.objective == "Target request: add semantic JSON export"
+    assert context is not None
+    assert context["objective"] == "Target request: add semantic JSON export"
+    assert any(ref == "manifest_id:manifest-target" for ref in context["source_refs"])
+
+
+def test_build_context_handles_secret_and_structured_text(tmp_path: Path) -> None:
+    from ces.review.provenance import load_build_context
+
+    _make_repo(tmp_path)
+    _write_two_builder_sessions_state_db(tmp_path)
+    conn = sqlite3.connect(tmp_path / ".ces" / "state.db")
+    try:
+        conn.execute(
+            "UPDATE builder_briefs SET constraints = ?, acceptance_criteria = ? WHERE brief_id = 'brief-target'",
+            (
+                json.dumps({"security": "Do not leak sk-test-secret-value"}),
+                json.dumps(["Keep review export JSON", {"nested": "Preserve CLI output"}]),
+            ),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    context = load_build_context(tmp_path, "session-target")
+
+    assert context is not None
+    requirement_text = "\n".join(context["requirement_texts"])
+    assert "Keep review export JSON" in requirement_text
+    assert "Preserve CLI output" in requirement_text
+    assert "sk-test-secret-value" not in requirement_text
+    assert "<REDACTED>" in requirement_text
+
+
+def test_provenance_ignores_symlinked_state_and_invalid_config(tmp_path: Path) -> None:
+    from ces.review.provenance import load_agent_provenance, load_build_context
+
+    ces_dir = tmp_path / ".ces"
+    ces_dir.mkdir()
+    outside = tmp_path.parent / "outside-state.db"
+    outside.write_text("not sqlite", encoding="utf-8")
+    (ces_dir / "state.db").symlink_to(outside)
+
+    fallback = load_agent_provenance(tmp_path)
+    assert fallback.mode == "local_diff_limited"
+    assert load_build_context(tmp_path, "session-target") is None
+
+    project = tmp_path / "invalid-config-project"
+    project.mkdir()
+    _make_repo(project)
+    _write_two_builder_sessions_state_db(project)
+    (project / ".ces" / "config.yaml").write_text("[invalid\n", encoding="utf-8")
+
+    context = load_build_context(project, "session-target")
+    assert context is not None
+    assert context["objective"] == "Target request: add semantic JSON export"
+
+
+def test_from_build_legacy_evidence_packet_id_resolves_session(tmp_path: Path) -> None:
+    from ces.review.service import ReviewGenerationOptions, SemanticReviewService
+
+    _make_repo(tmp_path)
+    _write_two_builder_sessions_state_db(tmp_path)
+
+    bundle = SemanticReviewService().generate(
+        tmp_path,
+        base_ref="HEAD~1",
+        head_ref="HEAD",
+        options=ReviewGenerationOptions(from_build="packet-session-target"),
+    )
+
+    assert bundle.agent_provenance.manifest_id == "manifest-target"
+    assert "session_id:session-target" in bundle.agent_provenance.source_refs
+    assert bundle.intent_coverage.objective == "Target request: add semantic JSON export"

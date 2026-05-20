@@ -307,13 +307,16 @@ For a reviewer-facing semantic review bundle, generate local artifacts first:
 
 ```bash
 ces review generate --base HEAD~1 --head HEAD --objective "Fix null pointer in product search"
+# If this diff came from a CES builder run, bind review intent/provenance to that run:
+ces review generate --from-build <session-or-manifest-or-runtime-id> --base HEAD~1 --head HEAD
 ces review show
 ces review show --section path
 ces review show --section coverage
+ces review export --format json > semantic-review.json
 ces review github-comment --dry-run
 ```
 
-Artifacts are written under `.ces/reviews/<review-id>/` with a Markdown brief, diff index, risk map, review path, intent coverage, provenance, and verification summary. `ces proof` references the latest semantic review artifact, and `ces approve` records its review ID in the audit evidence refs while warning if the artifact is stale, missing, high-risk without verification, or has unresolved intent coverage.
+Artifacts are written under `.ces/reviews/<review-id>/` with a Markdown brief, diff index, risk map, review path, intent coverage, provenance, and verification summary. `--from-build` fails closed when the requested builder/session/manifest/runtime ID cannot be found, preventing accidental review against the latest unrelated builder run. `ces review export --format json` emits the full machine-readable bundle for reviewer handoff or downstream tooling. `ces proof` references the latest semantic review artifact, and `ces approve` records its review ID in the audit evidence refs while warning if the artifact is stale, missing, high-risk without verification, or has unresolved intent coverage.
 
 The legacy manifest evidence-review path remains available:
 

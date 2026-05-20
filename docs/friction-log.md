@@ -210,3 +210,13 @@ This log records friction found during the production-readiness dogfood pass. Fr
 - **Status:** Fixed.
 - **Fix:** `ces review` is now a command family; root argument rewriting routes legacy calls to hidden `ces review run`, semantic artifacts are written under `.ces/reviews/`, proof cards reference the latest semantic review, and approvals record semantic review evidence refs with stale/high-risk warnings.
 - **Evidence after fix:** `tests/unit/test_review_semantic_layer.py`, `uv run pytest tests/unit/test_review_semantic_layer.py -q`, and docs in `docs/Getting_Started.md` plus `docs/Quick_Reference_Card.md`.
+
+## FL-022: Semantic review strict PRD closure exposed shallow build binding and export gaps
+
+- **Step attempted:** Verify the Semantic Review Layer against the full PRD rather than the initial implementation slice.
+- **Expected:** `ces review generate --from-build` binds intent/provenance to the requested CES builder run and fails if it cannot; review export supports machine-readable JSON; builder/verify completion output nudges reviewers to inspect semantic review artifacts; installed-wheel CI smokes the semantic review command family.
+- **Actual:** The first semantic review implementation stored a `from_build` reference but could still fall back to the latest builder snapshot, exported only the Markdown brief, and did not explicitly smoke semantic review commands from the built wheel.
+- **Severity:** Medium-high for audit fidelity and PRD confidence.
+- **Status:** Fixed.
+- **Fix:** Added build-context lookup by session/manifest/runtime identifiers, fail-closed unknown build IDs, builder-derived intent coverage inputs, JSON export, stable GitHub comment update marker, review next-step hints, and built-wheel semantic review smoke coverage.
+- **Evidence after fix:** `tests/unit/test_review_semantic_layer.py::test_generate_from_build_uses_requested_builder_snapshot_not_latest`, `::test_generate_from_build_fails_closed_when_build_id_is_unknown`, `::test_review_export_json_and_stable_github_comment_marker`, `tests/unit/test_cli/test_verify_cmd.py::test_verify_rich_output_suggests_semantic_review_next_step`, and `.github/workflows/ci.yml` built-wheel review smoke.

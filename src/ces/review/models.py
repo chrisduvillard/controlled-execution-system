@@ -229,6 +229,7 @@ class ReviewMetadata(CESBaseModel):
     diff_fingerprint: str
     verification_fingerprint: str | None = None
     ces_build_id: str | None = None
+    build_id: str | None = None
     schema_versions: dict[str, str] = Field(default_factory=lambda: {"semantic_review": SCHEMA_VERSION})
     artifact_paths: dict[str, str] = Field(default_factory=dict)
     generation_options: dict[str, object] = Field(default_factory=dict)

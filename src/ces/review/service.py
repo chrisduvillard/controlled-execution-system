@@ -19,7 +19,7 @@ from ces.review.models import (
     RiskMap,
     VerificationSummary,
 )
-from ces.review.provenance import load_agent_provenance
+from ces.review.provenance import load_agent_provenance, load_build_context
 from ces.review.renderer import render_intent_coverage, render_review_brief, render_review_path
 from ces.review.risk import build_review_path, build_risk_map
 from ces.review.verification import load_verification_summary, verification_evidence_fingerprint
@@ -49,6 +49,14 @@ class SemanticReviewService:
         diff_index = build_diff_index(
             root, base_ref=base_ref, head_ref=head_ref, include_untracked=opts.include_untracked
         )
+        requested_build_id = build_id or opts.from_build
+        build_context = None
+        if requested_build_id:
+            build_context = load_build_context(root, requested_build_id)
+            if build_context is None:
+                raise ValueError(f"No CES builder metadata matched build id: {requested_build_id}")
+        effective_objective = opts.objective or _build_context_objective(build_context)
+        extra_requirement_texts = _build_context_requirements(build_context)
         verification = load_verification_summary(root)
         risk_map = build_risk_map(diff_index, verification)
         review_path = build_review_path(risk_map)
@@ -56,10 +64,11 @@ class SemanticReviewService:
             root,
             diff_index,
             verification,
-            objective=opts.objective,
+            objective=effective_objective,
             deferred_scope=opts.deferred_scope,
+            extra_requirement_texts=extra_requirement_texts,
         )
-        provenance = load_agent_provenance(root, build_id=build_id or opts.from_build)
+        provenance = load_agent_provenance(root, build_id=requested_build_id)
         metadata = ReviewMetadata(
             review_id=_review_id(diff_index),
             created_at=datetime.now(timezone.utc),
@@ -68,11 +77,13 @@ class SemanticReviewService:
             head_ref=diff_index.head_ref,
             diff_fingerprint=diff_index.diff_fingerprint,
             verification_fingerprint=verification_evidence_fingerprint(root),
-            ces_build_id=build_id or opts.from_build,
+            ces_build_id=requested_build_id,
+            build_id=requested_build_id,
             include_untracked=opts.include_untracked,
             generation_options={
                 "include_untracked": opts.include_untracked,
                 "objective": opts.objective,
+                "effective_objective": effective_objective,
                 "deferred_scope": list(opts.deferred_scope),
                 "from_build": opts.from_build,
             },
@@ -108,6 +119,22 @@ class SemanticReviewService:
 def _review_id(diff_index: DiffIndex) -> str:
     stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S-%f")
     return f"{stamp}-{diff_index.diff_fingerprint[:8]}"
+
+
+def _build_context_objective(build_context: dict[str, object] | None) -> str | None:
+    if not build_context:
+        return None
+    objective = build_context.get("objective")
+    return objective if isinstance(objective, str) and objective.strip() else None
+
+
+def _build_context_requirements(build_context: dict[str, object] | None) -> tuple[str, ...]:
+    if not build_context:
+        return ()
+    texts = build_context.get("requirement_texts")
+    if not isinstance(texts, tuple | list):
+        return ()
+    return tuple(str(item) for item in texts if str(item).strip())
 
 
 __all__ = [

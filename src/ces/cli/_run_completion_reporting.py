@@ -65,6 +65,8 @@ def build_completion_summary(
         lines.append("Need deeper CES details? Re-run with `--governance` or use `ces review`.")
     if brief.project_mode == "greenfield":
         lines.extend(greenfield_handoff_lines(completion_contract))
+    lines.append(f"Semantic review: ces review generate --from-build {manifest_id}")
+    lines.append("Review path: ces review show --section path")
     if auto_blockers:
         lines.append("Blocking reasons:")
         lines.extend(f"- {item}" for item in auto_blockers)

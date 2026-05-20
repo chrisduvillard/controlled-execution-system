@@ -155,6 +155,44 @@ jobs:
           assert scan_payload["modules"]
           assert scan_payload["report_path"].endswith(".ces/brownfield/scan.json")
           PY
+
+          git -C "$smoke_dir" init
+          git -C "$smoke_dir" config user.email ces-ci@example.invalid
+          git -C "$smoke_dir" config user.name "CES CI"
+          mkdir -p "$smoke_dir/src" "$smoke_dir/tests"
+          printf 'def smoke():\n    return "base"\n' > "$smoke_dir/src/smoke.py"
+          printf 'def test_smoke():\n    assert True\n' > "$smoke_dir/tests/test_smoke.py"
+          git -C "$smoke_dir" add pyproject.toml src tests
+          git -C "$smoke_dir" commit -m "baseline"
+          printf 'def smoke():\n    return "changed"\n' > "$smoke_dir/src/smoke.py"
+          "$smoke_venv/bin/ces" review --help
+          "$smoke_venv/bin/ces" review generate --project-root "$smoke_dir" --base HEAD --objective "Update smoke app" --tracked-only --json > "$smoke_dir/review-generate.json"
+          if "$smoke_venv/bin/ces" review generate --project-root "$smoke_dir" --from-build missing-build --base HEAD --tracked-only --json > "$smoke_dir/review-missing-build.out" 2>&1; then
+            echo "expected --from-build missing-build to fail" >&2
+            exit 1
+          fi
+          grep -F "No CES builder metadata matched build id: missing-build" "$smoke_dir/review-missing-build.out"
+          python - "$smoke_dir/review-generate.json" <<'PY'
+          import json
+          import sys
+
+          payload = json.loads(open(sys.argv[1], encoding="utf-8").read())
+          assert payload["review_id"]
+          assert payload["review_brief"].endswith("review-brief.md")
+          PY
+          "$smoke_venv/bin/ces" review export --project-root "$smoke_dir" --format json > "$smoke_dir/review-export.json"
+          python - "$smoke_dir/review-export.json" <<'PY'
+          import json
+          import sys
+
+          payload = json.loads(open(sys.argv[1], encoding="utf-8").read())
+          assert payload["metadata"]["review_id"]
+          assert payload["diff_index"]["changed_files"]
+          PY
+          "$smoke_venv/bin/ces" review github-comment --project-root "$smoke_dir" --dry-run > "$smoke_dir/review-comment.md"
+          grep -F "<!-- ces-semantic-review -->" "$smoke_dir/review-comment.md"
+          grep -F "CES Semantic Review" "$smoke_dir/review-comment.md"
+
           (cd "$smoke_dir" && "$smoke_venv/bin/ces" baseline)
           (cd "$smoke_dir" && "$smoke_venv/bin/ces" setup-ci --provider github)
 
