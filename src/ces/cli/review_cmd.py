@@ -432,3 +432,287 @@ async def review_task(
         handle_error(exc)
     except Exception as exc:
         handle_error(exc)
+
+
+review_app = typer.Typer(
+    help=(
+        "Generate local semantic review artifacts for a git diff. "
+        "Legacy governance review remains available as `ces review run`."
+    ),
+    no_args_is_help=True,
+)
+
+
+def _resolve_semantic_project_root(project_root: Path | None = None) -> Path:
+    try:
+        return find_project_root(project_root) if project_root is not None else find_project_root()
+    except typer.BadParameter as exc:
+        if "Not inside a CES project" not in str(exc):
+            raise
+        # Semantic review can bootstrap `.ces/reviews/` for ordinary git repos.
+        return (project_root or Path.cwd()).resolve()
+
+
+def _bundle_summary(bundle: object) -> dict[str, object]:
+    return {
+        "review_id": bundle.metadata.review_id,
+        "artifact_dir": str(bundle.root_path),
+        "review_brief": str(bundle.review_brief_path),
+        "base_ref": bundle.metadata.base_ref,
+        "head_ref": bundle.metadata.head_ref,
+        "diff_fingerprint": bundle.metadata.diff_fingerprint,
+        "risk_level": bundle.risk_map.overall_level,
+        "verification_status": bundle.verification_summary.status,
+        "files_changed": bundle.diff_index.stats.files_changed,
+    }
+
+
+@review_app.command(name="run", hidden=True)
+def review_legacy(
+    manifest_id: str | None = typer.Argument(
+        None,
+        help="Manifest ID to review. Defaults to the current builder session manifest when omitted.",
+    ),
+    verbose: bool = typer.Option(False, "--verbose/--brief", help="Show full evidence packet"),
+    full: bool = typer.Option(False, "--full", help="Show complete evidence packet contents"),
+    project_root: Path | None = typer.Option(
+        None,
+        "--project-root",
+        help="CES project root to inspect; defaults to the current directory discovery.",
+    ),
+) -> None:
+    """Run the legacy governance manifest review pipeline."""
+
+    review_task(manifest_id=manifest_id, verbose=verbose, full=full, project_root=project_root)
+
+
+@review_app.command(name="generate")
+def generate_semantic_review(
+    base_ref: str = typer.Option("HEAD", "--base", help="Base git ref for the review diff."),
+    head_ref: str | None = typer.Option(
+        None,
+        "--head",
+        help="Head git ref. Omit to review base ref against the worktree.",
+    ),
+    objective: str | None = typer.Option(
+        None,
+        "--objective",
+        help="Plain-language objective or requirement summary to map against the diff.",
+    ),
+    from_build: str | None = typer.Option(
+        None,
+        "--from-build",
+        help="Optional CES builder run/build ID to reference in provenance.",
+    ),
+    deferred: list[str] = typer.Option(
+        None,
+        "--deferred",
+        help="Requirement ID/text known to be intentionally deferred. Repeatable.",
+    ),
+    include_untracked: bool = typer.Option(
+        True,
+        "--include-untracked/--tracked-only",
+        help="Include untracked files when reviewing the worktree.",
+    ),
+    project_root: Path | None = typer.Option(None, "--project-root", help="Repository root to review."),
+    json_output: bool = typer.Option(False, "--json", help="Print machine-readable generation summary."),
+) -> None:
+    """Generate a Semantic Review Layer artifact bundle under `.ces/reviews/`."""
+
+    try:
+        from ces.review.service import ReviewGenerationOptions, SemanticReviewService
+
+        root = _resolve_semantic_project_root(project_root)
+        bundle = SemanticReviewService().generate(
+            root,
+            base_ref=base_ref,
+            head_ref=head_ref,
+            build_id=from_build,
+            options=ReviewGenerationOptions(
+                objective=objective,
+                from_build=from_build,
+                deferred_scope=tuple(deferred or ()),
+                include_untracked=include_untracked,
+            ),
+        )
+        payload = _bundle_summary(bundle)
+        if json_output or _output_mod._json_mode:
+            typer.echo(json.dumps(payload, indent=2, sort_keys=True))
+            return
+        console.print(Panel(str(bundle.review_brief_path), title="Semantic review generated", border_style="green"))
+        console.print(
+            f"Risk: [bold]{bundle.risk_map.overall_level}[/bold] | Verification: {bundle.verification_summary.status}"
+        )
+    except (typer.BadParameter, ValueError, RuntimeError, OSError) as exc:
+        handle_error(exc)
+
+
+@review_app.command(name="list")
+def list_semantic_reviews(
+    project_root: Path | None = typer.Option(None, "--project-root", help="Repository root to inspect."),
+    json_output: bool = typer.Option(False, "--json", help="Print machine-readable review list."),
+) -> None:
+    """List generated semantic review artifact bundles."""
+
+    try:
+        from ces.review.artifacts import SemanticReviewArtifactStore
+
+        root = _resolve_semantic_project_root(project_root)
+        store = SemanticReviewArtifactStore(root)
+        rows = store.list_bundle_metadata()
+        stale_by_id = {item.review_id: store.is_stale(item) for item in rows}
+        if json_output or _output_mod._json_mode:
+            typer.echo(
+                json.dumps(
+                    [
+                        {
+                            "review_id": item.review_id,
+                            "created_at": item.created_at.isoformat(),
+                            "base_ref": item.base_ref,
+                            "head_ref": item.head_ref,
+                            "diff_fingerprint": item.diff_fingerprint,
+                            "stale": stale_by_id[item.review_id],
+                        }
+                        for item in rows
+                    ],
+                    indent=2,
+                    sort_keys=True,
+                )
+            )
+            return
+        if not rows:
+            console.print("No semantic review artifacts found. Run `ces review generate` first.")
+            return
+        table = Table(title="Semantic Reviews")
+        table.add_column("Review ID")
+        table.add_column("Created")
+        table.add_column("Base")
+        table.add_column("Head")
+        table.add_column("Fingerprint")
+        table.add_column("Stale")
+        for item in rows:
+            table.add_row(
+                item.review_id,
+                item.created_at.isoformat(),
+                item.base_ref,
+                item.head_ref,
+                item.diff_fingerprint[:12],
+                "yes" if stale_by_id[item.review_id] else "no",
+            )
+        console.print(table)
+    except (typer.BadParameter, ValueError, RuntimeError, OSError) as exc:
+        handle_error(exc)
+
+
+@review_app.command(name="show")
+def show_semantic_review(
+    review_id: str | None = typer.Option(None, "--review-id", help="Review ID to show; defaults to latest."),
+    section: str = typer.Option(
+        "brief",
+        "--section",
+        help="Section to show: brief, path, coverage, risk, metadata, diff, json.",
+    ),
+    project_root: Path | None = typer.Option(None, "--project-root", help="Repository root to inspect."),
+) -> None:
+    """Show a generated semantic review brief or artifact section."""
+
+    try:
+        from ces.review.artifacts import SemanticReviewArtifactStore
+        from ces.review.renderer import render_intent_coverage, render_review_path
+
+        root = _resolve_semantic_project_root(project_root)
+        store = SemanticReviewArtifactStore(root)
+        bundle = store.load_bundle(review_id)
+        normalized = section.lower().strip()
+        if normalized == "brief":
+            typer.echo(store.review_brief_text(bundle.metadata.review_id))
+        elif normalized == "path":
+            typer.echo(render_review_path(bundle.review_path))
+        elif normalized == "coverage":
+            typer.echo(render_intent_coverage(bundle.intent_coverage))
+        elif normalized == "risk":
+            typer.echo(bundle.risk_map.model_dump_json(indent=2))
+        elif normalized == "metadata":
+            typer.echo(bundle.metadata.model_dump_json(indent=2))
+        elif normalized == "diff":
+            typer.echo(bundle.diff_index.model_dump_json(indent=2))
+        elif normalized == "json":
+            typer.echo(bundle.model_dump_json(indent=2))
+        else:
+            raise typer.BadParameter("Unknown section. Use brief, path, coverage, risk, metadata, diff, or json.")
+    except (typer.BadParameter, ValueError, RuntimeError, OSError) as exc:
+        handle_error(exc)
+
+
+@review_app.command(name="export")
+def export_semantic_review(
+    review_id: str | None = typer.Option(None, "--review-id", help="Review ID to export; defaults to latest."),
+    output: Path | None = typer.Option(None, "--output", "-o", help="Optional output file. Defaults to stdout."),
+    project_root: Path | None = typer.Option(None, "--project-root", help="Repository root to inspect."),
+) -> None:
+    """Export the review brief markdown."""
+
+    try:
+        from ces.review.artifacts import SemanticReviewArtifactStore
+
+        root = _resolve_semantic_project_root(project_root)
+        text = SemanticReviewArtifactStore(root).review_brief_text(review_id)
+        if output is None:
+            typer.echo(text)
+            return
+        target = output.resolve()
+        target.write_text(text, encoding="utf-8")
+        console.print(f"Wrote {target}")
+    except (typer.BadParameter, ValueError, RuntimeError, OSError) as exc:
+        handle_error(exc)
+
+
+@review_app.command(name="open")
+def open_semantic_review(
+    review_id: str | None = typer.Option(None, "--review-id", help="Review ID to locate; defaults to latest."),
+    project_root: Path | None = typer.Option(None, "--project-root", help="Repository root to inspect."),
+) -> None:
+    """Print the local review brief path for opening in an editor."""
+
+    try:
+        from ces.review.artifacts import SemanticReviewArtifactStore
+
+        root = _resolve_semantic_project_root(project_root)
+        bundle = SemanticReviewArtifactStore(root).load_bundle(review_id)
+        typer.echo(str(bundle.review_brief_path))
+    except (typer.BadParameter, ValueError, RuntimeError, OSError) as exc:
+        handle_error(exc)
+
+
+@review_app.command(name="github-comment")
+def github_comment_semantic_review(
+    review_id: str | None = typer.Option(None, "--review-id", help="Review ID to comment; defaults to latest."),
+    pr: int | None = typer.Option(None, "--pr", help="GitHub PR number for posting."),
+    dry_run: bool = typer.Option(True, "--dry-run/--post", help="Print the comment instead of posting it."),
+    update_existing: bool = typer.Option(
+        True, "--update-existing/--new-comment", help="Edit the last PR comment when posting."
+    ),
+    project_root: Path | None = typer.Option(None, "--project-root", help="Repository root to inspect."),
+) -> None:
+    """Render or post a concise GitHub PR semantic review comment."""
+
+    try:
+        from ces.review.artifacts import SemanticReviewArtifactStore
+        from ces.review.github_comment import post_github_comment, render_github_comment
+
+        root = _resolve_semantic_project_root(project_root)
+        store = SemanticReviewArtifactStore(root)
+        bundle = store.load_bundle(review_id)
+        stale = store.is_stale(bundle.metadata)
+        if stale:
+            bundle = bundle.model_copy(update={"metadata": bundle.metadata.model_copy(update={"stale": True})})
+        comment = render_github_comment(bundle, pr=pr)
+        if dry_run:
+            typer.echo(comment.body)
+            return
+        if pr is None:
+            raise typer.BadParameter("--pr is required when using --post.")
+        post_github_comment(comment, pr=pr, repo_root=root, update_existing=update_existing)
+        console.print(f"Posted CES semantic review comment to PR #{pr}.")
+    except (typer.BadParameter, ValueError, RuntimeError, OSError) as exc:
+        handle_error(exc)

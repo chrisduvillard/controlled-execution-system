@@ -303,13 +303,29 @@ Because Codex cannot enforce manifest tool allowlists before its subprocess star
 
 ## 10. Review the Evidence
 
+For a reviewer-facing semantic review bundle, generate local artifacts first:
+
+```bash
+ces review generate --base HEAD~1 --head HEAD --objective "Fix null pointer in product search"
+ces review show
+ces review show --section path
+ces review show --section coverage
+ces review github-comment --dry-run
+```
+
+Artifacts are written under `.ces/reviews/<review-id>/` with a Markdown brief, diff index, risk map, review path, intent coverage, provenance, and verification summary. `ces proof` references the latest semantic review artifact, and `ces approve` records its review ID in the audit evidence refs while warning if the artifact is stale, missing, high-risk without verification, or has unresolved intent coverage.
+
+The legacy manifest evidence-review path remains available:
+
 ```bash
 ces review M-<manifest-id>
 # Or, if the current builder session already owns the manifest/evidence chain:
 ces review
+# Explicit form:
+ces review run M-<manifest-id>
 ```
 
-Shows:
+Legacy review shows:
 - 10-line evidence summary
 - 3-line adversarial challenge
 - Reviewer assignments
@@ -387,7 +403,9 @@ ces brownfield promote OLB-<entry-id>
 | `ces manifest <desc>` | Create a task manifest |
 | `ces classify <id>` | Classify a manifest |
 | `ces execute <id>` | Execute agent task |
-| `ces review <id>` | Run review pipeline |
+| `ces review generate` | Generate semantic review artifacts for a local diff |
+| `ces review show --section path` | Show the risk-ranked semantic review path |
+| `ces review <id>` | Run legacy manifest evidence review pipeline |
 | `ces triage <id>` | Pre-screen evidence |
 | `ces approve <id>` | Approve/reject evidence |
 | `ces gate <phase> <scope>` | Evaluate phase gate |
