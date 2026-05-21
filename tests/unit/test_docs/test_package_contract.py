@@ -84,7 +84,7 @@ def test_public_version_surfaces_are_consistent() -> None:
     readme = (_REPO_ROOT / "README.md").read_text(encoding="utf-8")
     lockfile = (_REPO_ROOT / "uv.lock").read_text(encoding="utf-8")
 
-    assert version == "0.1.30"
+    assert version == "0.1.31"
     init_py = (_REPO_ROOT / "src" / "ces" / "__init__.py").read_text(encoding="utf-8")
     assert "__version__ = _source_tree_version()" in init_py
     assert f'__version__ = "{version}"' not in init_py
