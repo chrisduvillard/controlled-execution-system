@@ -269,14 +269,23 @@ def test_troubleshooting_uses_current_coverage_floor_and_runtime_guidance() -> N
 
 
 def test_runtime_safety_docs_explain_codex_notice_boundary() -> None:
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
     quickstart = (ROOT / "docs" / "Quickstart.md").read_text(encoding="utf-8")
+    getting_started = (ROOT / "docs" / "Getting_Started.md").read_text(encoding="utf-8")
     troubleshooting = (ROOT / "docs" / "Troubleshooting.md").read_text(encoding="utf-8")
-    combined = f"{quickstart}\n{troubleshooting}"
+    combined = f"{readme}\n{quickstart}\n{getting_started}\n{troubleshooting}"
 
     assert "Codex appears as a\n`NOTICE`, not a missing runtime" in quickstart
-    assert "full-access adapter" in quickstart
+    assert "Codex defaults to `workspace-write`" in quickstart
+    assert "`danger-full-access` requires explicit opt-in" in quickstart
+    assert "Codex defaults to `workspace-write`" in readme
+    assert "Codex cannot enforce manifest tool allowlists before its subprocess starts" in getting_started
     assert "`ces doctor --runtime-safety` shows Codex as NOTICE" in troubleshooting
     assert "does not enforce manifest tool allowlists before subprocess launch" in troubleshooting
+    assert "CES_CODEX_SANDBOX=read-only" in troubleshooting
+    assert "danger-full-access" in troubleshooting
+    assert "full-access adapter" not in combined
+    assert "full-access local runtime boundary" not in combined
     assert "--accept-runtime-side-effects" in combined
 
 
