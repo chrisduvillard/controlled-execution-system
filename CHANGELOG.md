@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.31] - 2026-05-21
+
+Public readiness hardening and release catch-up after the 0.1.30 tag.
+
+### Added
+
+- Add launch-readiness audit artifacts, product playbooks, data-boundary guidance, audit-integrity guidance, First 15 Minutes onboarding, and public release checklist documentation.
+- Add codebase context manifests and control-plane status surfaces that make source-of-truth, must-not-break, and readiness evidence more explicit.
+
+### Changed
+
+- Clarify Codex runtime safety language across the README, Quickstart, Getting Started, Troubleshooting, and `ces doctor --runtime-safety`: Codex defaults to `workspace-write`, `read-only` is available, `danger-full-access` requires explicit opt-in, and Codex does not enforce manifest `allowed_tools`.
+- Refresh CI, CodeQL, TestPyPI, and PyPI workflow action pins for the current GitHub Actions runtime generation.
+
+### Security / governance hardening
+
+- Harden local audit readiness around release workflow checks, secret scanning/redaction, runtime diagnostics, and audit verification surfaces.
+- Strengthen package and documentation contracts so public claims stay aligned with runtime safety boundaries and release artifacts.
+
 ## [0.1.30] - 2026-05-20
 
 Semantic review, proof freshness, and production-readiness release.
