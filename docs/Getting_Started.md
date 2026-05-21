@@ -300,7 +300,7 @@ ces execute M-<manifest-id> --runtime auto
 
 The selected runtime executes locally. CES records the manifest, expected scope, evidence, and workspace delta; Claude receives an allowed-tools list, while Codex runs under its disclosed local sandbox mode and is governed by CES evidence/delta gates rather than manifest tool allowlist enforcement.
 
-Because Codex cannot enforce manifest tool allowlists before its subprocess starts, builder-first and direct execute commands fail closed before Codex launch unless you pass `--accept-runtime-side-effects`. Use that flag only when you explicitly accept the full-access runtime boundary; prefer Claude Code when runtime-level tool allowlist enforcement is required.
+Because Codex cannot enforce manifest tool allowlists before its subprocess starts, builder-first and direct execute commands fail closed before Codex launch unless you pass `--accept-runtime-side-effects`. Use that flag only when you explicitly accept the disclosed local sandbox boundary; prefer Claude Code when runtime-level tool allowlist enforcement is required. Codex defaults to `workspace-write`; `danger-full-access` requires explicit two-key opt-in.
 
 ## 10. Review the Evidence
 

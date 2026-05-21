@@ -280,25 +280,34 @@ class TestCesDoctor:
         result = runner.invoke(app, ["doctor"])
         assert "no optional runtime extras" not in result.stdout
 
-    def test_runtime_safety_report_labels_codex_as_notice_not_missing(
+    def test_runtime_safety_report_labels_codex_workspace_sandbox_notice_not_missing(
         self, tmp_path: Path, monkeypatch: object
     ) -> None:
-        """Codex's unsafe runtime boundary is an explicit disclosure, not a missing install."""
+        """Codex's sandbox boundary is explicit without overstating full-host access."""
         import shutil
 
         monkeypatch.chdir(tmp_path)  # type: ignore[attr-defined]
+        monkeypatch.delenv("CES_CODEX_SANDBOX", raising=False)  # type: ignore[attr-defined]
+        monkeypatch.delenv("CES_ALLOW_CODEX_DANGER_FULL_ACCESS", raising=False)  # type: ignore[attr-defined]
         monkeypatch.setattr(shutil, "which", lambda name: "/usr/bin/codex" if name == "codex" else None)  # type: ignore[attr-defined]
         app = _get_app()
 
         result = runner.invoke(app, ["doctor", "--runtime-safety"])
 
         assert result.exit_code == 0
+        normalized_output = " ".join(result.stdout.split())
         assert "Runtime adapter: codex" in result.stdout
         codex_line = next(line for line in result.stdout.splitlines() if "Runtime adapter: codex" in line)
         assert "NOTICE" in codex_line
         assert "MISSING" not in codex_line
-        assert "intentionally disclosed" in result.stdout
-        assert "full-access" in result.stdout
+        assert "intentionally disclosed" in normalized_output
+        assert "invoked with --sandbox workspace-write" in normalized_output
+        assert "allowed_tools are not enforced" in normalized_output
+        assert "Codex adapter" in normalized_output
+        assert "full-host" in normalized_output
+        assert "danger-full-access requires" in normalized_output
+        assert "CES_ALLOW_CODEX_DANGER_FULL_ACCESS=1" in normalized_output
+        assert "uses --sandbox danger-full-access" not in normalized_output
 
     def test_reports_ces_directory_status(self, tmp_path: Path, monkeypatch: object) -> None:
         """ces doctor mentions whether a .ces/ project directory exists."""

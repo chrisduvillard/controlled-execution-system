@@ -62,7 +62,8 @@ Bare `ces doctor` is a preflight check for Python, installed providers, extras,
 and project setup. Use `--runtime-safety` to inspect runtime-boundary disclosures:
 Claude should appear as allowlist-enforced when available; Codex appears as a
 `NOTICE`, not a missing runtime, because CES intentionally discloses it as a
-full-access adapter that requires explicit side-effect consent for execution.
+workspace-scoped but not manifest-tool-allowlist-enforced adapter that requires
+explicit side-effect consent for execution.
 Use `--verify-runtime` only when you deliberately want CES to probe Codex/Claude
 authentication before a build.
 
@@ -70,11 +71,15 @@ authentication before a build.
 only affects optional LLM-backed helper steps; it does not replace Codex CLI or
 Claude Code for local execution.
 
-Codex is a full-access local runtime for CES purposes. If Codex is selected,
-`ces build`, `ces continue`, and `ces execute` stop before subprocess launch
-until you pass `--accept-runtime-side-effects`. That flag is explicit consent
-for the runtime boundary; choose Claude Code when you need tool allowlist
-enforcement before the agent starts.
+Codex defaults to `workspace-write`. If Codex is selected, `ces build`,
+`ces continue`, and `ces execute` stop before subprocess launch until you pass
+`--accept-runtime-side-effects`. That flag is explicit consent for the runtime
+boundary, not proof that CES is a sandbox or that Codex enforces manifest tool
+allowlists. Use `CES_CODEX_SANDBOX=read-only` for the narrowest Codex mode;
+`danger-full-access` requires explicit opt-in with both
+`CES_CODEX_SANDBOX=danger-full-access` and
+`CES_ALLOW_CODEX_DANGER_FULL_ACCESS=1`. Choose Claude Code when you need tool
+allowlist enforcement before the agent starts.
 
 ## 3. Plan or start your project
 

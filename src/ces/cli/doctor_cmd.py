@@ -490,7 +490,10 @@ def run_doctor(
     table.add_row(
         "Runtime safety: Codex",
         "[yellow]NOTICE[/yellow]",
-        "uses --sandbox danger-full-access; manifest allowed_tools are not enforced by the adapter",
+        (
+            f"invoked with --sandbox {codex_sandbox_mode()}; allowed_tools are not enforced by the Codex adapter; "
+            "danger-full-access requires explicit two-key opt-in"
+        ),
     )
     if runtime_safety_report:
         for runtime_name, profile in runtime_safety.items():

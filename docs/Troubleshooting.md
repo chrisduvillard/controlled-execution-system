@@ -87,11 +87,12 @@ ces doctor
 
 ## `ces doctor --runtime-safety` shows Codex as NOTICE
 
-**Cause:** Codex is installed, but CES discloses it as a full-access local runtime boundary. This is not a missing runtime. It means the Codex adapter does not enforce manifest tool allowlists before subprocess launch.
+**Cause:** Codex is installed, but CES discloses it as workspace-scoped and not manifest-tool-allowlist-enforced. This is not a missing runtime. It means the Codex adapter does not enforce manifest tool allowlists before subprocess launch.
 
 **Fix:** Choose the boundary you want:
 - Use Claude Code when you need CES to pass an explicit `--allowedTools` allowlist before the agent starts.
-- Use Codex when you accept the full-access local runtime boundary, and pass `--accept-runtime-side-effects` for `ces build`, `ces continue`, or `ces execute` when prompted.
+- Use Codex when you accept the disclosed local sandbox boundary, and pass `--accept-runtime-side-effects` for `ces build`, `ces continue`, or `ces execute` when prompted. Codex defaults to `workspace-write`; set `CES_CODEX_SANDBOX=read-only` for the narrowest Codex mode.
+- Use `danger-full-access` only by explicitly setting both `CES_CODEX_SANDBOX=danger-full-access` and `CES_ALLOW_CODEX_DANGER_FULL_ACCESS=1`.
 - Use `ces doctor --verify-runtime --runtime codex` only when you also want to probe Codex authentication.
 
 ---

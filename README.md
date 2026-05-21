@@ -544,7 +544,7 @@ CES is intentionally explicit about the runtime boundary.
 | `ces verify` does not write inferred contracts by default | It reads an existing completion contract when present; otherwise it verifies against an inferred in-memory contract. Use `ces verify --write-contract` only when you want to persist it. |
 | `ces scan --dry-run` is non-mutating | It previews repository inventory without bootstrapping local state or writing `.ces/brownfield/scan.json`. |
 
-Codex is disclosed as a full-access local runtime for CES purposes. CES can review its output and workspace delta after execution, but the Codex adapter does not enforce manifest tool allowlists before the subprocess starts. Prefer Claude Code when you need runtime-level tool allowlist enforcement.
+Codex defaults to `workspace-write` and is disclosed as workspace-scoped but not manifest-tool-allowlist-enforced. CES can review its output and workspace delta after execution, but the Codex adapter does not enforce manifest tool allowlists before the subprocess starts. Use `CES_CODEX_SANDBOX=read-only` for the narrowest Codex mode; `danger-full-access` requires explicit two-key opt-in. Prefer Claude Code when you need runtime-level tool allowlist enforcement.
 
 Unattended `--yes` runs remain evidence-gated. CES should block auto-approval when completion evidence is incomplete, required verification artifacts are missing, workspace deltas exceed scope, blocking sensors fail, or the runtime boundary needs an explicit side-effect waiver.
 
