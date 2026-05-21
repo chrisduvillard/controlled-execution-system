@@ -47,12 +47,13 @@ to confirm manifest and audit state before continuing.
 Verify the local audit chain with:
 
 ```bash
-ces audit --limit 20
+ces audit verify
 ```
 
-There is not currently a public `ces audit --verify-integrity` command. Integrity
-verification is an operator/database procedure for now; see the Operations
-Runbook before making incident-response claims from raw database rows.
+Use `ces --json audit verify` for machine-readable status. The command exits
+nonzero when the HMAC chain is tampered, ordered incorrectly, or verified with
+the wrong key. Use `ces audit --limit 20` to inspect recent entries after the
+chain verifies.
 
 ## Resetting Local State
 

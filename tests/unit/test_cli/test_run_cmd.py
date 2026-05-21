@@ -964,6 +964,7 @@ class TestRunCommand:
             "token_budget": 50000,
             "reasoning": "test",
         }
+        fake_secret = "sk-" + "synthetic-auth-secret"
         mock_runner = AsyncMock()
         mock_runner.execute_runtime.return_value = {
             "runtime_name": "codex",
@@ -972,7 +973,7 @@ class TestRunCommand:
             "invocation_ref": "run-secret",
             "exit_code": 1,
             "stdout": "",
-            "stderr": "Auth failed: ANTHROPIC_API_KEY=" + "sk-" + "synthetic-auth-secret; please log in",
+            "stderr": f"Auth failed: ANTHROPIC_API_KEY={fake_secret}; please log in",
             "duration_seconds": 0.5,
         }
         mock_store = MagicMock()
@@ -1002,12 +1003,12 @@ class TestRunCommand:
 
         assert result.exit_code != 0
         assert "Auth failed" in result.stdout
-        assert "synthetic-auth-secret" not in result.stdout
+        assert fake_secret not in result.stdout
         diagnostic_files = list((tmp_path / ".ces" / "runtime-diagnostics").glob("*.txt"))
         assert diagnostic_files
         diagnostic_text = diagnostic_files[0].read_text()
         assert "Auth failed" in diagnostic_text
-        assert "synthetic-auth-secret" not in diagnostic_text
+        assert fake_secret not in diagnostic_text
         update_kwargs = mock_store.update_builder_session.call_args.kwargs
         assert "runtime-diagnostics" in update_kwargs["last_error"]
 
@@ -2920,8 +2921,8 @@ def test_completion_blockers_include_verification_finding_messages() -> None:
     ]
 
 
-def test_completion_contract_pass_supersedes_legacy_evidence_artifact_warnings() -> None:
-    """ReleasePulse RP-CES-002: independent verification is authoritative after runtime success."""
+def test_completion_contract_pass_does_not_supersede_completion_gate_blockers() -> None:
+    """Structured completion evidence is mandatory even when independent commands pass."""
     from ces.cli.run_cmd import _completion_verification_blockers
     from ces.harness.models.completion_claim import (
         VerificationFinding,
@@ -2945,7 +2946,103 @@ def test_completion_contract_pass_supersedes_legacy_evidence_artifact_warnings()
     )
     independent = VerificationRunResult(passed=True, commands=())
 
-    assert _completion_verification_blockers(legacy_result, independent_verification=independent) == []
+    assert _completion_verification_blockers(legacy_result, independent_verification=independent) == [
+        "completion evidence failed verification: Acceptance criterion has no evidence: 'missing-file path exits nonzero'"
+    ]
+
+
+def test_completion_gate_missing_malformed_failed_and_valid_claim_blocker_matrix() -> None:
+    from ces.cli._builder_evidence import missing_completion_result
+    from ces.cli.run_cmd import _completion_verification_blockers
+    from ces.harness.models.completion_claim import (
+        VerificationFinding,
+        VerificationFindingKind,
+        VerificationResult,
+    )
+    from ces.verification.runner import VerificationRunResult
+
+    independent_passed = VerificationRunResult(passed=True, commands=())
+    malformed_result = VerificationResult(
+        passed=False,
+        findings=(
+            VerificationFinding(
+                kind=VerificationFindingKind.SCHEMA_VIOLATION,
+                severity="critical",
+                message="Agent emitted malformed ces:completion JSON",
+                hint="Re-emit valid completion JSON",
+            ),
+        ),
+        sensor_results=(),
+        timestamp=datetime.now(timezone.utc),
+    )
+    failed_result = VerificationResult(
+        passed=False,
+        findings=(
+            VerificationFinding(
+                kind=VerificationFindingKind.SENSOR_FAILURE,
+                severity="critical",
+                message="completion sensor failed",
+                hint="Fix the failed sensor",
+            ),
+        ),
+        sensor_results=(),
+        timestamp=datetime.now(timezone.utc),
+    )
+    valid_result = VerificationResult(
+        passed=True,
+        findings=(),
+        sensor_results=(),
+        timestamp=datetime.now(timezone.utc),
+    )
+
+    assert _completion_verification_blockers(
+        missing_completion_result(), independent_verification=independent_passed
+    ) == [
+        "completion evidence failed verification: Agent did not emit a ces:completion block",
+    ]
+    assert _completion_verification_blockers(malformed_result, independent_verification=independent_passed) == [
+        "completion evidence failed verification: Agent emitted malformed ces:completion JSON",
+    ]
+    assert _completion_verification_blockers(failed_result, independent_verification=independent_passed) == [
+        "completion evidence failed verification: completion sensor failed",
+    ]
+    assert _completion_verification_blockers(valid_result, independent_verification=independent_passed) == []
+
+
+def test_post_evidence_approval_helper_keeps_yes_blocked_by_auto_blockers() -> None:
+    from ces.cli.run_cmd import _resolve_post_evidence_approval
+
+    approved, decision, rationale = _resolve_post_evidence_approval(
+        yes=True,
+        auto_blockers=["completion evidence failed verification"],
+        exit_code=0,
+    )
+
+    assert approved is False
+    assert decision == "reject"
+    assert rationale == "Auto-approval blocked: completion evidence failed verification"
+
+
+def test_post_evidence_approval_helper_prompts_interactive_users() -> None:
+    from ces.cli.run_cmd import _resolve_post_evidence_approval
+
+    questions: list[tuple[str, bool]] = []
+
+    def _confirm(question: str, *, default: bool) -> bool:
+        questions.append((question, default))
+        return False
+
+    approved, decision, rationale = _resolve_post_evidence_approval(
+        yes=False,
+        auto_blockers=[],
+        exit_code=0,
+        confirm_fn=_confirm,
+    )
+
+    assert questions == [("Ship this change?", True)]
+    assert approved is False
+    assert decision == "reject"
+    assert rationale == "User selected reject after evidence review"
 
 
 def test_completion_summary_does_not_claim_ready_when_governance_blocked() -> None:

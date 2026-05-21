@@ -41,9 +41,10 @@ def test_release_runbook_rebuilds_or_uses_ci_artifacts_and_stages_version_surfac
     assert "uv build" in release
     assert "CI-built artifacts" in release
     assert (
-        "git add pyproject.toml src/ces/__init__.py uv.lock CHANGELOG.md README.md "
-        "tests/unit/test_docs/test_package_contract.py"
+        "git add pyproject.toml uv.lock CHANGELOG.md README.md tests/unit/test_docs/test_package_contract.py"
     ) in release
+    assert "no protection rules required" not in release
+    assert 'Change:   __version__ = "0.1.X"' not in release
 
 
 def test_contributor_typecheck_command_matches_ci() -> None:
@@ -106,6 +107,50 @@ def test_ces_local_state_is_ignored_and_not_tracked() -> None:
         text=True,
     ).splitlines()
     assert tracked == []
+
+
+def test_gitignore_contract_covers_public_repo_secret_and_local_artifacts() -> None:
+    git = shutil.which("git")
+    assert git is not None
+
+    ignored_paths = [
+        ".env",
+        ".env.local",
+        ".env.production",
+        ".ces/keys/audit.hmac",
+        ".mcp.json",
+        "local.db",
+        "state.sqlite3",
+        "state.db-wal",
+        "runtime.log",
+        "runtime.log.1",
+        "server.pem",
+        "id_ed25519",
+        "credentials.json",
+        "secrets.json",
+        ".pypirc",
+        ".npmrc",
+        ".netrc",
+        "admin.kubeconfig",
+    ]
+    for path in ignored_paths:
+        result = subprocess.run(  # noqa: S603 - fixed git executable and literal args only
+            [git, "check-ignore", "--no-index", path],
+            cwd=ROOT,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        assert result.returncode == 0, path
+
+    env_example = subprocess.run(  # noqa: S603 - fixed git executable and literal args only
+        [git, "check-ignore", "--no-index", ".env.example"],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert env_example.returncode != 0
 
 
 def test_secret_docs_use_file_backed_audit_hmac_as_local_default() -> None:
@@ -306,20 +351,27 @@ def test_project_version_surfaces_are_launch_consistent() -> None:
     assert f"controlled-execution-system=={project['version']}" in readme
     assert f"v{project['version']}" in readme
     assert f"## [{project['version']}]" in changelog
-    assert f'__version__ = "{project["version"]}"' in init_py
+    assert "__version__ = _source_tree_version()" in init_py
+    assert f'__version__ = "{project["version"]}"' not in init_py
 
 
 def test_public_docs_do_not_overclaim_runtime_or_audit_boundaries() -> None:
     security = (ROOT / "SECURITY.md").read_text(encoding="utf-8")
     getting_started = (ROOT / "docs" / "Getting_Started.md").read_text(encoding="utf-8")
     db_ops = (ROOT / "docs" / "Database_Operations.md").read_text(encoding="utf-8")
+    audit_integrity = (ROOT / "docs" / "Audit_Integrity.md").read_text(encoding="utf-8")
+    data_boundary = (ROOT / "docs" / "Data_Boundary.md").read_text(encoding="utf-8")
+    runtime_matrix = (ROOT / "docs" / "Runtime_Adapter_Matrix.md").read_text(encoding="utf-8")
 
     assert "Codex runs under its disclosed local sandbox mode" in getting_started
     assert "rather than manifest tool allowlist enforcement" in getting_started
     assert "not as an operating-system process killer" in security
     assert "degraded_model_diversity" in security
-    assert "public `ces audit --verify-integrity` command" in db_ops
-    assert "ces audit --verify-integrity" not in db_ops.replace("public `ces audit --verify-integrity` command", "")
+    assert "ces audit verify" in db_ops
+    assert "ces --json audit verify" in audit_integrity
+    assert "prompt body is not passed in subprocess argv" in runtime_matrix
+    assert "runtime-specific auth/config environment variables" in data_boundary
+    assert "not an OS sandbox" in data_boundary
 
 
 def test_freshcart_operating_model_example_is_archived_not_active_public_contract() -> None:
@@ -366,6 +418,8 @@ def test_postgres_compatibility_dependencies_are_not_a_public_extra() -> None:
 def test_beginner_docs_are_consistent_about_read_only_front_doors() -> None:
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
     quickstart = (ROOT / "docs" / "Quickstart.md").read_text(encoding="utf-8")
+    first_15 = (ROOT / "docs" / "First_15_Minutes.md").read_text(encoding="utf-8")
+    docs_index = (ROOT / "docs" / "Docs_Index.md").read_text(encoding="utf-8")
 
     assert "| `ces audit` |" in readme
     assert "| `ces emergency declare` |" in readme
@@ -377,3 +431,27 @@ def test_beginner_docs_are_consistent_about_read_only_front_doors() -> None:
     )
     assert "After `ces create`, `ces start`, or `ces ship`, nothing was changed" in quickstart
     assert "CES created a `.ces/` directory" not in quickstart
+    assert "ces build --from-scratch" in first_15
+    assert "ces verify" in first_15
+    assert "ces proof" in first_15
+    assert "Data and Credential Boundary" in docs_index
+    assert "Public Release Checklist" in docs_index
+
+
+def test_product_playbooks_cover_public_usefulness_guidance() -> None:
+    playbooks = (ROOT / "docs" / "Product_Playbooks.md").read_text(encoding="utf-8")
+    docs_index = (ROOT / "docs" / "Docs_Index.md").read_text(encoding="utf-8")
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+
+    for required in (
+        "Greenfield Prompt Contracts",
+        "Beginner Proof Card",
+        "Brownfield Change-Type Playbooks",
+        "Source Of Truth Selection",
+        "Monorepo Guide",
+        "Proof In Pull Requests",
+    ):
+        assert required in playbooks
+
+    assert "Product Playbooks" in docs_index
+    assert "docs/Product_Playbooks.md" in readme

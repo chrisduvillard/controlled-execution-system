@@ -146,3 +146,38 @@ class TestAuditQuery:
         assert result.exit_code == 0, f"stdout={result.stdout}"
         data = json.loads(result.stdout.strip())
         assert len(data) == 1
+
+    def test_audit_verify_json_success(self, ces_project: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """ces audit verify exposes public HMAC-chain verification."""
+        monkeypatch.chdir(ces_project)
+
+        mock_audit = AsyncMock()
+        mock_audit.verify_integrity = AsyncMock(return_value=True)
+        mock_services = {"audit_ledger": mock_audit}
+
+        with _patch_services(mock_services):
+            app = _get_app()
+            result = runner.invoke(app, ["--json", "audit", "verify"])
+
+        assert result.exit_code == 0, f"stdout={result.stdout}"
+        data = json.loads(result.stdout.strip())
+        assert data["verified"] is True
+        assert data["status"] == "valid"
+        mock_audit.verify_integrity.assert_awaited_once()
+
+    def test_audit_verify_json_fails_on_tamper(self, ces_project: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Tampered audit chains fail closed through the public verify command."""
+        monkeypatch.chdir(ces_project)
+
+        mock_audit = AsyncMock()
+        mock_audit.verify_integrity = AsyncMock(return_value=False)
+        mock_services = {"audit_ledger": mock_audit}
+
+        with _patch_services(mock_services):
+            app = _get_app()
+            result = runner.invoke(app, ["--json", "audit", "verify"])
+
+        assert result.exit_code == 1
+        data = json.loads(result.stdout.strip())
+        assert data["verified"] is False
+        assert data["status"] == "tampered_or_invalid"

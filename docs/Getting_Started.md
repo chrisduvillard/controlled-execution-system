@@ -267,6 +267,7 @@ relying on builder-first `ces status`:
 ```bash
 ces status --expert
 ces status --expert --watch
+ces audit verify
 ces audit --limit 20
 ces emergency declare "Security incident detected"
 ```
@@ -416,7 +417,7 @@ ces brownfield promote OLB-<entry-id>
 | `ces vault query <topic>` | Query knowledge vault |
 | `ces vault write <cat>` | Write vault note |
 | `ces vault health` | Vault health check |
-| `ces audit` | Expert operations audit inspection; for example, `ces audit --limit 20` |
+| `ces audit` | Expert operations audit inspection; for example, `ces audit --limit 20` or `ces audit verify` |
 | `ces emergency declare` | Expert operations emergency declaration; for example, `ces emergency declare "Security incident detected"` |
 | `ces brownfield ...` | Expert legacy behavior capture, review, and promotion |
 

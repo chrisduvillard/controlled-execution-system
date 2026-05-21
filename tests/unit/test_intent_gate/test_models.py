@@ -48,8 +48,9 @@ def test_question_requires_why_it_matters() -> None:
 
 
 def test_ledger_rejects_secret_like_text() -> None:
+    fake_secret = "sk-" + "test1234567890"
     with pytest.raises(ValidationError, match="secret-like"):
-        _ledger(inputs=("Use API_KEY=sk-test1234567890",))
+        _ledger(inputs=(f"Use API_KEY={fake_secret}",))
 
 
 def test_preflight_content_hash_is_stable_excluding_generated_fields() -> None:

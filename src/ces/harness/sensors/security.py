@@ -9,35 +9,57 @@ from __future__ import annotations
 
 import json
 import re
-from pathlib import PurePosixPath
+from pathlib import Path, PurePosixPath
 
 from ces.harness.models.sensor_result import SensorFinding
-from ces.harness.sensors._file_reader import filter_by_extension, read_file_safe
+from ces.harness.sensors._file_reader import MAX_FILE_SIZE, filter_by_extension, read_file_safe
 from ces.harness.sensors.base import BaseSensor
 
 # Compiled patterns for secret detection
 _SECRET_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
     ("AWS access key", re.compile(r"AKIA[0-9A-Z]{16}")),
+    (
+        "Private key material",
+        re.compile(
+            r"-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----.*?-----END [A-Z0-9 ]*PRIVATE KEY-----",
+            re.DOTALL,
+        ),
+    ),
     ("Private key header", re.compile(r"-----BEGIN (?:RSA |EC |DSA )?PRIVATE KEY-----")),
-    ("GitHub token", re.compile(r"gh[ps]_[A-Za-z0-9_]{36,}")),
+    ("GitHub token", re.compile(r"(?:gh[ps]_[A-Za-z0-9_]{36,}|github_pat_[A-Za-z0-9_]{22,})")),
+    ("GitLab token", re.compile(r"glpat-[A-Za-z0-9_-]{20,}")),
+    ("Slack token", re.compile(r"(?:xox[abceoprs]-|xapp-)[A-Za-z0-9-]{10,}")),
+    ("JWT", re.compile(r"\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b")),
+    (
+        "Credential-bearing URL",
+        re.compile(r"\b[a-z][a-z0-9+.-]*://[^/\s:@]+:[^@\s/]+@", re.IGNORECASE),
+    ),
+    (
+        "Google service account JSON",
+        re.compile(
+            r'"type"\s*:\s*"service_account".*?"private_key"\s*:\s*"[^"]+"',
+            re.DOTALL,
+        ),
+    ),
     (
         "Generic API key assignment",
         re.compile(
-            r"""(?:api[_\-]?key|api[_\-]?token|api[_\-]?secret)\s*[=:]\s*['"][^'"]{8,}['"]""",
+            r"""(?:api[_\-]?key|api[_\-]?token|api[_\-]?secret)\s*[=:]\s*['"]?[^'"\s]{8,}['"]?""",
             re.IGNORECASE,
         ),
     ),
     (
         "Password assignment",
         re.compile(
-            r"""(?:password|passwd|pwd)\s*[=:]\s*['"][^'"]{4,}['"]""",
+            r"""(?:password|passwd|pwd)\s*[=:]\s*['"]?[^'"\s]{4,}['"]?""",
             re.IGNORECASE,
         ),
     ),
     (
         "High-entropy secret assignment",
         re.compile(
-            r"""(?:secret|token)\s*=\s*['"][A-Za-z0-9+/=]{20,}['"]""",
+            r"""(?:secret|token)\s*[=:]\s*['"]?[A-Za-z0-9+/=]{20,}['"]?""",
+            re.IGNORECASE,
         ),
     ),
 ]
@@ -46,7 +68,7 @@ _SECRET_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
 _SENSITIVE_PATHS = {".env", ".env.local", ".env.production", "credentials.json", "secrets.json"}
 _SENSITIVE_FILENAMES = {".npmrc", ".pypirc", ".netrc", ".envrc", "kubeconfig"}
 _SENSITIVE_DIRS = {".aws", ".ssh", ".gnupg", ".kube"}
-_SENSITIVE_EXTENSIONS = (".pem", ".key", ".p12", ".pfx", ".jks")
+_SENSITIVE_EXTENSIONS = (".pem", ".key", ".crt", ".cer", ".p12", ".pfx", ".jks", ".kubeconfig")
 
 
 def _is_sensitive_path(fpath: str) -> bool:
@@ -62,6 +84,21 @@ def _is_sensitive_path(fpath: str) -> bool:
         or (name.startswith(".env.") and name != ".env.example")
         or bool(parts & _SENSITIVE_DIRS)
     )
+
+
+def _oversized_file_path(project_root: str, relative_path: str) -> Path | None:
+    if not project_root:
+        return None
+    root = Path(project_root).resolve()
+    path = (root / relative_path).resolve()
+    if not path.is_relative_to(root):
+        return None
+    try:
+        if path.is_file() and path.stat().st_size > MAX_FILE_SIZE:
+            return path
+    except OSError:
+        return None
+    return None
 
 
 class SecuritySensor(BaseSensor):
@@ -128,6 +165,7 @@ class SecuritySensor(BaseSensor):
                 ".ini",
                 ".conf",
                 ".md",
+                ".log",
                 ".sh",
                 ".bash",
                 ".env",
@@ -138,6 +176,18 @@ class SecuritySensor(BaseSensor):
         for fpath in scannable:
             content = read_file_safe(project_root, fpath)
             if content is None:
+                oversized = _oversized_file_path(project_root, fpath)
+                if oversized is not None:
+                    findings.append(f"Large file skipped by security scan: {fpath}")
+                    self._findings.append(
+                        SensorFinding(
+                            category="security_scan_skipped",
+                            severity="medium",
+                            location=fpath,
+                            message=f"Large file skipped by security scan: {fpath}",
+                            suggestion="Scan this file with gitleaks or split it into smaller reviewable artifacts",
+                        )
+                    )
                 continue
             files_scanned += 1
             for pattern_name, pattern in _SECRET_PATTERNS:

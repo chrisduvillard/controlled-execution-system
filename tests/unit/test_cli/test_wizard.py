@@ -459,8 +459,10 @@ class TestWizardFlow:
                 )
             )
 
-    def test_wizard_calls_run_brief_flow_with_yes_true(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        """After confirmation, _wizard_flow calls _run_brief_flow with yes=True."""
+    def test_wizard_calls_run_brief_flow_without_auto_approval(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Pre-run wizard confirmation must not become post-evidence approval."""
         monkeypatch.chdir(tmp_path)
 
         mock_services = self._make_mock_services(tmp_path)
@@ -491,7 +493,50 @@ class TestWizardFlow:
 
         mock_brief_flow.assert_called_once()
         call_kwargs = mock_brief_flow.call_args.kwargs
-        assert call_kwargs["yes"] is True, "Wizard should pass yes=True to avoid double-prompting"
+        assert call_kwargs["yes"] is False
+        assert call_kwargs["execution_confirmed"] is True
+
+    def test_wizard_pre_run_confirmation_does_not_auto_approve(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Default wizard flow asks a separate post-evidence approval question."""
+        from ces.cli.run_cmd import _wizard_flow
+
+        monkeypatch.chdir(tmp_path)
+        mock_services = self._make_mock_services(tmp_path)
+
+        prompts = iter(["Add endpoint", "none", "tests pass", "none"])
+        confirmations = iter([True, False])
+        confirm_questions: list[str] = []
+        monkeypatch.setattr("ces.cli.run_cmd.typer.prompt", lambda *a, **kw: next(prompts, ""))
+
+        def _confirm(question: str, **kwargs: object) -> bool:
+            del kwargs
+            confirm_questions.append(question)
+            return next(confirmations)
+
+        monkeypatch.setattr("ces.cli.run_cmd.typer.confirm", _confirm)
+
+        asyncio.run(
+            _wizard_flow(
+                services=mock_services,
+                project_config={},
+                runtime="auto",
+                brief=False,
+                full=False,
+                governance=False,
+                export_prl_draft=False,
+                project_root=tmp_path,
+                description="Add endpoint",
+                greenfield=False,
+                brownfield_flag=False,
+                accept_runtime_side_effects=True,
+            )
+        )
+
+        assert confirm_questions == ["Proceed with execution?", "Ship this change?"]
+        mock_services["local_store"].save_approval.assert_called_once()
+        assert mock_services["local_store"].save_approval.call_args.kwargs["decision"] == "reject"
 
     def test_wizard_spinner_during_execution(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """console.status is used during _run_brief_flow execution."""

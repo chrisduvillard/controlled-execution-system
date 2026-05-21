@@ -1,6 +1,6 @@
 # CES Operations Runbook
 
-Use builder-first commands (`ces build`, `ces continue`, `ces explain`, `ces explain --view brownfield`, `ces status`) for one active delivery request. Use the expert operations surfaces in this runbook when you need system-wide visibility, incident response, or audit inspection: `ces status --expert`, `ces status --expert --watch`, `ces audit --limit 20`, and `ces emergency declare "Security incident detected"`.
+Use builder-first commands (`ces build`, `ces continue`, `ces explain`, `ces explain --view brownfield`, `ces status`) for one active delivery request. Use the expert operations surfaces in this runbook when you need system-wide visibility, incident response, or audit inspection: `ces status --expert`, `ces status --expert --watch`, `ces audit verify`, `ces audit --limit 20`, and `ces emergency declare "Security incident detected"`.
 
 Use the [Operator Playbook](Operator_Playbook.md) when you need the builder-first versus expert workflow boundary for a single request, and the [Brownfield Guide](Brownfield_Guide.md) when the question is legacy-behavior governance rather than system-wide operations.
 
@@ -51,7 +51,12 @@ Recovery should leave these compensating controls in the audit trail:
 
 ### Audit Ledger Inspection
 
-The public CLI currently supports audit inspection queries. End-to-end HMAC integrity verification remains a deployment/database procedure.
+The public CLI supports both audit inspection queries and HMAC-chain verification:
+
+```bash
+ces audit verify
+ces --json audit verify
+```
 
 ```bash
 # Inspect recent audit activity around an incident window

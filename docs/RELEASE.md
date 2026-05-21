@@ -18,8 +18,11 @@ exchange succeeds. Subsequent releases inherit the config.
    - **Workflow:** `publish.yml`
    - **Environment:** `pypi`
 3. On GitHub, confirm `Settings → Environments` has an environment named
-   exactly `pypi`. Public environment, no protection rules required;
-   `publish.yml` uses `id-token: write` for the OIDC exchange.
+   exactly `pypi`, with the intended reviewer approval rule enabled.
+   `publish.yml` uses `id-token: write` for the OIDC exchange; the
+   environment approval is the human release brake before upload.
+4. Repeat the same trusted-publisher setup for TestPyPI using workflow
+   `publish-testpypi.yml` and environment `testpypi`.
 
 If the first publish fails with `invalid-publisher`, the claims rendered
 in the error log tell you which of these four fields is mismatched.
@@ -50,27 +53,24 @@ uv run ruff check . && uv run ruff format --check .
 #     To:       version = "0.1.Y"
 $EDITOR pyproject.toml
 
-# 2b. Source-tree fallback for editable/dev invocations
-#     Change:   __version__ = "0.1.X"
-#     To:       __version__ = "0.1.Y"
-$EDITOR src/ces/__init__.py
-
-# 2c. uv.lock editable package version
+# 2b. uv.lock editable package version
 uv lock
 
-# 2d. CHANGELOG.md
+# 2c. CHANGELOG.md
 #     Add a new '## [0.1.Y] - YYYY-MM-DD' header under [Unreleased].
 #     Move any pending items from [Unreleased] to [0.1.Y].
 #     Keep [Unreleased] as an empty header for the next cycle.
 $EDITOR CHANGELOG.md
 
-# 2e. README public install pin and tag examples
+# 2d. README public install pin and tag examples
 $EDITOR README.md
 
-# 2f. Package-contract version assertion, if present
+# 2e. Package-contract version assertion, if present
 $EDITOR tests/unit/test_docs/test_package_contract.py
 
-# Sanity-check both match before you tag:
+# Sanity-check package metadata before you tag. Source-tree/dev invocations
+# read their fallback version from pyproject.toml; there is no separate
+# hardcoded __version__ string to edit in src/ces/__init__.py.
 grep -E '^version =' pyproject.toml
 grep '^## \[' CHANGELOG.md | head -3
 ```
@@ -78,7 +78,7 @@ grep '^## \[' CHANGELOG.md | head -3
 ### 3. Commit and push
 
 ```bash
-git add pyproject.toml src/ces/__init__.py uv.lock CHANGELOG.md README.md tests/unit/test_docs/test_package_contract.py
+git add pyproject.toml uv.lock CHANGELOG.md README.md tests/unit/test_docs/test_package_contract.py
 git commit -m "Bump version 0.1.X -> 0.1.Y"
 git push
 gh run watch --exit-status   # CI must go green
