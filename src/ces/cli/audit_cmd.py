@@ -27,6 +27,12 @@ from ces.cli._errors import handle_error
 from ces.cli._factory import get_services
 from ces.cli._output import console, is_json_mode, set_json_mode
 
+audit_app = typer.Typer(
+    help="Inspect and verify the local audit ledger.",
+    invoke_without_command=True,
+    no_args_is_help=False,
+)
+
 
 def _parse_non_negative_int(value: str, *, option_name: str) -> int:
     try:
@@ -38,8 +44,10 @@ def _parse_non_negative_int(value: str, *, option_name: str) -> int:
     return parsed
 
 
+@audit_app.callback(invoke_without_command=True)
 @run_async
 async def query_audit(
+    ctx: typer.Context,
     event_type: str = typer.Option(
         "",
         "--event-type",
@@ -91,6 +99,8 @@ async def query_audit(
     and action summary. Supports --event-type, --actor, --after,
     --before filters, and --limit/--offset pagination.
     """
+    if ctx.invoked_subcommand is not None:
+        return
     if json_output:
         set_json_mode(True)
     try:
@@ -181,5 +191,48 @@ async def query_audit(
         handle_error(exc)
     except (ConnectionError, RuntimeError, OSError) as exc:
         handle_error(exc)
+    except Exception as exc:
+        handle_error(exc)
+
+
+@audit_app.command(name="verify")
+@run_async
+async def verify_audit(
+    json_output: bool = typer.Option(
+        False,
+        "--json",
+        help="Output audit integrity status as JSON. Equivalent to `ces --json audit verify`.",
+    ),
+    project_root: Path | None = typer.Option(
+        None,
+        "--project-root",
+        help="CES project root to verify; defaults to the current directory discovery.",
+    ),
+) -> None:
+    """Verify the HMAC hash chain for the local audit ledger."""
+    if json_output:
+        set_json_mode(True)
+    try:
+        resolved_project_root = find_project_root(project_root) if project_root is not None else find_project_root()
+        project_id = get_project_id(resolved_project_root)
+        services_kwargs = {"project_root": resolved_project_root} if project_root is not None else {}
+        async with get_services(**services_kwargs) as services:
+            audit_ledger = services.get("audit_ledger")
+            verified = await audit_ledger.verify_integrity(project_id=project_id)
+        payload = {
+            "project_id": project_id,
+            "verified": verified,
+            "status": "valid" if verified else "tampered_or_invalid",
+        }
+        if is_json_mode():
+            typer.echo(json.dumps(payload, indent=2, default=str))
+        elif verified:
+            console.print("[green]Audit ledger integrity verified.[/green]")
+        else:
+            console.print("[red]Audit ledger integrity verification failed.[/red]")
+        if not verified:
+            raise typer.Exit(code=1)
+    except typer.Exit:
+        raise
     except Exception as exc:
         handle_error(exc)

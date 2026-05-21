@@ -77,4 +77,38 @@ def test_normalize_runtime_execution_accepts_wrapped_model_dump() -> None:
 
     result = SimpleNamespace(runtime_result=RuntimeResult())
 
-    assert normalize_runtime_execution(result) == {"mode": "json", "exit_code": 0}
+    assert normalize_runtime_execution(result) == {"mode": "json", "exit_code": 0, "stdout": "", "stderr": ""}
+
+
+def test_normalize_runtime_execution_scrubs_dict_and_object_text() -> None:
+    secret = "sk-" + "synthetic-runtime-secret"
+
+    dict_result = normalize_runtime_execution(
+        {
+            "runtime_name": "codex",
+            "runtime_version": "1",
+            "invocation_ref": "run",
+            "exit_code": 0,
+            "stdout": f"stdout {secret}",
+            "stderr": f"OPENAI_API_KEY={secret}",
+            "duration_seconds": 0.1,
+        }
+    )
+    object_result = normalize_runtime_execution(
+        SimpleNamespace(
+            runtime_name="codex",
+            runtime_version="1",
+            reported_model=None,
+            invocation_ref="run",
+            exit_code=0,
+            stdout=f"stdout {secret}",
+            stderr=f"OPENAI_API_KEY={secret}",
+            duration_seconds=0.1,
+            transcript_path=None,
+        )
+    )
+
+    assert secret not in str(dict_result)
+    assert secret not in str(object_result)
+    assert dict_result["stdout"] == "stdout <REDACTED>"
+    assert object_result["stderr"] == "OPENAI_API_KEY=<REDACTED>"

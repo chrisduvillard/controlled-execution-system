@@ -9,7 +9,14 @@ build/
 
 # Environment
 .env
+.env.*
 !.env.example
+
+# Logs and diagnostics
+*.log
+*.log.*
+runtime-transcripts/
+dogfood-output/
 
 # IDE
 .idea/
@@ -33,10 +40,37 @@ htmlcov/
 .pytest_cache/
 .ruff_cache/
 .mypy_cache/
+.uv-cache/
+.mcp.json
+
+# Databases and local state
+*.db
+*.sqlite
+*.sqlite3
+*.db-shm
+*.db-wal
 
 # CES project-level secrets
 *.private_key
 .controlled-execution/keys/
+
+# Secrets and key material
+*.pem
+*.key
+*.crt
+*.cer
+*.p12
+*.pfx
+id_rsa
+id_dsa
+id_ecdsa
+id_ed25519
+*.kubeconfig
+credentials.json
+secrets.json
+.pypirc
+.npmrc
+.netrc
 
 # OS
 .DS_Store

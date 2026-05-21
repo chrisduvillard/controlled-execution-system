@@ -54,6 +54,7 @@ from ces.control.services.workflow_engine import WorkflowEngine
 from ces.control.spec.parser import SpecParser
 from ces.control.spec.template_loader import TemplateLoader
 from ces.execution.completion_parser import parse_completion_claim
+from ces.execution.pipeline import normalize_runtime_execution
 from ces.execution.providers.bootstrap import resolve_primary_provider
 from ces.execution.runtime_safety import (
     runtime_side_effects_block_auto_approval,
@@ -91,7 +92,6 @@ from ces.shared.enums import (
     TrustStatus,
     WorkflowState,
 )
-from ces.shared.secrets import scrub_secrets_from_text
 from ces.verification.build_contract import (
     write_completion_contract,
 )
@@ -502,29 +502,7 @@ async def _ensure_signed_manifest(manager: object, manifest: object) -> object:
 
 
 def _normalize_runtime_execution(result: Any) -> dict[str, Any]:
-    if isinstance(result, dict):
-        execution = dict(result)
-    else:
-        runtime_result = getattr(result, "runtime_result", None)
-        if runtime_result is not None and hasattr(runtime_result, "model_dump"):
-            execution = runtime_result.model_dump(mode="json")
-        elif hasattr(result, "model_dump"):
-            execution = result.model_dump(mode="json")
-        else:
-            execution = {
-                "runtime_name": getattr(result, "runtime_name"),
-                "runtime_version": getattr(result, "runtime_version"),
-                "reported_model": getattr(result, "reported_model", None),
-                "invocation_ref": getattr(result, "invocation_ref"),
-                "exit_code": getattr(result, "exit_code"),
-                "stdout": getattr(result, "stdout", ""),
-                "stderr": getattr(result, "stderr", ""),
-                "duration_seconds": getattr(result, "duration_seconds", 0.0),
-                "transcript_path": getattr(result, "transcript_path", None),
-            }
-    execution["stdout"] = scrub_secrets_from_text(str(execution.get("stdout") or ""))
-    execution["stderr"] = scrub_secrets_from_text(str(execution.get("stderr") or ""))
-    return execution
+    return normalize_runtime_execution(result)
 
 
 def _promoted_prl_context(local_store: Any) -> list[str]:
@@ -742,8 +720,7 @@ def _completion_verification_blockers(
     independent_verification: Any | None = None,
 ) -> list[str]:
     """Render completion-verification failures as actionable auto-blockers."""
-    if independent_verification is not None and bool(getattr(independent_verification, "passed", False)):
-        return []
+    del independent_verification
     if completion_verification is None or bool(getattr(completion_verification, "passed", False)):
         return []
     findings = getattr(completion_verification, "findings", ()) or ()
@@ -755,6 +732,28 @@ def _completion_verification_blockers(
     if not messages:
         return ["completion evidence failed verification"]
     return [f"completion evidence failed verification: {message}" for message in messages]
+
+
+def _resolve_post_evidence_approval(
+    *,
+    yes: bool,
+    auto_blockers: list[str],
+    exit_code: int,
+    confirm_fn: Any | None = None,
+) -> tuple[bool, str, str]:
+    """Resolve approval only after evidence and blockers are known."""
+    approved = yes and not auto_blockers
+    if not yes:
+        confirm = typer.confirm if confirm_fn is None else confirm_fn
+        approved = bool(confirm("Ship this change?", default=exit_code == 0))
+    decision = "approve" if approved else "reject"
+    if yes and auto_blockers:
+        rationale = "Auto-approval blocked: " + "; ".join(auto_blockers)
+    elif yes:
+        rationale = "Auto-approved by the builder flow"
+    else:
+        rationale = f"User selected {decision} after evidence review"
+    return approved, decision, rationale
 
 
 def _build_request_preview(
@@ -903,20 +902,22 @@ async def _wizard_flow(
     if not typer.confirm("Proceed with execution?", default=True):
         raise typer.Abort
 
-    # Execution with spinner -- Wizard already confirmed, pass yes=True
+    # Execution consent only launches the runtime. Evidence approval remains a
+    # separate post-run decision inside _run_brief_flow.
     with console.status("[bold green]Starting execution...", spinner="dots"):
         await _run_brief_flow(
             brief_draft=brief_draft,
             services=services,
             project_config=project_config,
             runtime=runtime,
-            yes=True,  # Wizard already confirmed -- avoid double-prompting
+            yes=False,
             brief=brief,
             full=full,
             governance=governance,
             export_prl_draft=export_prl_draft,
             project_root=project_root,
             accept_runtime_side_effects=accept_runtime_side_effects,
+            execution_confirmed=True,
             reverse_preflight=reverse_preflight,
         )
 
@@ -936,6 +937,7 @@ async def _run_brief_flow(
     accept_runtime_side_effects: bool = False,
     existing_brief_id: str | None = None,
     existing_session_id: str | None = None,
+    execution_confirmed: bool = False,
     reverse_preflight: str = "rules",
 ) -> None:
     settings = services["settings"]
@@ -956,7 +958,7 @@ async def _run_brief_flow(
     )
     brief_draft = _validate_intent_gate_allows_runtime(
         brief_draft,
-        non_interactive=yes,
+        non_interactive=yes and not execution_confirmed,
         reverse_preflight=reverse_preflight,
         llm_preflight_payload=llm_preflight_payload,
     )
@@ -1497,7 +1499,6 @@ async def _run_brief_flow(
     manifest = _with_workflow_state(manifest, review_state)
     await manager.save_manifest(manifest)
 
-    approved = yes and not auto_blockers
     if not yes:
         if auto_blockers:
             console.print(
@@ -1507,14 +1508,11 @@ async def _run_brief_flow(
                     border_style="yellow",
                 )
             )
-        approved = typer.confirm("Ship this change?", default=execution["exit_code"] == 0)
-    decision = "approve" if approved else "reject"
-    if yes and auto_blockers:
-        rationale = "Auto-approval blocked: " + "; ".join(auto_blockers)
-    elif yes:
-        rationale = "Auto-approved by the builder flow"
-    else:
-        rationale = f"User selected {decision} after evidence review"
+    approved, decision, rationale = _resolve_post_evidence_approval(
+        yes=yes,
+        auto_blockers=auto_blockers,
+        exit_code=int(execution["exit_code"]),
+    )
     local_store.save_approval(
         manifest.manifest_id,
         decision=decision,

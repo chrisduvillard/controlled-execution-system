@@ -6,17 +6,55 @@ import re
 from typing import Any
 
 # Secret key name patterns (case-insensitive matching).
-SECRET_KEY_PATTERNS = re.compile(r"(SECRET|KEY|TOKEN|PASSWORD|CREDENTIAL|API_KEY)", re.IGNORECASE)
-SECRET_KV_KEY_PATTERN = r"[A-Z0-9_]*(?:SECRET|KEY|TOKEN|PASSWORD|CREDENTIAL|API_KEY)[A-Z0-9_]*"  # noqa: S105
+SECRET_KEY_PATTERNS = re.compile(
+    r"(SECRET|KEY|TOKEN|PASSWORD|CREDENTIAL|API_KEY|PRIVATE_KEY|CLIENT_SECRET)",
+    re.IGNORECASE,
+)
+SECRET_KV_KEY_PATTERN = (
+    r"[A-Z0-9_]*(?:SECRET|KEY|TOKEN|PASSWORD|CREDENTIAL|API_KEY|PRIVATE_KEY|CLIENT_SECRET)[A-Z0-9_]*"  # noqa: S105
+)
 
 # Secret value prefix patterns -- known API key formats.
-SECRET_VALUE_PREFIXES = ("sk-", "pk-", "ghp_", "ghs_", "AKIA", "xoxb-", "xoxp-")
+SECRET_VALUE_PREFIXES = (
+    "sk-",
+    "pk-",
+    "ghp_",
+    "ghs_",
+    "github_pat_",
+    "glpat-",
+    "AKIA",
+    "xoxb-",
+    "xoxp-",
+    "xoxc-",
+    "xoxa-",
+    "xoxr-",
+    "xoxs-",
+    "xoxe-",
+    "xapp-",
+)
 
 _SECRET_VALUE_IN_TEXT_RE = re.compile(
     r"\b(?:" + "|".join(re.escape(p) for p in SECRET_VALUE_PREFIXES) + r")[A-Za-z0-9_\-./+=]+",
 )
 _SECRET_KV_IN_TEXT_RE = re.compile(
     r"\b(" + SECRET_KV_KEY_PATTERN + r")\s*[:=]\s*['\"]?([^\s'\"]+)",
+    re.IGNORECASE,
+)
+_JWT_IN_TEXT_RE = re.compile(r"\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b")
+_CREDENTIAL_URL_RE = re.compile(
+    r"\b([a-z][a-z0-9+.-]*://)([^/\s:@]+):([^@\s/]+)@",
+    re.IGNORECASE,
+)
+_PRIVATE_KEY_BLOCK_RE = re.compile(
+    r"-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----.*?-----END [A-Z0-9 ]*PRIVATE KEY-----",
+    re.DOTALL,
+)
+_GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY_RE = re.compile(
+    r'("private_key"\s*:\s*")([^"]+)(")',
+    re.IGNORECASE,
+)
+_GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY_ID_RE = re.compile(
+    r'("private_key_id"\s*:\s*")([^"]+)(")',
     re.IGNORECASE,
 )
 
@@ -28,8 +66,15 @@ def scrub_secrets_from_text(text: str) -> str:
 
     if not text:
         return text
-    step_1 = _SECRET_VALUE_IN_TEXT_RE.sub(_REDACTION, text)
-    return _SECRET_KV_IN_TEXT_RE.sub(lambda m: f"{m.group(1)}={_REDACTION}", step_1)
+    scrubbed = _PRIVATE_KEY_BLOCK_RE.sub(_REDACTION, text)
+    scrubbed = _CREDENTIAL_URL_RE.sub(lambda m: f"{m.group(1)}{m.group(2)}:{_REDACTION}@", scrubbed)
+    scrubbed = _GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY_RE.sub(lambda m: f"{m.group(1)}{_REDACTION}{m.group(3)}", scrubbed)
+    scrubbed = _GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY_ID_RE.sub(
+        lambda m: f"{m.group(1)}{_REDACTION}{m.group(3)}", scrubbed
+    )
+    scrubbed = _JWT_IN_TEXT_RE.sub(_REDACTION, scrubbed)
+    scrubbed = _SECRET_VALUE_IN_TEXT_RE.sub(_REDACTION, scrubbed)
+    return _SECRET_KV_IN_TEXT_RE.sub(lambda m: f"{m.group(1)}={_REDACTION}", scrubbed)
 
 
 def scrub_secrets_recursive(value: Any) -> Any:

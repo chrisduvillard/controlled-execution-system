@@ -16,10 +16,15 @@ Turn an intent into a bounded manifest, execute it through Codex CLI or Claude C
 collect evidence, review the result, and make approval explicit.
 
 [5-Minute Quickstart](https://github.com/chrisduvillard/controlled-execution-system/blob/master/docs/Quickstart.md) ·
+[First 15 Minutes](https://github.com/chrisduvillard/controlled-execution-system/blob/master/docs/First_15_Minutes.md) ·
 [Getting Started](https://github.com/chrisduvillard/controlled-execution-system/blob/master/docs/Getting_Started.md) ·
 [Positioning](https://github.com/chrisduvillard/controlled-execution-system/blob/master/docs/Positioning.md) ·
+[Data Boundary](https://github.com/chrisduvillard/controlled-execution-system/blob/master/docs/Data_Boundary.md) ·
+[Audit Integrity](https://github.com/chrisduvillard/controlled-execution-system/blob/master/docs/Audit_Integrity.md) ·
 [Operator Playbook](https://github.com/chrisduvillard/controlled-execution-system/blob/master/docs/Operator_Playbook.md) ·
+[Product Playbooks](https://github.com/chrisduvillard/controlled-execution-system/blob/master/docs/Product_Playbooks.md) ·
 [Quick Reference](https://github.com/chrisduvillard/controlled-execution-system/blob/master/docs/Quick_Reference_Card.md) ·
+[Docs Index](https://github.com/chrisduvillard/controlled-execution-system/blob/master/docs/Docs_Index.md) ·
 [Verification Profile](https://github.com/chrisduvillard/controlled-execution-system/blob/master/docs/Verification_Profile.md) ·
 [Semantic Codebase Mapping](https://github.com/chrisduvillard/controlled-execution-system/blob/master/docs/Semantic_Codebase_Mapping.md) ·
 [Changelog](https://github.com/chrisduvillard/controlled-execution-system/blob/master/CHANGELOG.md)
@@ -497,7 +502,7 @@ Use expert workflow commands when you need direct artifact control:
 | `ces manifest` / `ces classify` | Create and classify manifests directly. |
 | `ces execute` | Run a manifest-bound local agent task. |
 | `ces review` / `ces triage` / `ces approve` | Inspect evidence and make approval decisions directly. |
-| `ces audit` | Inspect the local audit ledger, for example `ces audit --limit 20`. |
+| `ces audit` | Inspect or verify the local audit ledger, for example `ces audit --limit 20` or `ces audit verify`. |
 | `ces evidence attach` | Attach scrubbed manual evidence and command provenance to a manifest. |
 | `ces diff --since-approval` | Show changed files since the latest evidence/approval git baseline. |
 | `ces status --expert` | Show the full expert status view; use `ces status --expert --watch` for live monitoring. |
@@ -576,7 +581,7 @@ Unattended `--yes` runs remain evidence-gated. CES should block auto-approval wh
 | `ces execute M-<manifest-id>` | Execute a manifest-bound task locally. |
 | `ces review` / `ces triage` / `ces approve` | Review, screen, and decide on evidence. |
 | `ces scan --dry-run` | Preview repository inventory without mutation. |
-| `ces audit` | Expert operations audit inspection; use `ces audit --limit 20` to inspect recent ledger events. |
+| `ces audit` | Expert operations audit inspection; use `ces audit --limit 20` to inspect recent ledger events and `ces audit verify` to verify HMAC-chain integrity. |
 | `ces emergency declare` | Expert operations emergency declaration; for example `ces emergency declare "Security incident detected"`. |
 | `ces brownfield ...` | Expert legacy behavior capture, review, and promotion. Use `ces brownfield review OLB-<entry-id> --disposition preserve` for a named legacy-behavior decision. |
 | `ces spec ...` | Work with governed specs and manifest drafts. |

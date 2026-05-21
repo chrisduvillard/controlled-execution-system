@@ -145,28 +145,35 @@ class TestClaudeAdapterEnforcesToolAllowlist:
         ],
     )
     def test_hostile_prompt_does_not_leak_into_flags(self, tmp_path: Path, injection: str) -> None:
-        """Prompt content is passed as a -p value, not interpolated into flags."""
+        """Prompt content is passed over stdin, not interpolated into argv flags."""
         adapter = ClaudeRuntimeAdapter()
         adapter.version = MagicMock(return_value="1.0.0")
-        captured: list = []
+        captured: dict[str, object] = {}
 
-        with patch(
-            "ces.execution.runtimes.adapters.subprocess.Popen",
-            side_effect=_fake_popen_capturing_argv(captured),
-        ):
+        def _popen(*args, **kwargs):
+            captured["argv"] = args[0]
+            kwargs["stdout"].write(b'{"model":"claude","result":"ok"}')
+            process = MagicMock()
+            process.pid = 12345
+            process.communicate.return_value = (None, None)
+            process.returncode = 0
+            process.poll.return_value = 0
+            captured["process"] = process
+            return process
+
+        with patch("ces.execution.runtimes.adapters.subprocess.Popen", side_effect=_popen):
             adapter.run_task(
                 manifest_description="Probe",
                 prompt_pack=injection,
                 working_dir=tmp_path,
             )
 
-        (argv,) = captured
-        # The injection appears exactly once, as the -p value — not as a flag.
-        p_index = argv.index("-p")
-        assert argv[p_index + 1] == injection
+        argv = captured["argv"]
+        assert isinstance(argv, list)
+        assert injection not in argv
+        process = captured["process"]
+        process.communicate.assert_called_once_with(input=injection.encode("utf-8"), timeout=1800)
         # Hostile content must not have been parsed as an option.
         for token in argv:
-            if token == injection:
-                continue
             assert not token.startswith("--permission-mode=acceptEdits")
             assert not token.startswith("--dangerous")

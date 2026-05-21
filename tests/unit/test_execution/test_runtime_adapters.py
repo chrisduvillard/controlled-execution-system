@@ -77,11 +77,13 @@ class TestRuntimeAdapterEnvScrubbing:
         }
         command = mock_popen.call_args.args[0]
         assert command[0] == "codex"
+        assert "Prompt pack" not in command
         assert "-C" in command
         assert str(tmp_path) in command
         sandbox_index = command.index("--sandbox")
         assert command[sandbox_index + 1] == "workspace-write"
         assert "danger-full-access" not in command
+        assert mock_popen.call_args.kwargs["stdin"] == subprocess.PIPE
         assert result.transcript_path is not None
         transcript_path = Path(result.transcript_path)
         assert transcript_path.parent == tmp_path / ".ces" / "runtime-transcripts"
@@ -145,6 +147,7 @@ class TestRuntimeAdapterEnvScrubbing:
         command = mock_popen.call_args.args[0]
         sandbox_index = command.index("--sandbox")
         assert command[sandbox_index + 1] == "workspace-write"
+        assert "Prompt pack" not in command
         assert "CES_CODEX_SANDBOX" not in mock_popen.call_args.kwargs["env"]
 
     @patch.dict(
@@ -198,6 +201,10 @@ class TestRuntimeAdapterEnvScrubbing:
             "HTTPS_PROXY": "http://proxy.internal:8080",
         }
         assert mock_popen.call_args.kwargs["cwd"] == tmp_path
+        command = mock_popen.call_args.args[0]
+        assert "-p" in command
+        assert "Prompt pack" not in command
+        assert mock_popen.call_args.kwargs["stdin"] == subprocess.PIPE
 
     @patch.dict(
         "os.environ",
@@ -310,6 +317,43 @@ class TestRuntimeAdapterEnvScrubbing:
         },
         clear=True,
     )
+    def test_codex_runtime_preserves_full_redacted_transcript_separate_from_capped_stdout(self, tmp_path: Path) -> None:
+        adapter = CodexRuntimeAdapter()
+        adapter.version = MagicMock(return_value="1.0.0")
+        oversized_stdout = "x" * 32
+
+        def _popen(*args, **kwargs):
+            kwargs["stdout"].write(oversized_stdout.encode("utf-8"))
+            return _completed_process()
+
+        with (
+            patch("ces.execution.runtimes.adapters.subprocess.Popen", side_effect=_popen),
+            patch(
+                "ces.execution.runtimes.adapters.uuid.uuid4",
+                return_value=UUID("12345678-1234-5678-1234-567812345678"),
+            ),
+            patch("ces.execution.runtimes.adapters._MAX_RUNTIME_OUTPUT_BYTES", 8),
+        ):
+            result = adapter.run_task(
+                manifest_description="Implement feature",
+                prompt_pack="Prompt pack",
+                working_dir=tmp_path,
+            )
+
+        assert result.stdout == "xxxxxxxx\n...[truncated]"
+        assert result.transcript_path is not None
+        transcript = Path(result.transcript_path).read_text(encoding="utf-8")
+        assert oversized_stdout in transcript
+        assert "\n...[truncated]" not in transcript
+
+    @patch.dict(
+        "os.environ",
+        {
+            "PATH": "/usr/bin",
+            "HOME": "/home/tester",
+        },
+        clear=True,
+    )
     def test_codex_runtime_initializes_transcript_before_process_starts_and_preserves_stdout_fallback(
         self, tmp_path: Path
     ) -> None:
@@ -372,9 +416,9 @@ class TestRuntimeAdapterEnvScrubbing:
                 working_dir=tmp_path,
             )
 
-        process.communicate.assert_called_once_with(timeout=7)
+        process.communicate.assert_called_once_with(input=b"Prompt pack", timeout=7)
         assert mock_popen.call_args.kwargs["start_new_session"] is True
-        assert mock_popen.call_args.kwargs["stdin"] == subprocess.DEVNULL
+        assert mock_popen.call_args.kwargs["stdin"] == subprocess.PIPE
 
     @patch.dict(
         "os.environ",
@@ -384,13 +428,14 @@ class TestRuntimeAdapterEnvScrubbing:
         },
         clear=True,
     )
-    def test_runtime_adapters_do_not_inherit_stdin(self, tmp_path: Path) -> None:
+    def test_runtime_adapters_send_prompt_over_pipe_instead_of_inheriting_stdin(self, tmp_path: Path) -> None:
         adapter = CodexRuntimeAdapter()
         adapter.version = MagicMock(return_value="1.0.0")
+        process = _completed_process()
 
         def _popen(*args, **kwargs):
             kwargs["stdout"].write(b"ok")
-            return _completed_process()
+            return process
 
         with patch(
             "ces.execution.runtimes.adapters.subprocess.Popen",
@@ -398,11 +443,14 @@ class TestRuntimeAdapterEnvScrubbing:
         ) as mock_popen:
             adapter.run_task(
                 manifest_description="Implement feature",
-                prompt_pack="Prompt pack",
+                prompt_pack="Sensitive prompt body",
                 working_dir=tmp_path,
             )
 
-        assert mock_popen.call_args.kwargs["stdin"] == subprocess.DEVNULL
+        command = mock_popen.call_args.args[0]
+        assert "Sensitive prompt body" not in command
+        assert mock_popen.call_args.kwargs["stdin"] == subprocess.PIPE
+        process.communicate.assert_called_once_with(input=b"Sensitive prompt body", timeout=1800)
 
     @patch.dict(
         "os.environ",
@@ -469,7 +517,8 @@ class TestRuntimeAdapterEnvScrubbing:
         process.poll.return_value = None
         process.wait.return_value = None
 
-        def _communicate(*, timeout: int):
+        def _communicate(*, timeout: int, **kwargs):
+            assert kwargs["input"] == b"Prompt pack"
             del timeout
             handler = installed_handlers[signal.SIGTERM]
             assert callable(handler)

@@ -250,10 +250,12 @@ class _BaseRuntimeAdapter:
         env: Mapping[str, str],
         timeout_seconds: int,
         cwd: Path | None = None,
+        stdin_text: str | None = None,
     ) -> int:
         """Run a local runtime in its own process group and clean it up on interruption."""
+        stdin_data = stdin_text.encode("utf-8") if stdin_text is not None else None
         popen_kwargs: dict[str, Any] = {
-            "stdin": subprocess.DEVNULL,
+            "stdin": subprocess.PIPE if stdin_data is not None else subprocess.DEVNULL,
             "stdout": stdout_file,
             "stderr": stderr_file,
             "env": dict(env),
@@ -280,7 +282,10 @@ class _BaseRuntimeAdapter:
             for signum in signal_numbers:
                 previous_handlers[signum] = signal.signal(signum, _handle_parent_signal)
         try:
-            process.communicate(timeout=timeout_seconds)
+            if stdin_data is None:
+                process.communicate(timeout=timeout_seconds)
+            else:
+                process.communicate(input=stdin_data, timeout=timeout_seconds)
             return int(process.returncode or 0)
         except subprocess.TimeoutExpired:
             diagnostic = self._timeout_diagnostics(
@@ -375,11 +380,22 @@ class _BaseRuntimeAdapter:
             data = handle.read(_MAX_RUNTIME_OUTPUT_BYTES + 1)
         return cls._decode_limited_output(data)
 
+    @staticmethod
+    def _cap_text(text: str) -> str:
+        data = text.encode("utf-8")
+        return _BaseRuntimeAdapter._decode_limited_output(data)
+
     @classmethod
     def _read_scrubbed_limited_path(cls, path: Path) -> str:
         if path.is_symlink():
             raise ValueError(f"Refusing to read runtime output through symlinked path: {path}")
-        text = scrub_secrets_from_text(cls._read_limited_path(path))
+        return scrub_secrets_from_text(cls._read_limited_path(path))
+
+    @classmethod
+    def _read_scrubbed_full_path(cls, path: Path) -> str:
+        if path.is_symlink():
+            raise ValueError(f"Refusing to read runtime output through symlinked path: {path}")
+        text = scrub_secrets_from_text(path.read_text(encoding="utf-8", errors="replace"))
         path.write_text(text, encoding="utf-8")
         try:
             os.chmod(path, stat.S_IRUSR | stat.S_IWUSR)
@@ -471,7 +487,6 @@ class CodexRuntimeAdapter(_BaseRuntimeAdapter):
         command = [
             self._resolved_binary(),
             "exec",
-            prompt_pack or manifest_description,
             "-C",
             str(working_dir),
             "--sandbox",
@@ -489,13 +504,14 @@ class CodexRuntimeAdapter(_BaseRuntimeAdapter):
                     stderr_file=stderr_file,
                     env=self._build_env(),
                     timeout_seconds=timeout_seconds,
+                    stdin_text=prompt_pack or manifest_description,
                 )
             except subprocess.TimeoutExpired:
                 exit_code = _TIMEOUT_EXIT_CODE
                 stderr_file.write(("\n" + self._timeout_message(timeout_seconds)).encode("utf-8"))
             stdout_file.flush()
-            transcript = self._read_scrubbed_limited_path(transcript_file)
-            stdout = transcript.removeprefix(self._runtime_transcript_seed(invocation_ref))
+            transcript = self._read_scrubbed_full_path(transcript_file)
+            stdout = self._cap_text(transcript.removeprefix(self._runtime_transcript_seed(invocation_ref)))
             stderr = scrub_secrets_from_text(self._read_limited_file(stderr_file))
         if last_message_file.exists():
             message_stdout = self._read_scrubbed_limited_path(last_message_file)
@@ -543,7 +559,6 @@ class ClaudeRuntimeAdapter(_BaseRuntimeAdapter):
         command = [
             self._resolved_binary(),
             "-p",
-            prompt_pack or manifest_description,
             "--output-format",
             "json",
             # ``default`` (not ``acceptEdits``) so the model must request tool
@@ -567,6 +582,7 @@ class ClaudeRuntimeAdapter(_BaseRuntimeAdapter):
                     env=self._build_env(),
                     timeout_seconds=timeout_seconds,
                     cwd=working_dir,
+                    stdin_text=prompt_pack or manifest_description,
                 )
             except subprocess.TimeoutExpired:
                 exit_code = _TIMEOUT_EXIT_CODE

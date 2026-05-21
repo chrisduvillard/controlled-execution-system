@@ -218,11 +218,12 @@ markers = [
 source = ["ces"]
 branch = true
 omit = [
-    # The six expert-workflow CLI commands below predate the builder-first
-    # pivot and are kept omitted for now: they shell out to services that
-    # are mocked differently than the builder path. Bringing them under the
-    # gate is tracked as a 0.1.x follow-up.
-    "src/ces/cli/audit_cmd.py",
+    # The five expert-workflow CLI commands below predate the builder-first
+    # pivot and remain omitted for now: they shell out to services that are
+    # mocked differently than the builder path. `audit_cmd.py` was brought
+    # back under coverage with the public `ces audit verify` command.
+    # Bringing the remaining commands under the gate is tracked as a 0.1.x
+    # follow-up.
     "src/ces/cli/classify_cmd.py",
     "src/ces/cli/gate_cmd.py",
     "src/ces/cli/intake_cmd.py",

@@ -11,6 +11,7 @@ from typing import Any
 
 from ces.harness.prompts.engineering_charter import attach_engineering_charter
 from ces.harness.services.change_impact import build_observability_acceptance_template
+from ces.shared.secrets import scrub_secrets_from_text
 
 SIMPLICITY_GUARD_INSTRUCTIONS = """\
 
@@ -142,25 +143,31 @@ def build_manifest_execution_prompt(manifest: object) -> str:
 
 
 def normalize_runtime_execution(result: Any) -> dict[str, Any]:
-    """Normalize provider runtime results to the persisted execution dict shape."""
+    """Normalize provider runtime results to the persisted, scrubbed execution dict shape."""
 
     if isinstance(result, dict):
-        return result
-    runtime_result = getattr(result, "runtime_result", None)
-    if runtime_result is not None:
-        if hasattr(runtime_result, "model_dump"):
-            return runtime_result.model_dump(mode="json")
-        return dict(runtime_result)
-    if hasattr(result, "model_dump"):
-        return result.model_dump(mode="json")
-    return {
-        "runtime_name": getattr(result, "runtime_name"),
-        "runtime_version": getattr(result, "runtime_version"),
-        "reported_model": getattr(result, "reported_model", None),
-        "invocation_ref": getattr(result, "invocation_ref"),
-        "exit_code": getattr(result, "exit_code"),
-        "stdout": getattr(result, "stdout", ""),
-        "stderr": getattr(result, "stderr", ""),
-        "duration_seconds": getattr(result, "duration_seconds", 0.0),
-        "transcript_path": getattr(result, "transcript_path", None),
-    }
+        execution = dict(result)
+    else:
+        runtime_result = getattr(result, "runtime_result", None)
+        if runtime_result is not None:
+            if hasattr(runtime_result, "model_dump"):
+                execution = runtime_result.model_dump(mode="json")
+            else:
+                execution = dict(runtime_result)
+        elif hasattr(result, "model_dump"):
+            execution = result.model_dump(mode="json")
+        else:
+            execution = {
+                "runtime_name": getattr(result, "runtime_name"),
+                "runtime_version": getattr(result, "runtime_version"),
+                "reported_model": getattr(result, "reported_model", None),
+                "invocation_ref": getattr(result, "invocation_ref"),
+                "exit_code": getattr(result, "exit_code"),
+                "stdout": getattr(result, "stdout", ""),
+                "stderr": getattr(result, "stderr", ""),
+                "duration_seconds": getattr(result, "duration_seconds", 0.0),
+                "transcript_path": getattr(result, "transcript_path", None),
+            }
+    execution["stdout"] = scrub_secrets_from_text(str(execution.get("stdout") or ""))
+    execution["stderr"] = scrub_secrets_from_text(str(execution.get("stderr") or ""))
+    return execution

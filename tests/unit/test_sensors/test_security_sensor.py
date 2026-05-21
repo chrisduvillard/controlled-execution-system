@@ -135,6 +135,62 @@ class TestSecuritySensorContentChecks:
         assert "GitHub token" in result.details
 
     @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("label", "secret", "expected"),
+        [
+            ("github_pat", "github" + "_pat_" + "A" * 30, "GitHub token"),
+            ("gitlab", "glpat-" + "B" * 24, "GitLab token"),
+            ("slack", "xoxc-" + "1234567890" + "-abcdef", "Slack token"),
+            ("slack_config", "xoxe-" + "1234567890" + "-abcdef", "Slack token"),
+            ("jwt", "eyJ" + ("a" * 12) + "." + ("b" * 12) + "." + ("c" * 12), "JWT"),
+            ("dsn", "postgres://user:" + "pass" + "w0rd@example.invalid/db", "Credential-bearing URL"),
+        ],
+    )
+    async def test_public_audit_token_matrix_detected(self, sensor, tmp_path, label, secret, expected):
+        (tmp_path / "tokens.py").write_text(f"{label} = {secret!r}\n", encoding="utf-8")
+        result = await sensor.run(
+            {
+                "affected_files": ["tokens.py"],
+                "project_root": str(tmp_path),
+            }
+        )
+        assert result.passed is False
+        assert expected in result.details
+
+    @pytest.mark.asyncio
+    async def test_google_service_account_json_detected(self, sensor, tmp_path):
+        begin_private_key = "-----" + "BEGIN " + "PRIVATE KEY" + "-----"
+        end_private_key = "-----" + "END " + "PRIVATE KEY" + "-----"
+        (tmp_path / "credentials.json").write_text(
+            (
+                '{"type": "service_account", "private_key_id": "abc123", '
+                f'"private_key": "{begin_private_key}\\nMIIEvfixture\\n{end_private_key}\\n"}}'
+            ),
+            encoding="utf-8",
+        )
+        result = await sensor.run(
+            {
+                "affected_files": ["credentials.json"],
+                "project_root": str(tmp_path),
+            }
+        )
+        assert result.passed is False
+        assert "Sensitive file" in result.details
+        assert "Google service account JSON" in result.details
+
+    @pytest.mark.asyncio
+    async def test_large_scannable_file_reports_security_gap(self, sensor, tmp_path):
+        (tmp_path / "large.log").write_text("x" * 1_048_577, encoding="utf-8")
+        result = await sensor.run(
+            {
+                "affected_files": ["large.log"],
+                "project_root": str(tmp_path),
+            }
+        )
+        assert result.passed is False
+        assert "Large file skipped by security scan" in result.details
+
+    @pytest.mark.asyncio
     async def test_score_decreases_with_more_findings(self, sensor, tmp_path):
         password_assignment = "password" + ' = "secret"\n'
         api_key_assignment = "api_key" + ' = "fixture_api_key_value"\n'

@@ -214,6 +214,42 @@ async def test_verify_integrity_disrupted_order(ledger):
     assert await ledger.verify_integrity(entries=disrupted_chain) is False
 
 
+async def test_verify_integrity_wrong_previous_hash(ledger):
+    """verify_integrity returns False when an entry points at the wrong previous hash."""
+    entries = []
+    for i in range(3):
+        e = await ledger.append_event(
+            event_type=EventType.TRUTH_CHANGE,
+            actor=f"actor-{i}",
+            actor_type=ActorType.HUMAN,
+            action_summary=f"Entry {i}",
+        )
+        entries.append(e)
+
+    tampered = entries[1].model_copy(update={"prev_hash": "0" * 64})
+
+    assert await ledger.verify_integrity(entries=[entries[0], tampered, entries[2]]) is False
+
+
+async def test_verify_integrity_wrong_hmac_secret(ledger):
+    """verify_integrity returns False when the verifier uses the wrong HMAC secret."""
+    from ces.control.services.audit_ledger import AuditLedgerService
+
+    entries = []
+    for i in range(2):
+        e = await ledger.append_event(
+            event_type=EventType.TRUTH_CHANGE,
+            actor=f"actor-{i}",
+            actor_type=ActorType.HUMAN,
+            action_summary=f"Entry {i}",
+        )
+        entries.append(e)
+
+    wrong_secret_ledger = AuditLedgerService(secret_key=b"wrong-secret-key-32bytes-long!!!!", repository=None)
+
+    assert await wrong_secret_ledger.verify_integrity(entries=entries) is False
+
+
 # ---------------------------------------------------------------------------
 # All EventType values
 # ---------------------------------------------------------------------------

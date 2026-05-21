@@ -9,6 +9,10 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[2]
 WORKFLOWS = ROOT / ".github" / "workflows"
+PINNED_ACTIONS_CHECKOUT_SHA = "de0fac2e4500dabe0009e67214ff5f5447ce83dd"
+PINNED_ACTIONS_SETUP_PYTHON_SHA = "a309ff8b426b58ec0e2a45f0f869d46889d02405"
+PINNED_ASTRAL_SETUP_UV_SHA = "37802adc94f370d6bfd71619e3f0bf239e1f3b78"
+PINNED_UPLOAD_ARTIFACT_SHA = "043fb46d1a93c77aae656e7c1c64a875d1fc6a0a"
 
 
 def _workflow(name: str) -> dict[str, Any]:
@@ -74,21 +78,24 @@ def test_publish_workflows_upload_checked_distribution_artifacts() -> None:
     publish = (WORKFLOWS / "publish.yml").read_text(encoding="utf-8")
     testpypi = (WORKFLOWS / "publish-testpypi.yml").read_text(encoding="utf-8")
 
-    assert "actions/upload-artifact@v7" in publish
+    assert f"actions/upload-artifact@{PINNED_UPLOAD_ARTIFACT_SHA}" in publish
     assert "actions/upload-artifact@v4" not in publish
     assert "controlled-execution-system-${{ github.ref_name }}-dist" in publish
-    assert "actions/upload-artifact@v7" in testpypi
+    assert f"actions/upload-artifact@{PINNED_UPLOAD_ARTIFACT_SHA}" in testpypi
     assert "actions/upload-artifact@v4" not in testpypi
     assert "controlled-execution-system-${{ inputs.package-version }}-testpypi-dist" in testpypi
 
 
-def test_generated_github_ci_template_uses_node24_action_majors() -> None:
+def test_generated_github_ci_template_pins_external_actions_to_shas() -> None:
     template = (ROOT / "src" / "ces" / "cli" / "templates" / "ci" / "github.yml").read_text(encoding="utf-8")
 
-    assert "actions/checkout@v6" in template
-    assert "actions/setup-python@v6" in template
-    assert "astral-sh/setup-uv@v7" in template
-    assert "actions/upload-artifact@v7" in template
+    assert f"actions/checkout@{PINNED_ACTIONS_CHECKOUT_SHA}" in template
+    assert f"actions/setup-python@{PINNED_ACTIONS_SETUP_PYTHON_SHA}" in template
+    assert f"astral-sh/setup-uv@{PINNED_ASTRAL_SETUP_UV_SHA}" in template
+    assert f"actions/upload-artifact@{PINNED_UPLOAD_ARTIFACT_SHA}" in template
+    assert "actions/checkout@v6" not in template
+    assert "actions/setup-python@v6" not in template
+    assert "astral-sh/setup-uv@v7" not in template
     assert "actions/upload-artifact@v4" not in template
 
 

@@ -3,11 +3,34 @@ title = "CES gitleaks configuration"
 [extend]
 useDefault = true
 
+[[rules]]
+id = "ces-synthetic-secret"
+description = "Harmless sentinel used to prove CI gitleaks enforcement is active"
+regex = '''CES_GITLEAKS_SYNTHETIC_SECRET_[A-Z0-9]{16}'''
+secretGroup = 0
+keywords = ["CES_GITLEAKS_SYNTHETIC_SECRET_"]
+
 [allowlist]
 description = "Documented fake tokens used by tests and development-default guards"
+regexTarget = "match"
 regexes = [
   '''1234567890abcdef''',
   '''do-not-use-in-production''',
   '''KEY_PRIVATE_FILENAME = "ed25519_private.key"''',
   '''\*\*\*''',
+]
+paths = [
+  '''(^|/)__pycache__/''',
+  '''^\.ces/''',
+  '''^\.mypy_cache/''',
+  '''^\.pytest_cache/''',
+  '''^\.ruff_cache/''',
+  '''^\.venv/''',
+  '''^dist/''',
+]
+# Historical false-positive test-fixture commits. Keep this list narrow and
+# revisit during every public release checklist pass.
+commits = [
+  "f3d88829bc8cf9072a2c322f6b6133d08fd90d9e",
+  "07ce1252e1bde67a7f999bfbd215309ae35f4cdf",
 ]

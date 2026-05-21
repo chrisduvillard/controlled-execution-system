@@ -13,6 +13,9 @@ permissions:
   contents: read
   security-events: write
 
+# External actions are pinned to commit SHAs. Source tags:
+# actions/checkout@v6 and github/codeql-action@v4.
+
 jobs:
   analyze:
     name: Analyze Python
@@ -20,12 +23,12 @@ jobs:
     timeout-minutes: 15
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
 
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@v4
+        uses: github/codeql-action/init@9e0d7b8d25671d64c341c19c0152d693099fb5ba
         with:
           languages: python
 
       - name: Perform CodeQL analysis
-        uses: github/codeql-action/analyze@v4
+        uses: github/codeql-action/analyze@9e0d7b8d25671d64c341c19c0152d693099fb5ba

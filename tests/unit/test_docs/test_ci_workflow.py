@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
+PINNED_SETUP_GO_SHA = "4a3601121dd01d1626a1e23e37211e3254c1c06c"
 
 
 def test_ci_installs_explicit_local_ci_dependency_group() -> None:
@@ -93,6 +95,38 @@ def test_ci_dependency_audit_exports_dependencies_without_editable_project() -> 
     assert "uv export --frozen --group ci --format requirements-txt" in workflow_text
     assert "--no-emit-project" in workflow_text
     assert "uv run pip-audit --strict -r /tmp/ces-ci-requirements.txt" in workflow_text
+
+
+def test_ci_enforces_gitleaks_with_synthetic_secret_validation() -> None:
+    workflow_text = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+    precommit_text = (ROOT / ".pre-commit-config.yaml").read_text(encoding="utf-8")
+
+    assert "secret-scan:" in workflow_text
+    assert f"actions/setup-go@{PINNED_SETUP_GO_SHA}" in workflow_text
+    assert "go install github.com/zricethezav/gitleaks/v8@v8.30.0" in workflow_text
+    assert "fetch-depth: 0" in workflow_text
+    assert "gitleaks detect --source . --config .gitleaks.toml --redact\n" in workflow_text
+    assert "--redact --no-git" in workflow_text
+    assert "Validate gitleaks detects a synthetic secret" in workflow_text
+    assert "CES_GITLEAKS_SYNTHETIC_SECRET_" in workflow_text
+    assert "Expected gitleaks to detect the synthetic secret fixture." in workflow_text
+    assert "https://github.com/gitleaks/gitleaks" in precommit_text
+    assert "rev: v8.30.0" in precommit_text
+    assert "args: [--config, .gitleaks.toml]" in precommit_text
+
+
+def test_repository_workflows_pin_external_actions_to_commit_shas() -> None:
+    unpinned_action_refs: list[str] = []
+    action_ref_pattern = re.compile(r"uses:\s+([^@\s]+)@([^\s#]+)")
+
+    for workflow_path in (ROOT / ".github" / "workflows").glob("*.yml"):
+        workflow_text = workflow_path.read_text(encoding="utf-8")
+        for match in action_ref_pattern.finditer(workflow_text):
+            ref = match.group(2)
+            if not re.fullmatch(r"[0-9a-f]{40}", ref):
+                unpinned_action_refs.append(f"{workflow_path.name}: {match.group(0)}")
+
+    assert unpinned_action_refs == []
 
 
 def test_publish_workflow_runs_builder_first_smoke_before_pypi_publish() -> None:

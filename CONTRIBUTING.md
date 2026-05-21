@@ -89,6 +89,11 @@ uv run ruff format src/ tests/
 uv run mypy src/ces/ --ignore-missing-imports
 ```
 
+The mypy gate uses the repository's current compatibility profile: `strict = true`
+is enabled in `pyproject.toml`, with selected relaxations for legacy/public CLI
+surfaces. Treat new runtime, crypto, local-state, and verification code as the
+first places to tighten rather than broaden those relaxations.
+
 ### Pre-commit Hooks
 
 The project uses pre-commit hooks for automated quality checks:
