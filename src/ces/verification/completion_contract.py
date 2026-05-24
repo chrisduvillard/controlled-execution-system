@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import json
+import os
+import tempfile
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
+from ces.local_state_path import read_text_project_path, write_text_project_path
 from ces.shared.enums import RiskTier
 
 
@@ -163,12 +166,16 @@ class CompletionContract:
         )
 
     def write(self, path: Path) -> None:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(self.to_dict(), indent=2) + "\n", encoding="utf-8")
+        _write_contract_text(path, json.dumps(self.to_dict(), indent=2) + "\n")
 
     @classmethod
     def read(cls, path: Path) -> CompletionContract:
-        return cls.from_dict(json.loads(path.read_text(encoding="utf-8")))
+        project_root = _project_root_for_ces_path(path)
+        if project_root is not None:
+            payload = read_text_project_path(project_root, path)
+        else:
+            payload = path.read_text(encoding="utf-8")
+        return cls.from_dict(json.loads(payload))
 
 
 def criteria_from_texts(texts: list[str] | tuple[str, ...]) -> tuple[AcceptanceCriterion, ...]:
@@ -205,3 +212,33 @@ def _string_tuple(value: Any) -> tuple[str, ...]:
     if not isinstance(value, list | tuple):
         return ()
     return tuple(str(item).strip() for item in value if str(item).strip())
+
+
+def _write_contract_text(path: Path, content: str) -> None:
+    project_root = _project_root_for_ces_path(path)
+    if project_root is not None:
+        write_text_project_path(project_root, path, content)
+        return
+    if path.parent.exists() and path.parent.is_symlink():
+        raise ValueError(f"Refusing to write through symlinked directory: {path.parent}")
+    if path.exists() and path.is_symlink():
+        raise ValueError(f"Refusing to write through symlinked file: {path}")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if path.parent.is_symlink() or path.is_symlink():
+        raise ValueError(f"Refusing to write completion contract through symlink: {path}")
+    with tempfile.NamedTemporaryFile(
+        "w", encoding="utf-8", dir=path.parent, prefix=f".{path.name}.", suffix=".tmp", delete=False
+    ) as handle:
+        tmp_name = handle.name
+        handle.write(content)
+    os.replace(tmp_name, path)
+
+
+def _project_root_for_ces_path(path: Path) -> Path | None:
+    parts = path.parts
+    if ".ces" not in parts:
+        return None
+    index = parts.index(".ces")
+    if index == 0:
+        return Path.cwd()
+    return Path(*parts[:index])

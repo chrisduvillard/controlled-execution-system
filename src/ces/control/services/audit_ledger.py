@@ -16,6 +16,7 @@ Threat mitigations:
 
 from __future__ import annotations
 
+import hmac
 import uuid
 from datetime import datetime, timezone
 
@@ -367,7 +368,8 @@ class AuditLedgerService:
         if self._repository is None:
             msg = "Repository not configured for queries"
             raise RuntimeError(msg)
-        rows = await self._repository.get_by_event_type(event_type.value, project_id=project_id)
+        resolved_project_id = self._resolve_project_id(project_id)
+        rows = await self._repository.get_by_event_type(event_type.value, project_id=resolved_project_id)
         return [self._row_to_entry(r) for r in rows[:limit]]
 
     async def query_by_actor(
@@ -391,7 +393,8 @@ class AuditLedgerService:
         if self._repository is None:
             msg = "Repository not configured for queries"
             raise RuntimeError(msg)
-        rows = await self._repository.get_by_actor(actor, project_id=project_id)
+        resolved_project_id = self._resolve_project_id(project_id)
+        rows = await self._repository.get_by_actor(actor, project_id=resolved_project_id)
         return [self._row_to_entry(r) for r in rows[:limit]]
 
     async def query_by_time_range(
@@ -415,7 +418,8 @@ class AuditLedgerService:
         if self._repository is None:
             msg = "Repository not configured for queries"
             raise RuntimeError(msg)
-        rows = await self._repository.get_by_time_range(start, end, project_id=project_id)
+        resolved_project_id = self._resolve_project_id(project_id)
+        rows = await self._repository.get_by_time_range(start, end, project_id=resolved_project_id)
         return [self._row_to_entry(r) for r in rows]
 
     # -----------------------------------------------------------------
@@ -441,8 +445,13 @@ class AuditLedgerService:
             True if chain is valid, False if tampered or broken.
         """
         if entries is None and self._repository is not None:
-            rows = await self._repository.get_latest(limit=10000, project_id=project_id)
-            entries = [self._row_to_entry(r) for r in reversed(rows)]
+            resolved_project_id = self._resolve_project_id(project_id)
+            get_all = getattr(self._repository, "get_all", None)
+            if get_all is None:
+                msg = "Repository does not support full-chain audit verification"
+                raise RuntimeError(msg)
+            rows = await get_all(project_id=resolved_project_id)
+            entries = [self._row_to_entry(r) for r in rows]
 
         if not entries:
             return True
@@ -451,7 +460,7 @@ class AuditLedgerService:
         for entry in entries:
             entry_data = entry.model_dump(mode="json", exclude={"entry_hash"})
             expected_hash = compute_entry_hash(entry_data, prev_hash, self._secret_key)
-            if entry.entry_hash != expected_hash:
+            if not hmac.compare_digest(entry.entry_hash or "", expected_hash):
                 return False
             prev_hash = entry.entry_hash
 

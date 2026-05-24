@@ -2,7 +2,18 @@
 
 from __future__ import annotations
 
+import sys
 from pathlib import Path
+
+import pytest
+
+requires_symlink = pytest.mark.skipif(sys.platform == "win32", reason="Windows symlink privileges vary by environment")
+
+
+def _minimal_contract():
+    from ces.verification.completion_contract import CompletionContract
+
+    return CompletionContract(request="Create a recipe app", project_type="unknown")
 
 
 def test_completion_contract_roundtrips_json(tmp_path: Path) -> None:
@@ -165,3 +176,86 @@ def test_completion_contract_roundtrip_preserves_proof_binding_hash(tmp_path: Pa
 
     assert loaded.proof_binding_hash == "abc123"
     assert loaded.to_dict()["proof_binding_hash"] == "abc123"
+
+
+@requires_symlink
+def test_completion_contract_rejects_symlinked_ces_directory(tmp_path: Path) -> None:
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (tmp_path / ".ces").symlink_to(outside, target_is_directory=True)
+
+    with pytest.raises(ValueError, match="symlinked|outside"):
+        _minimal_contract().write(tmp_path / ".ces" / "completion-contract.json")
+
+    assert not (outside / "completion-contract.json").exists()
+
+
+@requires_symlink
+def test_completion_contract_rejects_symlinked_destination(tmp_path: Path) -> None:
+    ces_dir = tmp_path / ".ces"
+    ces_dir.mkdir()
+    outside = tmp_path / "outside-contract.json"
+    (ces_dir / "completion-contract.json").symlink_to(outside)
+
+    with pytest.raises(ValueError, match="symlinked|outside"):
+        _minimal_contract().write(ces_dir / "completion-contract.json")
+
+    assert not outside.exists()
+
+
+def test_completion_contract_write_accepts_relative_ces_path(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from ces.verification.completion_contract import CompletionContract
+
+    monkeypatch.chdir(tmp_path)
+    path = Path(".ces/completion-contract.json")
+
+    _minimal_contract().write(path)
+    loaded = CompletionContract.read(path)
+
+    assert loaded.request == "Create a recipe app"
+    assert (tmp_path / ".ces" / "completion-contract.json").is_file()
+
+
+def test_completion_contract_write_with_relative_project_root_does_not_double_prefix(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from ces.verification.completion_contract import CompletionContract
+
+    project = tmp_path / "project"
+    project.mkdir()
+    monkeypatch.chdir(tmp_path)
+    path = Path("project/.ces/completion-contract.json")
+
+    _minimal_contract().write(path)
+    loaded = CompletionContract.read(path)
+
+    assert loaded.request == "Create a recipe app"
+    assert path.is_file()
+    assert not (project / "project" / ".ces" / "completion-contract.json").exists()
+
+
+@requires_symlink
+def test_completion_contract_read_rejects_symlinked_ces_directory(tmp_path: Path) -> None:
+    from ces.verification.completion_contract import CompletionContract
+
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "completion-contract.json").write_text('{"version": 1, "request": "x", "project_type": "unknown"}\n')
+    (tmp_path / ".ces").symlink_to(outside, target_is_directory=True)
+
+    with pytest.raises(ValueError, match="symlinked|outside"):
+        CompletionContract.read(tmp_path / ".ces" / "completion-contract.json")
+
+
+@requires_symlink
+def test_completion_contract_read_rejects_symlinked_ces_file(tmp_path: Path) -> None:
+    from ces.verification.completion_contract import CompletionContract
+
+    ces_dir = tmp_path / ".ces"
+    ces_dir.mkdir()
+    outside = tmp_path / "outside-contract.json"
+    outside.write_text('{"version": 1, "request": "x", "project_type": "unknown"}\n')
+    (ces_dir / "completion-contract.json").symlink_to(outside)
+
+    with pytest.raises(ValueError, match="symlinked|outside"):
+        CompletionContract.read(ces_dir / "completion-contract.json")

@@ -49,16 +49,111 @@ from ces.cli import (
 )
 from ces.cli._output import set_json_mode
 
+_COMMANDS_WITH_LOCAL_JSON = {
+    ("approve",),
+    ("audit",),
+    ("audit", "verify"),
+    ("doctor",),
+    ("intake", "create"),
+    ("intake", "show"),
+    ("intake", "review"),
+    ("recover",),
+    ("report", "builder"),
+    ("review", "generate"),
+    ("review", "list"),
+    ("status",),
+    ("triage",),
+    ("verify",),
+    ("why",),
+}
+_GROUP_COMMANDS = {"audit", "intake", "report", "review"}
+_ROOT_OPTIONS_WITH_VALUES = {"--config"}
+_OPTIONS_WITH_VALUES = {
+    "--actor",
+    "-a",
+    "--after",
+    "--base",
+    "--before",
+    "-C",
+    "--event-type",
+    "-e",
+    "--deferred",
+    "--from-build",
+    "--from-github-issue",
+    "--format",
+    "--head",
+    "--interval",
+    "--limit",
+    "-l",
+    "--offset",
+    "-o",
+    "--contract",
+    "--objective",
+    "--output",
+    "--output-dir",
+    "--pr",
+    "--project-root",
+    "--reason",
+    "-r",
+    "--review-id",
+    "--runtime",
+    "--scope",
+    "--section",
+    "--strict-providers",
+}
 
-def _root_json_requested(argv: Sequence[str]) -> bool:
-    """Return True when the root --json flag appears before the command token."""
-    for arg in argv:
+
+def _json_requested(argv: Sequence[str]) -> bool:
+    """Return True when root ``--json`` or supported command-local ``--json`` is present."""
+    command_path, remainder = _split_command_path(argv)
+    if command_path is None:
+        return False
+    if command_path == ():
+        return True
+    return command_path in _COMMANDS_WITH_LOCAL_JSON and _contains_json_option(remainder)
+
+
+def _split_command_path(argv: Sequence[str]) -> tuple[tuple[str, ...] | None, Sequence[str]]:
+    """Return the root or command path that owns a local JSON option.
+
+    ``()`` represents the root ``--json`` flag. ``None`` means no JSON mode was
+    requested by a supported command path.
+    """
+    index = 0
+    while index < len(argv):
+        arg = argv[index]
+        if arg == "--":
+            return None, ()
         if arg == "--json":
-            return True
+            return (), argv[index + 1 :]
+        if arg in _ROOT_OPTIONS_WITH_VALUES:
+            index += 2
+            continue
+        if arg.startswith("-"):
+            index += 1
+            continue
+        command = arg
+        remainder = argv[index + 1 :]
+        if command not in _GROUP_COMMANDS:
+            return (command,), remainder
+        if not remainder or remainder[0].startswith("-") or remainder[0] == "--":
+            return (command,), remainder
+        return (command, remainder[0]), remainder[1:]
+    return None, ()
+
+
+def _contains_json_option(argv: Sequence[str]) -> bool:
+    index = 0
+    while index < len(argv):
+        arg = argv[index]
         if arg == "--":
             return False
-        if not arg.startswith("-"):
-            return False
+        if arg == "--json":
+            return True
+        if arg in _OPTIONS_WITH_VALUES:
+            index += 2
+            continue
+        index += 1
     return False
 
 
@@ -147,7 +242,7 @@ class JsonAwareTyperGroup(typer.core.TyperGroup):
         argv = _rewrite_review_default(_rewrite_intake_default(list(sys.argv[1:] if args is None else args)))
         if not argv:
             argv = ["--help"]
-        json_requested = _root_json_requested(argv)
+        json_requested = _json_requested(argv)
         try:
             result = super().main(
                 args=argv,

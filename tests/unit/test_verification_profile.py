@@ -3,10 +3,15 @@
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
+
+import pytest
 
 from ces.verification.profile import VerificationProfile, VerificationStatus, load_verification_profile
 from ces.verification.profile_detector import detect_verification_profile, write_verification_profile
+
+requires_symlink = pytest.mark.skipif(sys.platform == "win32", reason="Windows symlink privileges vary by environment")
 
 
 def test_loads_profile_and_exposes_required_optional_unavailable(tmp_path: Path) -> None:
@@ -86,3 +91,67 @@ def test_detector_marks_configured_node_package_scripts(tmp_path: Path) -> None:
     assert profile.requirement_for("node-build").status is VerificationStatus.REQUIRED
     assert profile.requirement_for("node-lint").status is VerificationStatus.UNAVAILABLE
     assert "package.json test script detected" in profile.requirement_for("node-test").reason
+
+
+@requires_symlink
+def test_write_verification_profile_rejects_symlinked_ces_directory(tmp_path: Path) -> None:
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (tmp_path / ".ces").symlink_to(outside, target_is_directory=True)
+
+    with pytest.raises(ValueError, match="symlinked|outside"):
+        write_verification_profile(tmp_path, VerificationProfile(version=1, checks={}))
+
+    assert not (outside / "verification-profile.json").exists()
+
+
+@requires_symlink
+def test_write_verification_profile_rejects_symlinked_destination(tmp_path: Path) -> None:
+    ces_dir = tmp_path / ".ces"
+    ces_dir.mkdir()
+    outside = tmp_path / "outside-profile.json"
+    (ces_dir / "verification-profile.json").symlink_to(outside)
+
+    with pytest.raises(ValueError, match="symlinked|outside"):
+        write_verification_profile(tmp_path, VerificationProfile(version=1, checks={}))
+
+    assert not outside.exists()
+
+
+@requires_symlink
+def test_load_verification_profile_rejects_symlinked_ces_directory(tmp_path: Path) -> None:
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "verification-profile.json").write_text(
+        VerificationProfile(version=1, checks={}).to_json(), encoding="utf-8"
+    )
+    (tmp_path / ".ces").symlink_to(outside, target_is_directory=True)
+
+    with pytest.raises(ValueError, match="symlinked|outside"):
+        load_verification_profile(tmp_path)
+
+
+@requires_symlink
+def test_load_verification_profile_rejects_symlinked_profile_file(tmp_path: Path) -> None:
+    ces_dir = tmp_path / ".ces"
+    ces_dir.mkdir()
+    outside = tmp_path / "outside-profile.json"
+    outside.write_text(VerificationProfile(version=1, checks={}).to_json(), encoding="utf-8")
+    (ces_dir / "verification-profile.json").symlink_to(outside)
+
+    with pytest.raises(ValueError, match="symlinked|outside"):
+        load_verification_profile(tmp_path)
+
+
+def test_write_verification_profile_with_relative_root_does_not_double_prefix(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    project = tmp_path / "project"
+    project.mkdir()
+    monkeypatch.chdir(tmp_path)
+
+    path = write_verification_profile(Path("project"), VerificationProfile(version=1, checks={}))
+
+    assert path == Path("project") / ".ces" / "verification-profile.json"
+    assert path.is_file()
+    assert not (project / "project" / ".ces" / "verification-profile.json").exists()
