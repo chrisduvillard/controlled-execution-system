@@ -83,3 +83,117 @@ def test_benchmark_greenfield_unknown_scenario_exits_nonzero(tmp_path: Path) -> 
 
     assert result.exit_code != 0
     assert "Unknown benchmark scenario" in result.stdout
+
+
+def test_benchmark_compare_json_writes_side_by_side_report(tmp_path: Path) -> None:
+    app = _get_app()
+    spec_path = tmp_path / "ab-spec.json"
+    spec_path.write_text(
+        json.dumps(
+            {
+                "benchmark_name": "CLI A/B compare",
+                "runs": [
+                    {
+                        "scenario_id": "brownfield-fix",
+                        "scenario_type": "brownfield",
+                        "objective": "Fix a regression with tests.",
+                        "vanilla": {
+                            "workflow": "vanilla-codex",
+                            "metrics": {
+                                "completion": {"value": True, "evidence": "measured"},
+                                "tests": {"value": 1, "evidence": "measured"},
+                                "bugs": {"value": 1, "evidence": "measured"},
+                                "auditability": {"value": 1, "evidence": "measured"},
+                                "control": {"value": 1, "evidence": "measured"},
+                            },
+                        },
+                        "ces": {
+                            "workflow": "ces-codex",
+                            "metrics": {
+                                "completion": {"value": True, "evidence": "measured"},
+                                "tests": {"value": 3, "evidence": "measured"},
+                                "bugs": {"value": 0, "evidence": "measured"},
+                                "auditability": {"value": 5, "evidence": "measured"},
+                                "control": {"value": 5, "evidence": "measured"},
+                            },
+                        },
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    out_dir = tmp_path / "report"
+
+    result = runner.invoke(
+        app,
+        [
+            "--json",
+            "benchmark",
+            "compare",
+            "--project-spec",
+            str(spec_path),
+            "--out",
+            str(out_dir),
+        ],
+    )
+
+    assert result.exit_code == 0, result.stdout
+    payload = json.loads(result.stdout)
+    assert payload["benchmark_name"] == "CLI A/B compare"
+    assert payload["summary"]["recommendation"] == "ces-adds-measured-value"
+    assert payload["summary"]["comparable_scenario_count"] == 1
+    assert Path(payload["json_report_path"]).is_file()
+    assert Path(payload["markdown_report_path"]).is_file()
+
+
+def test_benchmark_compare_text_output_highlights_recommendation(tmp_path: Path) -> None:
+    app = _get_app()
+    spec_path = tmp_path / "ab-spec.json"
+    spec_path.write_text(
+        json.dumps(
+            {
+                "benchmark_name": "Text A/B compare",
+                "runs": [
+                    {
+                        "scenario_id": "greenfield-cli",
+                        "scenario_type": "greenfield",
+                        "objective": "Build a CLI app.",
+                        "vanilla": {
+                            "workflow": "vanilla-claude",
+                            "metrics": {
+                                "completion": {"value": True, "evidence": "measured"},
+                                "friction": {"value": 2, "evidence": "measured"},
+                                "bugs": {"value": 1, "evidence": "measured"},
+                                "auditability": {"value": 1, "evidence": "measured"},
+                                "control": {"value": 1, "evidence": "measured"},
+                            },
+                        },
+                        "ces": {
+                            "workflow": "ces-claude",
+                            "metrics": {
+                                "completion": {"value": True, "evidence": "measured"},
+                                "friction": {"value": 3, "evidence": "measured"},
+                                "bugs": {"value": 0, "evidence": "measured"},
+                                "auditability": {"value": 5, "evidence": "measured"},
+                                "control": {"value": 5, "evidence": "measured"},
+                            },
+                        },
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = runner.invoke(
+        app,
+        ["benchmark", "compare", "--project-spec", str(spec_path), "--out", str(tmp_path / "out")],
+    )
+
+    assert result.exit_code == 0, result.stdout
+    assert "A/B Benchmark Comparison" in result.stdout
+    assert "ces-adds-measured-value" in result.stdout
+    assert "Comparable completion scenarios" in result.stdout
+    assert "Comparable" in result.stdout
+    assert "comparison-report.md" in result.stdout

@@ -27,6 +27,7 @@ collect evidence, review the result, and make approval explicit.
 [Docs Index](https://github.com/chrisduvillard/controlled-execution-system/blob/master/docs/Docs_Index.md) ·
 [Verification Profile](https://github.com/chrisduvillard/controlled-execution-system/blob/master/docs/Verification_Profile.md) ·
 [Semantic Codebase Mapping](https://github.com/chrisduvillard/controlled-execution-system/blob/master/docs/Semantic_Codebase_Mapping.md) ·
+[Benchmarking](https://github.com/chrisduvillard/controlled-execution-system/blob/master/docs/Benchmarking.md) ·
 [Changelog](https://github.com/chrisduvillard/controlled-execution-system/blob/master/CHANGELOG.md)
 
 <br>

@@ -1,0 +1,1172 @@
+{
+  "benchmark_name": "CES vs vanilla AI coding A/B gauntlet",
+  "description": "Run each scenario once with vanilla Codex CLI or Claude Code and once through CES. Fill metrics with evidence='measured' only after the run is observed.",
+  "runs": [
+    {
+      "scenario_id": "greenfield-python-cli",
+      "scenario_type": "greenfield",
+      "objective": "Build a small Python CLI task tracker with add, list, complete, tests, and README usage examples.",
+      "acceptance_criteria": [
+        "CLI can add, list, and complete tasks",
+        "Unit tests cover the three public commands",
+        "README documents install and usage",
+        "No server, auth, sync, or database dependency unless justified"
+      ],
+      "vanilla": {
+        "workflow": "vanilla-codex-or-claude",
+        "metrics": {
+          "completion": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "time_minutes": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "tokens": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "tool_calls": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "corrections": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "tests": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "docs": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "maintainability": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "bugs": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "friction": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "auditability": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "control": {
+            "value": null,
+            "evidence": "missing"
+          }
+        }
+      },
+      "ces": {
+        "workflow": "ces-build-from-scratch",
+        "metrics": {
+          "completion": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "time_minutes": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "tokens": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "tool_calls": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "corrections": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "tests": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "docs": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "maintainability": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "bugs": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "friction": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "auditability": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "control": {
+            "value": null,
+            "evidence": "missing"
+          }
+        }
+      }
+    },
+    {
+      "scenario_id": "greenfield-crud-api",
+      "scenario_type": "greenfield",
+      "objective": "Build a minimal HTTP CRUD API for notes with tests, README, and local-only persistence.",
+      "acceptance_criteria": [
+        "Create/list/update/delete notes",
+        "Automated tests cover success and validation paths",
+        "README shows run and test commands",
+        "No auth or external database"
+      ],
+      "vanilla": {
+        "workflow": "vanilla-codex-or-claude",
+        "metrics": {
+          "completion": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "time_minutes": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "tokens": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "tool_calls": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "corrections": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "tests": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "docs": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "maintainability": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "bugs": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "friction": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "auditability": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "control": {
+            "value": null,
+            "evidence": "missing"
+          }
+        }
+      },
+      "ces": {
+        "workflow": "ces-build-from-scratch",
+        "metrics": {
+          "completion": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "time_minutes": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "tokens": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "tool_calls": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "corrections": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "tests": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "docs": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "maintainability": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "bugs": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "friction": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "auditability": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "control": {
+            "value": null,
+            "evidence": "missing"
+          }
+        }
+      }
+    },
+    {
+      "scenario_id": "greenfield-static-site",
+      "scenario_type": "greenfield",
+      "objective": "Build a small static marketing site with two pages, accessible navigation, tests or checks, and deployment notes.",
+      "acceptance_criteria": [
+        "Two linked pages render locally",
+        "Accessibility basics are documented or checked",
+        "README explains local preview",
+        "No unnecessary framework if static files are enough"
+      ],
+      "vanilla": {
+        "workflow": "vanilla-codex-or-claude",
+        "metrics": {
+          "completion": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "time_minutes": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "tokens": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "tool_calls": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "corrections": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "tests": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "docs": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "maintainability": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "bugs": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "friction": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "auditability": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "control": {
+            "value": null,
+            "evidence": "missing"
+          }
+        }
+      },
+      "ces": {
+        "workflow": "ces-build-from-scratch",
+        "metrics": {
+          "completion": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "time_minutes": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "tokens": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "tool_calls": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "corrections": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "tests": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "docs": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "maintainability": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "bugs": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "friction": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "auditability": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "control": {
+            "value": null,
+            "evidence": "missing"
+          }
+        }
+      }
+    },
+    {
+      "scenario_id": "greenfield-data-cleaner",
+      "scenario_type": "greenfield",
+      "objective": "Build a command-line CSV cleaner that trims whitespace, validates required columns, emits an error report, and includes tests.",
+      "acceptance_criteria": [
+        "Valid CSV produces cleaned output",
+        "Invalid rows produce a report",
+        "Unit tests cover valid and invalid inputs",
+        "README shows examples"
+      ],
+      "vanilla": {
+        "workflow": "vanilla-codex-or-claude",
+        "metrics": {
+          "completion": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "time_minutes": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "tokens": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "tool_calls": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "corrections": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "tests": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "docs": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "maintainability": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "bugs": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "friction": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "auditability": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "control": {
+            "value": null,
+            "evidence": "missing"
+          }
+        }
+      },
+      "ces": {
+        "workflow": "ces-build-from-scratch",
+        "metrics": {
+          "completion": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "time_minutes": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "tokens": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "tool_calls": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "corrections": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "tests": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "docs": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "maintainability": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "bugs": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "friction": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "auditability": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "control": {
+            "value": null,
+            "evidence": "missing"
+          }
+        }
+      }
+    },
+    {
+      "scenario_id": "greenfield-chat-ui",
+      "scenario_type": "greenfield",
+      "objective": "Build a local chat-style UI mock with message input, message list, empty state, and component tests or smoke checks.",
+      "acceptance_criteria": [
+        "Message input adds visible messages",
+        "Empty state is shown before first message",
+        "Tests or smoke checks prove basic behavior",
+        "README explains local run command"
+      ],
+      "vanilla": {
+        "workflow": "vanilla-codex-or-claude",
+        "metrics": {
+          "completion": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "time_minutes": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "tokens": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "tool_calls": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "corrections": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "tests": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "docs": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "maintainability": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "bugs": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "friction": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "auditability": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "control": {
+            "value": null,
+            "evidence": "missing"
+          }
+        }
+      },
+      "ces": {
+        "workflow": "ces-build-from-scratch",
+        "metrics": {
+          "completion": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "time_minutes": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "tokens": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "tool_calls": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "corrections": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "tests": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "docs": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "maintainability": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "bugs": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "friction": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "auditability": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "control": {
+            "value": null,
+            "evidence": "missing"
+          }
+        }
+      }
+    },
+    {
+      "scenario_id": "brownfield-bug-fix",
+      "scenario_type": "brownfield",
+      "objective": "Fix a failing parser edge case in an existing project without changing public API behavior.",
+      "acceptance_criteria": [
+        "Regression test fails before fix and passes after",
+        "Public API compatibility is preserved",
+        "Adjacent parser tests still pass"
+      ],
+      "vanilla": {
+        "workflow": "vanilla-codex-or-claude",
+        "metrics": {
+          "completion": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "time_minutes": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "tokens": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "tool_calls": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "corrections": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "tests": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "docs": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "maintainability": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "bugs": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "friction": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "auditability": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "control": {
+            "value": null,
+            "evidence": "missing"
+          }
+        }
+      },
+      "ces": {
+        "workflow": "ces-build",
+        "metrics": {
+          "completion": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "time_minutes": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "tokens": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "tool_calls": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "corrections": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "tests": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "docs": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "maintainability": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "bugs": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "friction": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "auditability": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "control": {
+            "value": null,
+            "evidence": "missing"
+          }
+        }
+      }
+    },
+    {
+      "scenario_id": "brownfield-feature-addition",
+      "scenario_type": "brownfield",
+      "objective": "Add a small feature to an existing CLI while preserving existing commands and documented outputs.",
+      "acceptance_criteria": [
+        "New command/flag works",
+        "Existing CLI help and core commands remain compatible",
+        "Tests cover new and adjacent behavior"
+      ],
+      "vanilla": {
+        "workflow": "vanilla-codex-or-claude",
+        "metrics": {
+          "completion": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "time_minutes": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "tokens": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "tool_calls": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "corrections": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "tests": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "docs": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "maintainability": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "bugs": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "friction": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "auditability": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "control": {
+            "value": null,
+            "evidence": "missing"
+          }
+        }
+      },
+      "ces": {
+        "workflow": "ces-build",
+        "metrics": {
+          "completion": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "time_minutes": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "tokens": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "tool_calls": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "corrections": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "tests": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "docs": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "maintainability": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "bugs": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "friction": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "auditability": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "control": {
+            "value": null,
+            "evidence": "missing"
+          }
+        }
+      }
+    },
+    {
+      "scenario_id": "brownfield-refactor-no-behavior-change",
+      "scenario_type": "brownfield",
+      "objective": "Refactor a module for clarity with no behavior change and before/after verification.",
+      "acceptance_criteria": [
+        "Same verification command passes before and after",
+        "No public API change",
+        "Diff is scoped to the target module and tests if needed"
+      ],
+      "vanilla": {
+        "workflow": "vanilla-codex-or-claude",
+        "metrics": {
+          "completion": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "time_minutes": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "tokens": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "tool_calls": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "corrections": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "tests": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "docs": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "maintainability": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "bugs": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "friction": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "auditability": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "control": {
+            "value": null,
+            "evidence": "missing"
+          }
+        }
+      },
+      "ces": {
+        "workflow": "ces-build",
+        "metrics": {
+          "completion": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "time_minutes": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "tokens": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "tool_calls": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "corrections": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "tests": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "docs": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "maintainability": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "bugs": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "friction": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "auditability": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "control": {
+            "value": null,
+            "evidence": "missing"
+          }
+        }
+      }
+    },
+    {
+      "scenario_id": "brownfield-docs-only",
+      "scenario_type": "brownfield",
+      "objective": "Update existing documentation examples without changing runtime code.",
+      "acceptance_criteria": [
+        "Docs examples match current CLI/API",
+        "No runtime source files change unless justified",
+        "Link/example checks pass where available"
+      ],
+      "vanilla": {
+        "workflow": "vanilla-codex-or-claude",
+        "metrics": {
+          "completion": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "time_minutes": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "tokens": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "tool_calls": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "corrections": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "tests": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "docs": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "maintainability": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "bugs": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "friction": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "auditability": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "control": {
+            "value": null,
+            "evidence": "missing"
+          }
+        }
+      },
+      "ces": {
+        "workflow": "ces-build",
+        "metrics": {
+          "completion": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "time_minutes": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "tokens": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "tool_calls": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "corrections": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "tests": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "docs": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "maintainability": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "bugs": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "friction": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "auditability": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "control": {
+            "value": null,
+            "evidence": "missing"
+          }
+        }
+      }
+    },
+    {
+      "scenario_id": "brownfield-test-rescue",
+      "scenario_type": "brownfield",
+      "objective": "Take a thin existing app with poor tests and add a minimal verification profile plus tests for its critical path.",
+      "acceptance_criteria": [
+        "Critical path is identified",
+        "At least one meaningful test is added",
+        "Verification command is documented",
+        "Existing behavior is preserved"
+      ],
+      "vanilla": {
+        "workflow": "vanilla-codex-or-claude",
+        "metrics": {
+          "completion": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "time_minutes": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "tokens": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "tool_calls": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "corrections": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "tests": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "docs": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "maintainability": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "bugs": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "friction": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "auditability": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "control": {
+            "value": null,
+            "evidence": "missing"
+          }
+        }
+      },
+      "ces": {
+        "workflow": "ces-build",
+        "metrics": {
+          "completion": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "time_minutes": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "tokens": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "tool_calls": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "corrections": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "tests": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "docs": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "maintainability": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "bugs": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "friction": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "auditability": {
+            "value": null,
+            "evidence": "missing"
+          },
+          "control": {
+            "value": null,
+            "evidence": "missing"
+          }
+        }
+      }
+    }
+  ]
+}
