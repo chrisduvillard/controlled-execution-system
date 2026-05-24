@@ -213,6 +213,14 @@ class AuditRepository:
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
 
+    async def get_all(self, project_id: str | None = None) -> list[AuditEntryRow]:
+        """Retrieve the complete audit chain oldest-first for integrity verification."""
+        stmt = select(AuditEntryRow).order_by(AuditEntryRow.sequence_num.asc())
+        if project_id is not None:
+            stmt = stmt.where(AuditEntryRow.project_id == project_id)
+        result = await self.session.execute(stmt)
+        return list(result.scalars().all())
+
     async def get_by_event_type(self, event_type: str, project_id: str | None = None) -> list[AuditEntryRow]:
         """Retrieve all audit entries of a given event type."""
         stmt = select(AuditEntryRow).where(AuditEntryRow.event_type == event_type)

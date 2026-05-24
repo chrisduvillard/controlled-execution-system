@@ -389,6 +389,7 @@ class TestAuditRepositoryApiSurface:
 
     def test_has_read_methods(self) -> None:
         assert hasattr(AuditRepository, "get_latest")
+        assert hasattr(AuditRepository, "get_all")
         assert hasattr(AuditRepository, "get_by_event_type")
         assert hasattr(AuditRepository, "get_by_actor")
         assert hasattr(AuditRepository, "get_by_time_range")

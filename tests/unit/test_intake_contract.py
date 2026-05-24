@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import patch
@@ -26,6 +27,7 @@ from ces.intake.contracts import (
 from ces.verification.proof_card import build_proof_card
 
 runner = CliRunner()
+requires_symlink = pytest.mark.skipif(sys.platform == "win32", reason="Windows symlink privileges vary by environment")
 
 
 def test_inline_intake_normalizes_to_execution_contract(tmp_path: Path) -> None:
@@ -94,14 +96,46 @@ def test_contract_repository_writes_safe_project_local_json_and_markdown(tmp_pat
     assert "# Execution Contract" in saved.markdown_path.read_text(encoding="utf-8")
 
 
+@requires_symlink
 def test_contract_repository_rejects_symlinked_ces_directory(tmp_path: Path) -> None:
     outside = tmp_path / "outside"
     outside.mkdir()
     (tmp_path / ".ces").symlink_to(outside, target_is_directory=True)
     contract = IntakeNormalizer().from_inline("Add CSV invoice notes", project_root=tmp_path)
 
-    with pytest.raises(ValueError, match="Refusing to write contracts through symlinked .ces"):
+    with pytest.raises(ValueError, match="symlinked|outside"):
         ExecutionContractRepository(tmp_path).save(contract)
+
+    assert not (outside / "contracts").exists()
+
+
+@requires_symlink
+def test_contract_repository_rejects_symlinked_docs_directory(tmp_path: Path) -> None:
+    outside = tmp_path / "outside-docs"
+    outside.mkdir()
+    (tmp_path / ".ces").mkdir()
+    (tmp_path / "docs").symlink_to(outside, target_is_directory=True)
+    contract = IntakeNormalizer().from_inline("Add CSV invoice notes", project_root=tmp_path)
+
+    with pytest.raises(ValueError, match="symlinked|outside"):
+        ExecutionContractRepository(tmp_path).save(contract)
+
+    assert not (outside / "contracts").exists()
+
+
+@requires_symlink
+def test_contract_repository_rejects_symlinked_contract_destination(tmp_path: Path) -> None:
+    (tmp_path / ".ces" / "contracts").mkdir(parents=True)
+    (tmp_path / "docs" / "contracts").mkdir(parents=True)
+    (tmp_path / "docs" / "specs").mkdir(parents=True)
+    outside = tmp_path / "outside-latest.json"
+    (tmp_path / ".ces" / "contracts" / "latest.json").symlink_to(outside)
+    contract = IntakeNormalizer().from_inline("Add CSV invoice notes", project_root=tmp_path)
+
+    with pytest.raises(ValueError, match="symlinked|outside"):
+        ExecutionContractRepository(tmp_path).save(contract)
+
+    assert not outside.exists()
 
 
 def test_github_issue_reader_uses_gh_json_without_framework_importers(tmp_path: Path) -> None:
@@ -175,11 +209,87 @@ def test_contract_repository_load_latest_and_missing_contract_errors(tmp_path: P
     with pytest.raises(ValueError, match="No intake execution contract found"):
         repo.load_latest()
     with pytest.raises(ValueError, match="Execution contract not found"):
-        repo.load("EC-MISSING")
+        repo.load("EC-0000000000-0000")
 
     saved = repo.save(IntakeNormalizer().from_inline("Document CI pipeline", project_root=tmp_path))
     assert repo.load_latest().contract_id == saved.contract.contract_id
     assert repo.load(saved.contract.contract_id).objective == "Document CI pipeline"
+
+
+def test_contract_repository_rejects_invalid_contract_id_path_traversal(tmp_path: Path) -> None:
+    repo = ExecutionContractRepository(tmp_path)
+
+    with pytest.raises(ValueError, match="Invalid execution contract id"):
+        repo.load("../secrets")
+
+
+@requires_symlink
+def test_contract_repository_load_latest_rejects_symlinked_ces_directory(tmp_path: Path) -> None:
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (tmp_path / ".ces").symlink_to(outside, target_is_directory=True)
+
+    with pytest.raises(ValueError, match="symlinked|outside"):
+        ExecutionContractRepository(tmp_path).load_latest()
+
+
+@requires_symlink
+def test_contract_repository_load_latest_rejects_symlinked_latest_file(tmp_path: Path) -> None:
+    repo = ExecutionContractRepository(tmp_path)
+    saved = repo.save(IntakeNormalizer().from_inline("Document CI pipeline", project_root=tmp_path))
+    outside = tmp_path / "outside-latest.json"
+    outside.write_text(saved.latest_path.read_text(encoding="utf-8"), encoding="utf-8")
+    saved.latest_path.unlink()
+    saved.latest_path.symlink_to(outside)
+
+    with pytest.raises(ValueError, match="symlinked|outside"):
+        repo.load_latest()
+
+
+@requires_symlink
+def test_contract_repository_load_rejects_symlinked_contract_file(tmp_path: Path) -> None:
+    repo = ExecutionContractRepository(tmp_path)
+    saved = repo.save(IntakeNormalizer().from_inline("Document CI pipeline", project_root=tmp_path))
+    outside = tmp_path / "outside-contract.json"
+    outside.write_text(saved.json_path.read_text(encoding="utf-8"), encoding="utf-8")
+    saved.json_path.unlink()
+    saved.json_path.symlink_to(outside)
+
+    with pytest.raises(ValueError, match="symlinked|outside"):
+        repo.load(saved.contract.contract_id)
+
+
+def test_contract_repository_save_with_relative_project_root_does_not_double_prefix(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    project = tmp_path / "project"
+    project.mkdir()
+    monkeypatch.chdir(tmp_path)
+    repo = ExecutionContractRepository(Path("project"))
+
+    saved = repo.save(IntakeNormalizer().from_inline("Document CI pipeline", project_root=project))
+
+    assert saved.json_path == project / ".ces" / "contracts" / f"{saved.contract.contract_id}.json"
+    assert saved.json_path.is_file()
+    assert not (project / "project" / ".ces" / "contracts").exists()
+
+
+@requires_symlink
+def test_contract_repository_save_rejects_relative_symlinked_ces_directory(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    project = tmp_path / "project"
+    project.mkdir()
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (project / ".ces").symlink_to(outside, target_is_directory=True)
+    monkeypatch.chdir(tmp_path)
+
+    contract = IntakeNormalizer().from_inline("Document CI pipeline", project_root=project)
+    with pytest.raises(ValueError, match="symlinked|outside"):
+        ExecutionContractRepository(Path("project")).save(contract)
+
+    assert not (outside / "contracts").exists()
 
 
 def test_normalizer_extracts_risks_evidence_kinds_and_change_classes(tmp_path: Path) -> None:

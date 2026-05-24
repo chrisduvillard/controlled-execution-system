@@ -31,6 +31,7 @@ from ces.harness_evolution.manifest_io import manifest_to_stable_json
 from ces.harness_evolution.memory import HarnessMemoryLesson
 from ces.harness_evolution.models import HarnessChangeManifest, HarnessChangeVerdict
 from ces.intent_gate.models import IntentGatePreflight, SpecificationLedger
+from ces.local_state_path import validate_ces_state_path
 from ces.local_store.codecs import (
     row_to_approval,
     row_to_audit_entry,
@@ -189,7 +190,11 @@ class LocalProjectStore:
         self._db_path = Path(db_path)
         self._lock_path = self._db_path.with_name(LOCAL_STORE_LOCK_FILENAME)
         self._project_id = project_id
+        _validate_local_store_path(self._db_path)
+        _validate_local_store_path(self._lock_path)
         self._db_path.parent.mkdir(parents=True, exist_ok=True)
+        _validate_local_store_path(self._db_path)
+        _validate_local_store_path(self._lock_path)
         # One pooled connection per store instance. CES CLI invocations are
         # single-threaded; opening per-call would pay journal-init latency on
         # every read. ``check_same_thread=False`` is intentional — the
@@ -1442,7 +1447,7 @@ class LocalProjectStore:
     def get_last_audit_entry(self, project_id: str | None = None) -> AuditEntryRecord | None:
         with self._connect() as conn:
             row = conn.execute(
-                "SELECT * FROM audit_entries WHERE project_id = ? ORDER BY timestamp DESC LIMIT 1",
+                "SELECT * FROM audit_entries WHERE project_id = ? ORDER BY rowid DESC LIMIT 1",
                 (project_id or self._project_id,),
             ).fetchone()
         return row_to_audit_entry(row) if row else None
@@ -1469,11 +1474,28 @@ class LocalProjectStore:
 
     def get_latest_audit(self, limit: int = 1000, project_id: str | None = None) -> list[AuditEntryRecord]:
         return self._fetch_audit(
-            "SELECT * FROM audit_entries WHERE project_id = ? ORDER BY timestamp DESC LIMIT ?",
+            "SELECT * FROM audit_entries WHERE project_id = ? ORDER BY rowid DESC LIMIT ?",
             (project_id or self._project_id, limit),
+        )
+
+    def get_all_audit(self, project_id: str | None = None) -> list[AuditEntryRecord]:
+        return self._fetch_audit(
+            "SELECT * FROM audit_entries WHERE project_id = ? ORDER BY rowid ASC",
+            (project_id or self._project_id,),
         )
 
     def _fetch_audit(self, query: str, params: tuple[Any, ...]) -> list[AuditEntryRecord]:
         with self._connect() as conn:
             rows = fetch_audit(conn, query, params)
         return [row_to_audit_entry(row) for row in rows]
+
+
+def _validate_local_store_path(path: Path) -> None:
+    if ".ces" in path.parts:
+        project_root = Path(*path.parts[: path.parts.index(".ces")])
+        validate_ces_state_path(project_root, path)
+        return
+    if path.parent.exists() and path.parent.is_symlink():
+        raise ValueError(f"Refusing to use symlinked local store directory: {path.parent}")
+    if path.is_symlink():
+        raise ValueError(f"Refusing to use symlinked local store path: {path}")

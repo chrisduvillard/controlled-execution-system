@@ -116,3 +116,56 @@ def test_root_json_audit_validation_error_emits_error_json(ces_project: Path) ->
     payload = _assert_error_json(result, expected_exit_code=1)
     assert payload["error"]["type"] == "user_error"
     assert "--limit" in payload["error"]["message"]
+
+
+def test_command_local_json_validation_error_emits_error_json(ces_project: Path) -> None:
+    result = _invoke(["audit", "--json", "--bogus", "--project-root", str(ces_project)])
+
+    payload = _assert_error_json(result, expected_exit_code=2)
+    assert payload["error"]["type"] == "usage_error"
+    assert "--bogus" in payload["error"]["message"]
+
+
+@pytest.mark.parametrize(
+    "args",
+    [
+        ["diff", "--json"],
+        ["report", "--json"],
+        ["review", "show", "--json"],
+        ["review", "run", "--json"],
+        ["intake", "interview", "1", "--json"],
+    ],
+)
+def test_unsupported_command_local_json_does_not_emit_usage_error_json(args: list[str]) -> None:
+    result = _invoke([*args, "--bogus"])
+
+    assert result.exit_code == 2
+    assert result.stdout == ""
+    with pytest.raises(json.JSONDecodeError):
+        json.loads(result.stderr)
+    assert "--bogus" in result.stderr or "No such option" in result.stderr
+
+
+def test_command_local_json_after_double_dash_does_not_emit_usage_error_json() -> None:
+    result = _invoke(["audit", "--", "--json"])
+
+    assert result.exit_code == 2
+    with pytest.raises(json.JSONDecodeError):
+        json.loads(result.stderr)
+
+
+@pytest.mark.parametrize(
+    "args",
+    [
+        ["audit", "--actor", "--json", "--bogus"],
+        ["doctor", "--strict-providers", "--json", "--bogus"],
+        ["review", "generate", "--from-build", "--json", "--bogus"],
+        ["review", "generate", "--deferred", "--json", "--bogus"],
+    ],
+)
+def test_option_value_named_json_does_not_activate_usage_error_json(args: list[str]) -> None:
+    result = _invoke(args)
+
+    assert result.exit_code == 2
+    with pytest.raises(json.JSONDecodeError):
+        json.loads(result.stderr)

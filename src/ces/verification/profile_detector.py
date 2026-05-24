@@ -8,6 +8,7 @@ import tomllib
 from pathlib import Path
 from typing import Any
 
+from ces.local_state_path import write_text_project_path
 from ces.verification.profile import PROFILE_RELATIVE_PATH, VerificationCheck, VerificationProfile, VerificationStatus
 
 _DEP_NAME_RE = re.compile(r"^\s*([A-Za-z0-9_.-]+)")
@@ -65,8 +66,7 @@ def write_verification_profile(project_root: str | Path, profile: VerificationPr
     root = Path(project_root)
     profile = profile or detect_verification_profile(root)
     path = root / PROFILE_RELATIVE_PATH
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(profile.to_json(), encoding="utf-8")
+    write_text_project_path(root, path, profile.to_json())
     return path
 
 

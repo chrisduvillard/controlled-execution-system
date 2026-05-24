@@ -21,10 +21,12 @@ from typing import Any, Literal
 
 from ces.control.models.spec import Risk, SignalHints, SpecDocument, SpecFrontmatter, Story
 from ces.harness.services.spec_authoring import render_markdown
+from ces.local_state_path import read_text_project_path, validate_project_path, write_text_project_path
 from ces.shared.base import CESBaseModel
 
 _NEXT_COMMANDS = ("ces build --from-contract", "ces verify", "ces proof", "ces approve")
 _DEFAULT_OWNER = "cli-user"
+_CONTRACT_ID_RE = re.compile(r"^EC-[A-F0-9]{10}-[A-F0-9]{4}$")
 
 
 class ContractSourceKind(str, Enum):
@@ -337,13 +339,13 @@ class ExecutionContractRepository:
 
     def save(self, contract: ExecutionContract) -> SavedExecutionContract:
         ces_dir = self.project_root / ".ces"
-        if ces_dir.is_symlink():
-            raise ValueError("Refusing to write contracts through symlinked .ces")
         contracts_dir = ces_dir / "contracts"
         docs_dir = self.project_root / "docs" / "contracts"
         specs_dir = self.project_root / "docs" / "specs"
         for directory in (contracts_dir, docs_dir, specs_dir):
+            validate_project_path(self.project_root, directory)
             directory.mkdir(parents=True, exist_ok=True)
+            validate_project_path(self.project_root, directory)
         spec_path = specs_dir / f"{contract.contract_id}.md"
         contract = contract.model_copy(update={"generated_spec_path": str(spec_path.relative_to(self.project_root))})
         json_path = contracts_dir / f"{contract.contract_id}.json"
@@ -351,10 +353,10 @@ class ExecutionContractRepository:
         latest_path = contracts_dir / "latest.json"
         payload = contract.model_dump(mode="json")
         json_text = json.dumps(payload, indent=2, sort_keys=True) + "\n"
-        json_path.write_text(json_text, encoding="utf-8")
-        latest_path.write_text(json_text, encoding="utf-8")
-        markdown_path.write_text(contract.to_markdown(), encoding="utf-8")
-        spec_path.write_text(render_markdown(contract.to_spec_document()), encoding="utf-8")
+        write_text_project_path(self.project_root, json_path, json_text)
+        write_text_project_path(self.project_root, latest_path, json_text)
+        write_text_project_path(self.project_root, markdown_path, contract.to_markdown())
+        write_text_project_path(self.project_root, spec_path, render_markdown(contract.to_spec_document()))
         return SavedExecutionContract(
             contract=contract,
             json_path=json_path,
@@ -365,15 +367,21 @@ class ExecutionContractRepository:
 
     def load_latest(self) -> ExecutionContract:
         path = self.project_root / ".ces" / "contracts" / "latest.json"
-        if not path.is_file():
-            raise ValueError("No intake execution contract found. Run `ces intake ...` first.")
-        return ExecutionContract.model_validate_json(path.read_text(encoding="utf-8"))
+        try:
+            payload = read_text_project_path(self.project_root, path)
+        except FileNotFoundError as exc:
+            raise ValueError("No intake execution contract found. Run `ces intake ...` first.") from exc
+        return ExecutionContract.model_validate_json(payload)
 
     def load(self, contract_id: str) -> ExecutionContract:
+        if _CONTRACT_ID_RE.fullmatch(contract_id) is None:
+            raise ValueError(f"Invalid execution contract id: {contract_id}")
         path = self.project_root / ".ces" / "contracts" / f"{contract_id}.json"
-        if not path.is_file():
-            raise ValueError(f"Execution contract not found: {contract_id}")
-        return ExecutionContract.model_validate_json(path.read_text(encoding="utf-8"))
+        try:
+            payload = read_text_project_path(self.project_root, path)
+        except FileNotFoundError as exc:
+            raise ValueError(f"Execution contract not found: {contract_id}") from exc
+        return ExecutionContract.model_validate_json(payload)
 
 
 def validate_execution_contract(contract: ExecutionContract) -> tuple[ContractValidationFinding, ...]:

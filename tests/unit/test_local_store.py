@@ -523,6 +523,63 @@ class TestLocalProjectStoreHardening:
         assert parent_mode == 0o700, f".ces/ is 0o{parent_mode:o}, expected 0o700"
         assert db_mode == 0o600, f"state.db is 0o{db_mode:o}, expected 0o600"
 
+    def test_store_rejects_symlinked_ces_directory(self, tmp_path: Path) -> None:
+        import sys
+
+        if sys.platform == "win32":
+            pytest.skip("symlink behavior is POSIX-specific")
+
+        from ces.local_store import LocalProjectStore
+
+        outside = tmp_path / "outside"
+        outside.mkdir()
+        (tmp_path / ".ces").symlink_to(outside, target_is_directory=True)
+
+        with pytest.raises(ValueError, match="symlinked|outside"):
+            LocalProjectStore(tmp_path / ".ces" / "state.db", project_id="probe")
+
+        assert not (outside / "state.db").exists()
+
+    def test_store_rejects_symlinked_state_db(self, tmp_path: Path) -> None:
+        import sys
+
+        if sys.platform == "win32":
+            pytest.skip("symlink behavior is POSIX-specific")
+
+        from ces.local_store import LocalProjectStore
+
+        ces_dir = tmp_path / ".ces"
+        ces_dir.mkdir()
+        outside = tmp_path / "outside-state.db"
+        (ces_dir / "state.db").symlink_to(outside)
+
+        with pytest.raises(ValueError, match="symlinked|outside"):
+            LocalProjectStore(ces_dir / "state.db", project_id="probe")
+
+        assert not outside.exists()
+
+    def test_store_rejects_relative_symlinked_ces_directory(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        import sys
+
+        if sys.platform == "win32":
+            pytest.skip("symlink behavior is POSIX-specific")
+
+        from ces.local_store import LocalProjectStore
+
+        project = tmp_path / "project"
+        project.mkdir()
+        outside = tmp_path / "outside"
+        outside.mkdir()
+        (project / ".ces").symlink_to(outside, target_is_directory=True)
+        monkeypatch.chdir(tmp_path)
+
+        with pytest.raises(ValueError, match="symlinked|outside"):
+            LocalProjectStore(Path("project/.ces/state.db"), project_id="probe")
+
+        assert not (outside / "state.db").exists()
+
     def test_store_configures_sqlite_for_cli_concurrency(self, tmp_path: Path) -> None:
         """Local CLI invocations should tolerate overlapping readers/writers better than SQLite defaults."""
         from ces.local_store import LocalProjectStore
@@ -1075,6 +1132,44 @@ class TestLocalAuditRows:
         with pytest.raises(sqlite3.IntegrityError):
             store.append_audit_entry(row)
         store.close()
+
+    def test_get_all_audit_returns_project_scoped_chain_oldest_first(self, tmp_path: Path) -> None:
+        db_path = tmp_path / ".ces" / "state.db"
+        store_a = LocalProjectStore(db_path, project_id="proj-a")
+        store_b = LocalProjectStore(db_path, project_id="proj-b")
+        try:
+            for entry_id, project_id, timestamp in (
+                ("AE-a-old", "proj-a", datetime(2026, 1, 1, 0, 0, tzinfo=UTC)),
+                ("AE-b-only", "proj-b", datetime(2026, 1, 1, 0, 1, tzinfo=UTC)),
+                ("AE-a-new", "proj-a", datetime(2026, 1, 1, 0, 2, tzinfo=UTC)),
+            ):
+                store_a.append_audit_entry(
+                    SimpleNamespace(
+                        entry_id=entry_id,
+                        timestamp=timestamp,
+                        event_type="state_transition",
+                        actor="tester",
+                        actor_type="human",
+                        action_summary="Audit event",
+                        decision="approved",
+                        rationale="test",
+                        scope={"manifest_id": "M-1"},
+                        metadata_extra=None,
+                        project_id=project_id,
+                        prev_hash="GENESIS",
+                        entry_hash=f"hash-{entry_id}",
+                    )
+                )
+
+            assert [row.entry_id for row in store_a.get_all_audit()] == ["AE-a-old", "AE-a-new"]
+            assert [row.entry_id for row in store_b.get_all_audit()] == ["AE-b-only"]
+            latest = store_a.get_last_audit_entry()
+            assert latest is not None
+            assert latest.entry_id == "AE-a-new"
+            assert [row.entry_id for row in store_a.get_latest_audit(limit=2)] == ["AE-a-new", "AE-a-old"]
+        finally:
+            store_a.close()
+            store_b.close()
 
 
 def test_save_evidence_hash_matches_json_round_trip_payload(tmp_path: Path) -> None:

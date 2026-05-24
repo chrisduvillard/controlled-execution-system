@@ -13,6 +13,7 @@ from pathlib import Path
 
 from pydantic import field_validator
 
+from ces.local_state_path import read_text_project_path
 from ces.shared.base import CESBaseModel
 
 PROFILE_RELATIVE_PATH = Path(".ces") / "verification-profile.json"
@@ -92,6 +93,8 @@ def load_verification_profile(project_root: str | Path) -> VerificationProfile |
     actionable project configuration, not an absent profile.
     """
     path = profile_path(project_root)
-    if not path.is_file():
+    try:
+        payload = read_text_project_path(Path(project_root), path)
+    except FileNotFoundError:
         return None
-    return VerificationProfile.model_validate(json.loads(path.read_text(encoding="utf-8")))
+    return VerificationProfile.model_validate(json.loads(payload))

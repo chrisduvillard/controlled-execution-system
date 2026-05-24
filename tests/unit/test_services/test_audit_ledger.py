@@ -594,6 +594,7 @@ def mock_repository():
     repo.get_by_actor = AsyncMock(return_value=[])
     repo.get_by_time_range = AsyncMock(return_value=[])
     repo.get_latest = AsyncMock(return_value=[])
+    repo.get_all = AsyncMock(return_value=[])
     repo.get_last_entry = AsyncMock(return_value=None)
     repo.append = AsyncMock()
     return repo
@@ -642,7 +643,7 @@ async def test_query_by_event_type_with_repository(ledger_with_repo, mock_reposi
     assert len(results) == 1
     assert isinstance(results[0], AuditEntry)
     assert results[0].event_type == EventType.APPROVAL
-    mock_repository.get_by_event_type.assert_called_once_with("approval", project_id=None)
+    mock_repository.get_by_event_type.assert_called_once_with("approval", project_id="default")
 
 
 async def test_query_by_event_type_respects_limit(ledger_with_repo, mock_repository):
@@ -664,7 +665,7 @@ async def test_query_by_actor_with_repository(ledger_with_repo, mock_repository)
 
     assert len(results) == 1
     assert results[0].actor == "agent-1"
-    mock_repository.get_by_actor.assert_called_once_with("agent-1", project_id=None)
+    mock_repository.get_by_actor.assert_called_once_with("agent-1", project_id="default")
 
 
 async def test_query_by_time_range_with_repository(ledger_with_repo, mock_repository):
@@ -682,7 +683,7 @@ async def test_query_by_time_range_with_repository(ledger_with_repo, mock_reposi
 
     assert len(results) == 1
     assert isinstance(results[0], AuditEntry)
-    mock_repository.get_by_time_range.assert_called_once_with(start, end, project_id=None)
+    mock_repository.get_by_time_range.assert_called_once_with(start, end, project_id="default")
 
 
 async def test_query_by_actor_respects_limit(ledger_with_repo, mock_repository):
@@ -701,24 +702,40 @@ async def test_query_by_actor_respects_limit(ledger_with_repo, mock_repository):
 
 
 async def test_verify_integrity_with_repository(ledger_with_repo, mock_repository):
-    """verify_integrity fetches entries from repository when no entries provided."""
+    """verify_integrity fetches the complete audit chain from repository when no entries provided."""
     # Empty repository should return True
-    mock_repository.get_latest.return_value = []
+    mock_repository.get_all.return_value = []
 
     result = await ledger_with_repo.verify_integrity()
 
     assert result is True
-    mock_repository.get_latest.assert_called_once()
+    mock_repository.get_all.assert_called_once_with(project_id="default")
+    mock_repository.get_latest.assert_not_called()
 
 
 async def test_verify_integrity_forwards_project_id(ledger_with_repo, mock_repository):
     """verify_integrity passes project_id to repository-backed verification."""
-    mock_repository.get_latest.return_value = []
+    mock_repository.get_all.return_value = []
 
     result = await ledger_with_repo.verify_integrity(project_id="proj-abc")
 
     assert result is True
-    mock_repository.get_latest.assert_called_once_with(limit=10000, project_id="proj-abc")
+    mock_repository.get_all.assert_called_once_with(project_id="proj-abc")
+    mock_repository.get_latest.assert_not_called()
+
+
+async def test_verify_integrity_requires_full_chain_repository_method():
+    """Repository-backed verification must fail closed when full-chain reads are unavailable."""
+    from ces.control.services.audit_ledger import AuditLedgerService
+
+    class LatestOnlyRepository:
+        async def get_latest(self, limit: int = 10000, project_id: str | None = None) -> list[object]:
+            return []
+
+    service = AuditLedgerService(secret_key=TEST_SECRET_KEY, repository=LatestOnlyRepository())
+
+    with pytest.raises(RuntimeError, match="full-chain audit verification"):
+        await service.verify_integrity()
 
 
 async def test_verify_integrity_single_entry(ledger):

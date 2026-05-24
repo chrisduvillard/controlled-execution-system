@@ -65,6 +65,9 @@ class LocalAuditRepository:
     async def get_latest(self, limit: int = 1000, project_id: str | None = None) -> list[AuditEntryRecord]:
         return self._store.get_latest_audit(limit=limit, project_id=project_id)
 
+    async def get_all(self, project_id: str | None = None) -> list[AuditEntryRecord]:
+        return self._store.get_all_audit(project_id=project_id)
+
 
 class LocalLegacyBehaviorRepository:
     """Repository adapter for LegacyBehaviorService backed by LocalProjectStore."""
