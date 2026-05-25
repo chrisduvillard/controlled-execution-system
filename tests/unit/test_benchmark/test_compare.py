@@ -409,6 +409,140 @@ def test_mixed_one_sided_completion_does_not_drive_recommendation(tmp_path: Path
     assert report.summary["recommendation"] == "no-successful-completion"
 
 
+def test_failed_completion_rows_do_not_swing_tied_successful_completion_recommendation(
+    tmp_path: Path,
+) -> None:
+    spec_path = tmp_path / "mixed-failed-completion-secondary-wins.json"
+    spec_path.write_text(
+        json.dumps(
+            {
+                "benchmark_name": "Mixed failed completion secondary wins",
+                "runs": [
+                    {
+                        "scenario_id": "successful-completion-tie",
+                        "scenario_type": "brownfield",
+                        "objective": "Both arms complete successfully with no secondary edge.",
+                        "vanilla": {
+                            "workflow": "vanilla-codex",
+                            "metrics": {
+                                "completion": {"value": True, "evidence": "measured"},
+                                "time_minutes": {"value": 10, "evidence": "measured"},
+                            },
+                        },
+                        "ces": {
+                            "workflow": "ces-codex",
+                            "metrics": {
+                                "completion": {"value": True, "evidence": "measured"},
+                                "time_minutes": {"value": 10, "evidence": "measured"},
+                            },
+                        },
+                    },
+                    {
+                        "scenario_id": "both-failed-secondary-win",
+                        "scenario_type": "greenfield",
+                        "objective": "Failed artifacts can expose friction but cannot prove CES value.",
+                        "vanilla": {
+                            "workflow": "vanilla-codex",
+                            "metrics": {
+                                "completion": {"value": False, "evidence": "measured"},
+                                "time_minutes": {"value": 30, "evidence": "measured"},
+                                "tokens": {"value": 20000, "evidence": "measured"},
+                            },
+                        },
+                        "ces": {
+                            "workflow": "ces-codex",
+                            "metrics": {
+                                "completion": {"value": False, "evidence": "measured"},
+                                "time_minutes": {"value": 5, "evidence": "measured"},
+                                "tokens": {"value": 1000, "evidence": "measured"},
+                            },
+                        },
+                    },
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    report = run_comparison(load_comparison_spec(spec_path))
+    payload = report.to_dict()
+    failed_row = next(row for row in payload["rows"] if row["scenario_id"] == "both-failed-secondary-win")
+
+    assert report.summary["comparable_scenario_count"] == 2
+    assert report.summary["secondary_metric_counted_scenario_count"] == 1
+    assert report.summary["ces_metric_wins"] > report.summary["vanilla_metric_wins"]
+    assert report.summary["decision_ces_metric_wins"] == 0
+    assert report.summary["decision_vanilla_metric_wins"] == 0
+    assert report.summary["recommendation"] == "inconclusive-measured-tie"
+    assert failed_row["recommendation_comparable"] is True
+    assert failed_row["secondary_metrics_counted"] is False
+    assert "neither arm completed successfully" in failed_row["recommendation_exclusion_reason"]
+    assert report.summary["recommendation_basis"]["secondary_metric_counted_scenarios"] == ["successful-completion-tie"]
+
+
+def test_split_primary_completion_tie_excludes_failed_row_secondary_metrics(
+    tmp_path: Path,
+) -> None:
+    spec_path = tmp_path / "split-primary-tie.json"
+    spec_path.write_text(
+        json.dumps(
+            {
+                "benchmark_name": "Split primary completion tie",
+                "runs": [
+                    {
+                        "scenario_id": "ces-only-success",
+                        "scenario_type": "brownfield",
+                        "objective": "CES completes while vanilla fails.",
+                        "vanilla": {
+                            "workflow": "vanilla-codex",
+                            "metrics": {
+                                "completion": {"value": False, "evidence": "measured"},
+                                "time_minutes": {"value": 5, "evidence": "measured"},
+                            },
+                        },
+                        "ces": {
+                            "workflow": "ces-codex",
+                            "metrics": {
+                                "completion": {"value": True, "evidence": "measured"},
+                                "time_minutes": {"value": 30, "evidence": "measured"},
+                            },
+                        },
+                    },
+                    {
+                        "scenario_id": "vanilla-only-success",
+                        "scenario_type": "greenfield",
+                        "objective": "Vanilla completes while CES fails.",
+                        "vanilla": {
+                            "workflow": "vanilla-claude",
+                            "metrics": {
+                                "completion": {"value": True, "evidence": "measured"},
+                                "tokens": {"value": 20000, "evidence": "measured"},
+                            },
+                        },
+                        "ces": {
+                            "workflow": "ces-claude",
+                            "metrics": {
+                                "completion": {"value": False, "evidence": "measured"},
+                                "tokens": {"value": 1000, "evidence": "measured"},
+                            },
+                        },
+                    },
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    report = run_comparison(load_comparison_spec(spec_path))
+
+    assert report.summary["ces_completed_scenarios"] == 1
+    assert report.summary["vanilla_completed_scenarios"] == 1
+    assert report.summary["secondary_metric_counted_scenario_count"] == 0
+    assert report.summary["decision_ces_metric_wins"] == 0
+    assert report.summary["decision_vanilla_metric_wins"] == 0
+    assert report.summary["recommendation"] == "inconclusive-measured-tie"
+
+
 def test_missing_completion_rows_do_not_swing_tied_completion_recommendation(tmp_path: Path) -> None:
     spec_path = tmp_path / "mixed-missing-completion-secondary-wins.json"
     spec_path.write_text(

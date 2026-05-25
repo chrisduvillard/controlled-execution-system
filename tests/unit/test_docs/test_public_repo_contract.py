@@ -207,6 +207,25 @@ def test_readme_documents_repo_self_dogfooding() -> None:
     assert ".ces/" in readme
 
 
+def test_readme_exposes_benchmark_evidence_status_without_overclaiming() -> None:
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    positioning = (ROOT / "docs" / "Positioning.md").read_text(encoding="utf-8")
+    combined = f"{readme}\n{positioning}".lower()
+
+    assert "Benchmark evidence status" in readme
+    assert "insufficient-measured-evidence" in readme
+    assert "unmeasured sample spec" in readme
+    assert "docs/benchmark/ab-gauntlet-sample.json" in readme
+    assert "Benchmarking" in readme
+    for unsupported_claim in (
+        "ces beats codex",
+        "proven better",
+        "outperforms claude",
+        "guarantees safer",
+    ):
+        assert unsupported_claim not in combined
+
+
 def test_readme_pypi_long_description_uses_absolute_links_and_assets() -> None:
     """README is the PyPI long description; links/assets must render outside GitHub."""
     readme = (ROOT / "README.md").read_text(encoding="utf-8")

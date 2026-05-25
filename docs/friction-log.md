@@ -220,3 +220,13 @@ This log records friction found during the production-readiness dogfood pass. Fr
 - **Status:** Fixed.
 - **Fix:** Added build-context lookup by session/manifest/runtime identifiers, fail-closed unknown build IDs, builder-derived intent coverage inputs, JSON export, stable GitHub comment update marker, review next-step hints, and built-wheel semantic review smoke coverage.
 - **Evidence after fix:** `tests/unit/test_review_semantic_layer.py::test_generate_from_build_uses_requested_builder_snapshot_not_latest`, `::test_generate_from_build_fails_closed_when_build_id_is_unknown`, `::test_review_export_json_and_stable_github_comment_marker`, `tests/unit/test_cli/test_verify_cmd.py::test_verify_rich_output_suggests_semantic_review_next_step`, and `.github/workflows/ci.yml` built-wheel review smoke.
+
+## FL-023: Benchmark docs could imply value before measured evidence
+
+- **Step attempted:** Review README, positioning docs, and A/B benchmark sample before creating a benchmark evidence pack.
+- **Expected:** Public docs distinguish product thesis, process trust evidence, unmeasured templates, and measured A/B evidence.
+- **Actual:** README and positioning used some value language while the only tracked benchmark spec was still an unmeasured template with missing metrics.
+- **Severity:** Medium-high because public claims should not outrun the evidence artifact.
+- **Status:** Fixed.
+- **Fix:** README and positioning now label value as a thesis, Benchmarking documents template vs evidence-pack rules, and the sample spec declares `template-unmeasured` with an expected `insufficient-measured-evidence` recommendation.
+- **Evidence after fix:** `tests/unit/test_docs/test_benchmarking_docs.py::test_sample_ab_gauntlet_spec_is_unmeasured_template_not_evidence`, `::test_benchmarking_docs_require_self_contained_evidence_packs`, and `tests/unit/test_docs/test_public_repo_contract.py::test_readme_exposes_benchmark_evidence_status_without_overclaiming`.

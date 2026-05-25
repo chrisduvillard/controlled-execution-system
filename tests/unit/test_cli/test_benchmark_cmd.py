@@ -197,3 +197,43 @@ def test_benchmark_compare_text_output_highlights_recommendation(tmp_path: Path)
     assert "Comparable completion scenarios" in result.stdout
     assert "Comparable" in result.stdout
     assert "comparison-report.md" in result.stdout
+
+
+def test_benchmark_compare_text_output_hides_uncounted_secondary_wins(tmp_path: Path) -> None:
+    app = _get_app()
+    spec_path = tmp_path / "ab-missing-completion.json"
+    spec_path.write_text(
+        json.dumps(
+            {
+                "benchmark_name": "Text missing-completion A/B compare",
+                "runs": [
+                    {
+                        "scenario_id": "missing-completion-secondary-win",
+                        "scenario_type": "greenfield",
+                        "objective": "Completion missing, secondary metric measured.",
+                        "vanilla": {
+                            "workflow": "vanilla-codex",
+                            "metrics": {"time_minutes": {"value": 30, "evidence": "measured"}},
+                        },
+                        "ces": {
+                            "workflow": "ces-codex",
+                            "metrics": {"time_minutes": {"value": 5, "evidence": "measured"}},
+                        },
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = runner.invoke(
+        app,
+        ["benchmark", "compare", "--project-spec", str(spec_path), "--out", str(tmp_path / "out")],
+    )
+
+    assert result.exit_code == 0, result.stdout
+    assert "Secondary counted" in result.stdout
+    assert "Counted CES wins" in result.stdout
+    assert "completion not measured for one or both arms" in result.stdout
+    assert "missing-completion-secondary-win" in result.stdout
+    assert "│ False      │ 1        │" not in result.stdout

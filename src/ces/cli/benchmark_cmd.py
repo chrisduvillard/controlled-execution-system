@@ -91,12 +91,13 @@ def _print_compare_result(payload: dict) -> None:
             f"Recommendation: [bold]{summary['recommendation']}[/bold]\n"
             f"Measured scenarios: {summary['measured_scenario_count']} / {summary['scenario_count']}\n"
             f"Comparable completion scenarios: {summary['comparable_scenario_count']}\n"
+            f"Secondary counted scenarios: {summary['secondary_metric_counted_scenario_count']}\n"
             f"Inferred scenarios: {summary['inferred_scenario_count']}\n"
             f"Missing-data scenarios: {summary['missing_scenario_count']}\n"
             f"CES completed scenarios: {summary['ces_completed_scenarios']}\n"
             f"Vanilla completed scenarios: {summary['vanilla_completed_scenarios']}\n"
-            f"CES metric wins: {summary['ces_metric_wins']}\n"
-            f"Vanilla metric wins: {summary['vanilla_metric_wins']}\n"
+            f"Counted CES wins: {summary['decision_ces_metric_wins']}\n"
+            f"Counted vanilla wins: {summary['decision_vanilla_metric_wins']}\n"
             f"Markdown: {payload.get('markdown_report_path', '')}",
             title="A/B Benchmark Comparison",
             border_style="green" if summary["recommendation"] == "ces-adds-measured-value" else "yellow",
@@ -111,22 +112,39 @@ def _print_compare_result(payload: dict) -> None:
     table.add_column("Type")
     table.add_column("Measured")
     table.add_column("Comparable")
-    table.add_column("CES wins")
-    table.add_column("Vanilla wins")
+    table.add_column("Secondary counted")
+    table.add_column("Counted CES wins")
+    table.add_column("Counted vanilla wins")
+    table.add_column("Reason")
     for row in payload["rows"]:
-        deltas = row["deltas"].values()
-        ces_wins = sum(1 for delta in deltas if delta["advantage"] == "ces")
-        vanilla_wins = sum(1 for delta in row["deltas"].values() if delta["advantage"] == "vanilla")
         measured = any(delta["advantage"] != "unmeasured" for delta in row["deltas"].values())
+        counted_deltas = (
+            [delta for metric, delta in row["deltas"].items() if metric != "completion"]
+            if row["secondary_metrics_counted"]
+            else []
+        )
+        ces_wins = sum(1 for delta in counted_deltas if delta["advantage"] == "ces")
+        vanilla_wins = sum(1 for delta in counted_deltas if delta["advantage"] == "vanilla")
         table.add_row(
             row["scenario_id"],
             row["scenario_type"],
             str(measured),
             str(row["recommendation_comparable"]),
+            str(row["secondary_metrics_counted"]),
             str(ces_wins),
             str(vanilla_wins),
+            str(row.get("recommendation_exclusion_reason") or ""),
         )
     console.print(table)
+    typer.echo(
+        "Recommendation gate: completion must be measured for both arms; "
+        "secondary metrics count only when both arms completed successfully."
+    )
+    excluded = [row for row in payload["rows"] if row.get("recommendation_exclusion_reason")]
+    if excluded:
+        typer.echo("Recommendation exclusions:")
+        for row in excluded:
+            typer.echo(f"- {row['scenario_id']}: {row['recommendation_exclusion_reason']}")
 
 
 def _print_greenfield_result(payload: dict) -> None:
