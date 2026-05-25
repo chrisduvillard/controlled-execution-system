@@ -314,6 +314,125 @@ line-length = 100
     assert "tests/" in payload["allowed_file_areas"]
 
 
+def test_next_prompt_brownfield_file_areas_split_typescript_compound_names(tmp_path: Path) -> None:
+    from ces.verification.mri import build_next_prompt
+
+    (tmp_path / "README.md").write_text("# Auralis-like app\nRun: `npm run dev`\n", encoding="utf-8")
+    (tmp_path / "package.json").write_text(
+        json.dumps(
+            {
+                "scripts": {"test": "vitest", "dev": "vite"},
+                "dependencies": {"@vitejs/plugin-react": "latest", "vite": "latest"},
+            }
+        ),
+        encoding="utf-8",
+    )
+    (tmp_path / "src" / "speech").mkdir(parents=True)
+    (tmp_path / "src" / "speech" / "BrowserSpeechRecognition.ts").write_text(
+        "export function detectSpeechRecognition() { return 'browser'; }\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "src" / "speech" / "providerCapabilities.ts").write_text(
+        "export const providerCapabilities = [];\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "src" / "ui").mkdir(parents=True)
+    (tmp_path / "src" / "ui" / "ProviderCapabilityPanel.tsx").write_text(
+        "export function ProviderCapabilityPanel() { return null; }\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "tests" / "speech").mkdir(parents=True)
+    (tmp_path / "tests" / "speech" / "providerCapabilities.test.ts").write_text(
+        "import { providerCapabilities } from '../../src/speech/providerCapabilities';\n",
+        encoding="utf-8",
+    )
+    (tmp_path / ".github" / "workflows").mkdir(parents=True)
+    (tmp_path / ".github" / "workflows" / "ci.yml").write_text("name: CI\n", encoding="utf-8")
+    (tmp_path / ".ces").mkdir()
+    (tmp_path / ".ces" / "verification-profile.json").write_text("{}\n", encoding="utf-8")
+
+    payload = build_next_prompt(
+        tmp_path,
+        "Add provider capability UI for browser local SpeechRecognition language support",
+    ).to_dict()
+
+    allowed = payload["allowed_file_areas"]
+    assert payload["project_mode"] == "brownfield"
+    assert "src/speech/BrowserSpeechRecognition.ts" in allowed
+    assert "src/speech/providerCapabilities.ts" in allowed
+    assert "src/ui/ProviderCapabilityPanel.tsx" in allowed
+    assert allowed.index("src/speech/BrowserSpeechRecognition.ts") < allowed.index("README.md")
+
+
+def test_deliberate_challenge_keeps_common_tech_terms_informational(tmp_path: Path) -> None:
+    from ces.verification.mri import build_approach_decision_brief
+
+    (tmp_path / "README.md").write_text("# Auralis-like app\nRun: `npm run dev`\n", encoding="utf-8")
+    (tmp_path / "package.json").write_text(
+        json.dumps({"scripts": {"test": "vitest", "dev": "vite"}, "dependencies": {"vite": "latest"}}),
+        encoding="utf-8",
+    )
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "speech.ts").write_text(
+        """
+class BrowserSpeechRecognition {}
+class LocalLanguageSupport {}
+const providerCapabilities = [];
+function browserProviderSupport() { return true; }
+""".strip(),
+        encoding="utf-8",
+    )
+    (tmp_path / "tests").mkdir()
+    (tmp_path / "tests" / "speech.test.ts").write_text("test('speech', () => {})\n", encoding="utf-8")
+
+    payload = build_approach_decision_brief(
+        tmp_path,
+        "Add provider capability UI for browser local SpeechRecognition language support",
+        challenge=True,
+    ).to_dict()
+
+    challenge = payload["domain_challenge"]
+    challenge_terms = [item["term"] for item in challenge["terminology_challenges"]]
+    assert payload["decision"] == "ready_for_contract"
+    assert not payload["blockers"]
+    assert len(challenge_terms) == len(set(challenge_terms))
+    assert not any(item["blocking"] for item in challenge["terminology_challenges"])
+
+
+def test_deliberate_challenge_blocks_normalized_plural_domain_terms(tmp_path: Path) -> None:
+    from ces.verification.mri import build_approach_decision_brief
+
+    (tmp_path / "README.md").write_text("# Demo\nRun: `uv run demo`\n", encoding="utf-8")
+    (tmp_path / "CONTEXT.md").write_text(
+        """
+# Context
+
+## Glossary
+
+- Billing Policies: Rules for invoice and payment behavior.
+- Security Policies: Rules for authentication and access behavior.
+""".strip(),
+        encoding="utf-8",
+    )
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "policies.py").write_text(
+        "class BillingPolicies:\n    pass\n\nclass SecurityPolicies:\n    pass\n",
+        encoding="utf-8",
+    )
+
+    payload = build_approach_decision_brief(
+        tmp_path,
+        "Update policies",
+        challenge=True,
+    ).to_dict()
+
+    assert payload["decision"] == "needs_operator_decision"
+    assert any("policy" in item.lower() for item in payload["blockers"])
+    assert any(
+        item["term"] == "policy" and item["blocking"] for item in payload["domain_challenge"]["terminology_challenges"]
+    )
+
+
 def test_next_prompt_detects_thin_born_thin_rescue_mode(tmp_path: Path) -> None:
     from ces.verification.mri import build_next_prompt
 

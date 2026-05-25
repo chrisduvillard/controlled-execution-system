@@ -1912,6 +1912,20 @@ _AMBIGUOUS_DOMAIN_TERMS = frozenset(
         "workspace",
     }
 )
+_COMMON_TECH_CONTEXT_TERMS = frozenset(
+    {
+        "browser",
+        "capability",
+        "language",
+        "local",
+        "provider",
+        "recognition",
+        "speech",
+        "speechrecognition",
+        "support",
+        "ui",
+    }
+)
 
 
 def _relative(root: Path, path: Path) -> str:
@@ -1976,16 +1990,24 @@ def _collect_code_identifiers(root: Path) -> dict[str, tuple[str, ...]]:
 
 
 def _objective_words(objective: str) -> tuple[str, ...]:
-    return tuple(
-        word
-        for word in re.findall(r"[a-z][a-z0-9]{2,}", objective.lower().replace("-", " "))
-        if word not in _OBJECTIVE_STOPWORDS
-    )
+    words: list[str] = []
+    for raw_word in re.findall(r"[a-z][a-z0-9]{2,}", objective.lower().replace("-", " ")):
+        word = _normalize_objective_token(raw_word)
+        if word not in _OBJECTIVE_STOPWORDS:
+            words.append(word)
+    return tuple(dict.fromkeys(words))
 
 
 def _meaning_matches(term: str, objective_word: str) -> bool:
     compact = re.sub(r"[^a-z0-9]", "", term.lower())
-    return objective_word in compact or compact in objective_word
+    candidates = {compact, _normalize_objective_token(compact)}
+    normalized_tokens = tuple(
+        token for token in (_normalize_objective_token(raw_token) for raw_token in _semantic_word_tokens(term)) if token
+    )
+    candidates.update(normalized_tokens)
+    if normalized_tokens:
+        candidates.add("".join(normalized_tokens))
+    return any(objective_word in candidate or candidate in objective_word for candidate in candidates if candidate)
 
 
 def _source_descriptions_for_word(
@@ -2016,6 +2038,17 @@ def _choose_canonical_meaning(objective: str, meanings: tuple[str, ...]) -> str:
     return max(scored, key=lambda item: (item[0], item[1]))[1].split(" (")[0]
 
 
+def _meaning_has_domain_source(meaning: str) -> bool:
+    return any(source in meaning for source in _DOMAIN_SOURCE_NAMES) or "docs/adr/" in meaning
+
+
+def _terminology_challenge_is_blocking(word: str, meanings: tuple[str, ...]) -> bool:
+    has_domain_source = any(_meaning_has_domain_source(meaning) for meaning in meanings)
+    if word in _COMMON_TECH_CONTEXT_TERMS and not has_domain_source:
+        return False
+    return len(meanings) > 1 or word in _AMBIGUOUS_DOMAIN_TERMS
+
+
 def _build_domain_challenge(root: Path, objective: str) -> DomainChallenge:
     context_sources = _collect_domain_context_sources(root)
     glossary_terms = _extract_glossary_terms(root)
@@ -2031,7 +2064,7 @@ def _build_domain_challenge(root: Path, objective: str) -> DomainChallenge:
         if not should_challenge:
             continue
         canonical = _choose_canonical_meaning(objective, meanings)
-        blocking = len(meanings) > 1 or word in _AMBIGUOUS_DOMAIN_TERMS
+        blocking = _terminology_challenge_is_blocking(word, meanings)
         challenges.append(
             TerminologyChallenge(
                 term=word,
@@ -2058,7 +2091,7 @@ def _build_domain_challenge(root: Path, objective: str) -> DomainChallenge:
                 reason="CES should preserve domain-language decisions without mixing them into implementation plans.",
             )
         )
-        if len(meanings) > 1:
+        if len(meanings) > 1 and blocking:
             contradictions.append(
                 CodebaseContradiction(
                     claim=f"The objective uses `{word}` as if it has one obvious implementation boundary.",
@@ -2617,12 +2650,15 @@ def _allowed_file_areas(
     thin_rescue: dict[str, Any] | None,
     objective: str,
 ) -> tuple[str, ...]:
-    areas: list[str] = ["README.md", "tests/", "project config (pyproject.toml/package.json)"]
+    baseline_areas = ["README.md", "tests/", "project config (pyproject.toml/package.json)"]
+    areas: list[str] = []
     if mode == "greenfield":
+        areas.extend(baseline_areas)
         areas.extend(["primary app source files", "minimal CI/quality config only if required for verification"])
     else:
         areas.extend(_objective_file_areas(report.project_root, objective))
         areas.extend(_paths_from_risk_findings(report.risk_findings))
+        areas.extend(baseline_areas)
         areas.append("docs/ and runtime entrypoint files only if the scoped step requires them")
     if thin_rescue is not None:
         if thin_rescue["missing_verification_profile"]:
@@ -2668,10 +2704,7 @@ def _objective_file_areas(project_root: Path, objective: str) -> list[str]:
         overlap = objective_tokens & area_tokens
         if not overlap:
             continue
-        high_signal_token_match = any(
-            len(_normalize_objective_token(raw_token)) >= 6 and _normalize_objective_token(raw_token) in overlap
-            for raw_token in re.findall(r"[a-z0-9]+", area.casefold())
-        )
+        high_signal_token_match = any(len(token) >= 6 and token in overlap for token in area_tokens)
         if len(overlap) < 2 and not (high_signal_token_match and (area.startswith("src/") or "/" not in area)):
             continue
         score = len(overlap) * 10
@@ -2711,7 +2744,7 @@ def _objective_area_candidates(project_root: Path) -> tuple[str, ...]:
 
 def _objective_tokens(text: str) -> set[str]:
     tokens: set[str] = set()
-    for raw_token in re.findall(r"[a-z0-9]+", text.casefold()):
+    for raw_token in _semantic_word_tokens(text):
         token = _normalize_objective_token(raw_token)
         if len(token) < 3 and token not in {"ci", "ui"}:
             continue
@@ -2722,7 +2755,19 @@ def _objective_tokens(text: str) -> set[str]:
 
 
 def _area_tokens(area: str) -> set[str]:
-    return {_normalize_objective_token(token) for token in re.findall(r"[a-z0-9]+", area.casefold()) if token}
+    return {_normalize_objective_token(token) for token in _semantic_word_tokens(area) if token}
+
+
+def _semantic_word_tokens(text: str) -> tuple[str, ...]:
+    expanded = re.sub(r"(?<=[a-z0-9])(?=[A-Z])", " ", text)
+    expanded = re.sub(r"(?<=[A-Z])(?=[A-Z][a-z])", " ", expanded)
+    tokens: list[str] = []
+    for raw_token in re.findall(r"[A-Za-z0-9]+", expanded):
+        lower = raw_token.casefold()
+        if not lower:
+            continue
+        tokens.append(lower)
+    return tuple(tokens)
 
 
 def _normalize_objective_token(token: str) -> str:

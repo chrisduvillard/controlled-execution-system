@@ -63,6 +63,20 @@ Unsupported for now:
 - BMAD role orchestration
 - broad PRD-generation workflows
 
+## Why not just Codex CLI?
+
+Codex CLI is an excellent execution engine. It already brings strong local coding ergonomics: repository context, sandbox and approval modes, non-interactive execution, project instructions, and direct file-edit/test loops.
+
+CES should not compete with that runtime. CES adds the missing accountability plane around it:
+
+- intent is compiled into a reviewable contract before the agent starts
+- brownfield scope and behavior preservation stay visible during the run
+- verification evidence is recorded as data, not just terminal optimism
+- proof becomes the approval artifact, separate from the agent's self-report
+- high-risk, ambiguous, or under-evidenced work fails closed instead of drifting into a polished but unapproved change
+
+The durable value is not "a smarter Codex." It is Codex plus contract, context discipline, evidence, proof, and explicit approval.
+
 ## Public narrative
 
 Short form:
