@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
+import pytest
 from typer.testing import CliRunner
 
 runner = CliRunner()
@@ -71,6 +73,62 @@ class TestCesSetupCi:
         result = runner.invoke(app, ["setup-ci", "--provider", "github", "--force"])
         assert result.exit_code == 0, result.stdout
         assert target.read_text(encoding="utf-8") != "# existing\n"
+
+    def test_project_root_writes_workflow_outside_cwd(self, tmp_path: Path, monkeypatch: object) -> None:
+        """--project-root writes the workflow into the requested repository root."""
+        repo = tmp_path / "repo"
+        outside = tmp_path / "outside"
+        repo.mkdir()
+        outside.mkdir()
+        monkeypatch.chdir(outside)  # type: ignore[attr-defined]
+
+        app = _get_app()
+        result = runner.invoke(app, ["setup-ci", "--provider", "github", "--project-root", str(repo)])
+
+        assert result.exit_code == 0, result.stdout
+        assert (repo / ".github" / "workflows" / "ces-gating.yml").is_file()
+        assert not (outside / ".github").exists()
+
+    def test_refuses_project_root_workflow_symlink_escape(self, tmp_path: Path, monkeypatch: object) -> None:
+        """CI setup must not write workflow files through symlinked repo paths."""
+        repo = tmp_path / "repo"
+        outside = tmp_path / "outside"
+        repo.mkdir()
+        outside.mkdir()
+        monkeypatch.chdir(tmp_path)  # type: ignore[attr-defined]
+        (repo / ".github").symlink_to(outside, target_is_directory=True)
+
+        app = _get_app()
+        result = runner.invoke(app, ["setup-ci", "--provider", "github", "--project-root", str(repo), "--force"])
+
+        assert result.exit_code != 0
+        assert "unsafe CI workflow path" in f"{result.stdout}\n{result.stderr}\n{result.exception}"
+        assert not (outside / "workflows" / "ces-gating.yml").exists()
+
+    def test_force_replaces_workflow_hardlink_without_clobbering_external_file(
+        self, tmp_path: Path, monkeypatch: object
+    ) -> None:
+        """--force replaces a hardlinked workflow target instead of overwriting its linked peer."""
+        repo = tmp_path / "repo"
+        outside = tmp_path / "outside"
+        target = repo / ".github" / "workflows" / "ces-gating.yml"
+        external = outside / "shared-workflow.yml"
+        target.parent.mkdir(parents=True)
+        outside.mkdir()
+        external.write_text("# external sentinel\n", encoding="utf-8")
+        try:
+            os.link(external, target)
+        except OSError as exc:
+            pytest.skip(f"hardlinks unavailable on this filesystem: {exc}")
+        monkeypatch.chdir(tmp_path)  # type: ignore[attr-defined]
+
+        app = _get_app()
+        result = runner.invoke(app, ["setup-ci", "--provider", "github", "--project-root", str(repo), "--force"])
+
+        assert result.exit_code == 0, result.stdout
+        assert external.read_text(encoding="utf-8") == "# external sentinel\n"
+        assert target.read_text(encoding="utf-8") != external.read_text(encoding="utf-8")
+        assert target.stat().st_ino != external.stat().st_ino
 
     def test_invalid_provider_rejected(self, tmp_path: Path, monkeypatch: object) -> None:
         """An unknown provider value exits non-zero."""

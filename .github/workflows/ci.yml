@@ -228,7 +228,18 @@ jobs:
           (cd "$smoke_dir" && "$smoke_venv/bin/ces" baseline)
           (cd "$smoke_dir" && "$smoke_venv/bin/ces" setup-ci --provider github)
 
-          if "$smoke_venv/bin/ces" --json scan --project-root "$smoke_dir" > "$smoke_dir/usage-error.stdout" 2> "$smoke_dir/usage-error.stderr"; then
+          PATH="$fake_runtime_dir:$PATH" "$smoke_venv/bin/ces" --json scan --project-root "$smoke_dir" > "$smoke_dir/scan-project-root.json"
+          python - "$smoke_dir/scan-project-root.json" "$smoke_dir" <<'PY'
+          import json
+          import pathlib
+          import sys
+
+          scan_payload = json.loads(open(sys.argv[1], encoding="utf-8").read())
+          assert pathlib.Path(scan_payload["root"]) == pathlib.Path(sys.argv[2]).resolve()
+          assert scan_payload["report_path"].endswith(".ces/brownfield/scan.json")
+          PY
+
+          if "$smoke_venv/bin/ces" --json scan --definitely-not-an-option "$smoke_dir" > "$smoke_dir/usage-error.stdout" 2> "$smoke_dir/usage-error.stderr"; then
               echo "Expected JSON usage error smoke to fail" >&2
               exit 1
           fi
@@ -238,7 +249,7 @@ jobs:
 
           payload = json.loads(open(sys.argv[1], encoding="utf-8").read())
           assert payload["error"]["type"] == "usage_error"
-          assert "--project-root" in payload["error"]["message"]
+          assert "--definitely-not-an-option" in payload["error"]["message"]
           PY
 
           if "$smoke_venv/bin/ces" --json audit --limit nope > "$smoke_dir/error.stdout" 2> "$smoke_dir/error.stderr"; then

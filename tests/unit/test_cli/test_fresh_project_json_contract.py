@@ -56,7 +56,7 @@ def test_global_json_scan_emits_machine_readable_inventory(tmp_path: Path) -> No
 
 def test_global_json_scan_parse_error_uses_json_error_envelope(tmp_path: Path) -> None:
     """Typer usage errors should stay parseable when root --json is present."""
-    result = runner.invoke(_get_app(), ["--json", "scan", "--project-root", str(tmp_path)])
+    result = runner.invoke(_get_app(), ["--json", "scan", "--definitely-not-an-option", str(tmp_path)])
 
     assert result.exit_code == 2
     assert result.stdout == ""
@@ -64,7 +64,7 @@ def test_global_json_scan_parse_error_uses_json_error_envelope(tmp_path: Path) -
     assert payload["error"]["type"] == "usage_error"
     assert payload["error"]["title"] == "Usage Error"
     assert "No such option" in payload["error"]["message"]
-    assert "--project-root" in payload["error"]["message"]
+    assert "--definitely-not-an-option" in payload["error"]["message"]
     assert payload["error"]["exit_code"] == 2
 
 
@@ -73,7 +73,7 @@ def test_programmatic_non_standalone_usage_errors_still_raise_original_click_exc
     command = typer.main.get_command(_get_app())
 
     with pytest.raises(click.NoSuchOption) as exc_info:
-        command.main(args=["--json", "scan", "--project-root", "."], standalone_mode=False)
+        command.main(args=["--json", "scan", "--definitely-not-an-option", "."], standalone_mode=False)
 
     assert exc_info.value.exit_code == 2
 
