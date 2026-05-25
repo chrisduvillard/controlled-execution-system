@@ -98,9 +98,9 @@ This log records friction found during the production-readiness dogfood pass. Fr
 - **Expected:** Challenge mode flags truly ambiguous domain terms.
 - **Actual:** It treated common terms like provider, browser, support, local, SpeechRecognition, and language as blocking overloads, including duplicate provider entries.
 - **Severity:** Medium.
-- **Status:** Documented, not fixed in this pass.
-- **Proposed fix:** Tune challenge-mode term scoring and de-duplicate blockers.
-- **Evidence:** Auralis dogfood report under a local `ces-auralis-dogfood-trial/` workspace.
+- **Status:** Fixed.
+- **Fix:** Domain challenge now deduplicates objective terms and treats common technology-context terms such as provider, browser, support, local, language, speech, recognition, capability, and UI as informational when their meanings come only from visible code identifiers rather than repo glossary/ADR context.
+- **Evidence after fix:** `tests/unit/test_verification/test_production_autopilot.py::test_deliberate_challenge_keeps_common_tech_terms_informational`.
 
 ## FL-011: Auralis `next-prompt` file scope was too generic
 
@@ -108,9 +108,9 @@ This log records friction found during the production-readiness dogfood pass. Fr
 - **Expected:** Likely file areas include relevant TypeScript app and speech modules.
 - **Actual:** Contract allowed generic areas like `README.md`, `tests/`, and project config while omitting likely relevant files.
 - **Severity:** Medium.
-- **Status:** Documented, not fixed in this pass.
-- **Proposed fix:** Improve objective-specific codebase relevance selection for `next-prompt`.
-- **Evidence:** Auralis dogfood report under a local `ces-auralis-dogfood-trial/` workspace.
+- **Status:** Fixed.
+- **Fix:** Next-prompt objective matching now splits camelCase/PascalCase TypeScript path tokens such as `BrowserSpeechRecognition`, `providerCapabilities`, and `ProviderCapabilityPanel`, and places objective-specific file areas before generic fallback areas.
+- **Evidence after fix:** `tests/unit/test_verification/test_production_autopilot.py::test_next_prompt_brownfield_file_areas_split_typescript_compound_names`.
 
 ## FL-012: Source checkout dogfood output is noisy under Hermes venv
 

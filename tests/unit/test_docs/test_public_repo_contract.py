@@ -321,6 +321,9 @@ def test_positioning_doc_defines_ces_accountability_layer_without_import_roadmap
     assert "not a spec-framework compatibility layer" in positioning
     assert "Do not build import adapters for spec-kit, BMAD, or OpenSpec now." in positioning
     assert "copy or export the stable human-facing result into Markdown or a GitHub issue" in positioning
+    assert "Why not just Codex CLI?" in positioning
+    assert "Codex CLI is an excellent execution engine" in positioning
+    assert "CES adds the missing accountability plane" in positioning
     assert "Positioning" in readme
 
 
