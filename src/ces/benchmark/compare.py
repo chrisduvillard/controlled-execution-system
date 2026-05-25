@@ -192,16 +192,22 @@ def render_markdown_report(report: ComparisonReport) -> str:
         f"Recommendation: `{report.summary['recommendation']}`",
         f"Measured scenarios: {report.summary['measured_scenario_count']} / {report.summary['scenario_count']}",
         f"Comparable completion scenarios: {report.summary['comparable_scenario_count']}",
+        f"Secondary-metric-counted scenarios: {report.summary['secondary_metric_counted_scenario_count']}",
         f"Inferred scenarios: {report.summary['inferred_scenario_count']}",
         f"Missing-data scenarios: {report.summary['missing_scenario_count']}",
         f"CES completed scenarios: {report.summary['ces_completed_scenarios']}",
         f"Vanilla completed scenarios: {report.summary['vanilla_completed_scenarios']}",
-        f"CES metric wins: {report.summary['ces_metric_wins']}",
-        f"Vanilla metric wins: {report.summary['vanilla_metric_wins']}",
+        f"Raw CES metric wins: {report.summary['ces_metric_wins']}",
+        f"Raw vanilla metric wins: {report.summary['vanilla_metric_wins']}",
+        f"Decision CES metric wins: {report.summary['decision_ces_metric_wins']}",
+        f"Decision vanilla metric wins: {report.summary['decision_vanilla_metric_wins']}",
+        f"Decision ties: {report.summary['decision_metric_ties']}",
         f"Ties: {report.summary['metric_ties']}",
         f"Unmeasured comparisons: {report.summary['unmeasured_comparisons']}",
         "",
         "Only scenarios with completion measured for both arms count toward the recommendation.",
+        "Secondary metrics only count as tie-break evidence when both arms completed successfully.",
+        "Failed-row secondary metrics remain visible but do not prove CES value.",
         "Inferred rows are hypothesis only; they do not count as measured CES value.",
     ]
     for row in report.rows:
@@ -213,6 +219,8 @@ def render_markdown_report(report: ComparisonReport) -> str:
                 f"Type: `{row.scenario_type}`",
                 f"Objective: {row.objective}",
                 f"Recommendation-comparable: {_format_bool(_is_recommendation_comparable(row))}",
+                f"Secondary-metric-counted: {_format_bool(_secondary_metrics_count_toward_recommendation(row))}",
+                f"Recommendation exclusion: {_recommendation_exclusion_reason(row) or ''}",
                 f"Vanilla workflow: `{row.vanilla_workflow}`",
                 f"CES workflow: `{row.ces_workflow}`",
                 "",
@@ -227,6 +235,10 @@ def render_markdown_report(report: ComparisonReport) -> str:
                 f"| {metric} | {_format_value(delta.vanilla.value)} | {_format_value(delta.ces.value)} | "
                 f"{evidence} | {delta.advantage} |"
             )
+        notes = _metric_notes(row)
+        if notes:
+            lines.extend(["", "Evidence notes:"])
+            lines.extend(f"- {note}" for note in notes)
     lines.append("")
     return "\n".join(lines)
 
@@ -334,10 +346,17 @@ def _summary(rows: tuple[ComparisonRow, ...]) -> dict[str, Any]:
     all_deltas = [delta for row in rows for delta in row.deltas.values()]
     measured_rows = [row for row in rows if row.has_measured_comparison]
     comparable_rows = [row for row in rows if _is_recommendation_comparable(row)]
+    secondary_counted_rows = [row for row in comparable_rows if _secondary_metrics_count_toward_recommendation(row)]
     comparable_deltas = [delta for row in comparable_rows for delta in row.deltas.values()]
+    decision_deltas = [
+        delta for row in secondary_counted_rows for metric, delta in row.deltas.items() if metric != "completion"
+    ]
     ces_wins = sum(1 for delta in comparable_deltas if delta.advantage == "ces")
     vanilla_wins = sum(1 for delta in comparable_deltas if delta.advantage == "vanilla")
     ties = sum(1 for delta in comparable_deltas if delta.advantage == "tie")
+    decision_ces_wins = sum(1 for delta in decision_deltas if delta.advantage == "ces")
+    decision_vanilla_wins = sum(1 for delta in decision_deltas if delta.advantage == "vanilla")
+    decision_ties = sum(1 for delta in decision_deltas if delta.advantage == "tie")
     unmeasured = sum(1 for delta in all_deltas if delta.advantage == "unmeasured")
     ces_completed = sum(1 for row in comparable_rows if _measured_completion(row.deltas["completion"].ces) is True)
     vanilla_completed = sum(
@@ -351,16 +370,22 @@ def _summary(rows: tuple[ComparisonRow, ...]) -> dict[str, Any]:
         recommendation = "ces-adds-measured-value"
     elif vanilla_completed > ces_completed:
         recommendation = "vanilla-outperformed-ces"
-    elif ces_wins > vanilla_wins:
+    elif decision_ces_wins > decision_vanilla_wins:
         recommendation = "ces-adds-measured-value"
-    elif vanilla_wins > ces_wins:
+    elif decision_vanilla_wins > decision_ces_wins:
         recommendation = "vanilla-outperformed-ces"
     else:
         recommendation = "inconclusive-measured-tie"
+    excluded_rows = [
+        {"scenario_id": row.scenario_id, "reason": reason}
+        for row in rows
+        if (reason := _recommendation_exclusion_reason(row)) is not None
+    ]
     return {
         "scenario_count": len(rows),
         "measured_scenario_count": len(measured_rows),
         "comparable_scenario_count": len(comparable_rows),
+        "secondary_metric_counted_scenario_count": len(secondary_counted_rows),
         "inferred_scenario_count": sum(1 for row in rows if row.has_inferred_metric),
         "missing_scenario_count": sum(1 for row in rows if row.has_missing_metric),
         "ces_completed_scenarios": ces_completed,
@@ -368,8 +393,21 @@ def _summary(rows: tuple[ComparisonRow, ...]) -> dict[str, Any]:
         "ces_metric_wins": ces_wins,
         "vanilla_metric_wins": vanilla_wins,
         "metric_ties": ties,
+        "decision_ces_metric_wins": decision_ces_wins,
+        "decision_vanilla_metric_wins": decision_vanilla_wins,
+        "decision_metric_ties": decision_ties,
         "unmeasured_comparisons": unmeasured,
         "recommendation": recommendation,
+        "recommendation_basis": {
+            "completion_gate": "Only scenarios with two-sided measured completion count toward completion outcomes.",
+            "secondary_metric_gate": (
+                "Only recommendation-comparable scenarios where both arms completed successfully "
+                "count secondary metrics toward the tie-break recommendation."
+            ),
+            "comparable_scenarios": [row.scenario_id for row in comparable_rows],
+            "secondary_metric_counted_scenarios": [row.scenario_id for row in secondary_counted_rows],
+            "excluded_scenarios": excluded_rows,
+        },
     }
 
 
@@ -387,8 +425,46 @@ def _is_recommendation_comparable(row: ComparisonRow) -> bool:
     return _measures_both_arms(row.deltas["completion"])
 
 
+def _secondary_metrics_count_toward_recommendation(row: ComparisonRow) -> bool:
+    return (
+        _is_recommendation_comparable(row)
+        and _measured_completion(row.deltas["completion"].vanilla) is True
+        and _measured_completion(row.deltas["completion"].ces) is True
+    )
+
+
+def _recommendation_exclusion_reason(row: ComparisonRow) -> str | None:
+    if not _is_recommendation_comparable(row):
+        return "completion not measured for one or both arms"
+    vanilla_completed = _measured_completion(row.deltas["completion"].vanilla)
+    ces_completed = _measured_completion(row.deltas["completion"].ces)
+    if vanilla_completed is True and ces_completed is True:
+        return None
+    if vanilla_completed is False and ces_completed is False:
+        return (
+            "neither arm completed successfully; failed-row secondary metrics remain visible but do not prove CES value"
+        )
+    if vanilla_completed is True:
+        return "CES did not complete successfully; secondary metrics excluded from recommendation tie-break"
+    return "vanilla did not complete successfully; secondary metrics excluded from recommendation tie-break"
+
+
 def _format_bool(value: bool) -> str:
     return "true" if value else "false"
+
+
+def _metric_notes(row: ComparisonRow) -> list[str]:
+    notes: list[str] = []
+    for metric in AB_GAUNTLET_METRICS:
+        delta = row.deltas[metric]
+        metric_notes = []
+        if delta.vanilla.note:
+            metric_notes.append(f"vanilla: {delta.vanilla.note}")
+        if delta.ces.note:
+            metric_notes.append(f"ces: {delta.ces.note}")
+        if metric_notes:
+            notes.append(f"{metric}: {'; '.join(metric_notes)}")
+    return notes
 
 
 def _row_to_dict(row: ComparisonRow) -> dict[str, Any]:
@@ -398,6 +474,8 @@ def _row_to_dict(row: ComparisonRow) -> dict[str, Any]:
         "objective": row.objective,
         "acceptance_criteria": list(row.acceptance_criteria),
         "recommendation_comparable": _is_recommendation_comparable(row),
+        "secondary_metrics_counted": _secondary_metrics_count_toward_recommendation(row),
+        "recommendation_exclusion_reason": _recommendation_exclusion_reason(row),
         "vanilla_workflow": row.vanilla_workflow,
         "ces_workflow": row.ces_workflow,
         "deltas": {metric: _delta_to_dict(delta) for metric, delta in row.deltas.items()},

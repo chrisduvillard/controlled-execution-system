@@ -1,6 +1,17 @@
 {
   "benchmark_name": "CES vs vanilla AI coding A/B gauntlet",
-  "description": "Run each scenario once with vanilla Codex CLI or Claude Code and once through CES. Fill metrics with evidence='measured' only after the run is observed.",
+  "description": "Unmeasured template. Run each scenario once with vanilla Codex CLI or Claude Code and once through CES. Fill metrics with evidence='measured' only after the run is observed, and use metric notes to cite logs, artifacts, reviewer notes, or verification commands.",
+  "evidence_status": "template-unmeasured",
+  "expected_recommendation_before_measurement": "insufficient-measured-evidence",
+  "provenance_requirements": [
+    "exact prompts/commands per arm",
+    "runtime/model versions",
+    "CES version/commit",
+    "scenario fixture/base commit",
+    "verification outputs",
+    "reviewer scoring notes",
+    "known missing metrics"
+  ],
   "runs": [
     {
       "scenario_id": "greenfield-python-cli",

@@ -2,7 +2,7 @@
 
 CES is the accountability layer for AI execution.
 
-It is not trying to be a richer prompt template, a planning-doc generator, or a methodology router. CES is not a spec-framework compatibility layer. The product promise is narrower and stronger: turn intent into a bounded execution contract, run the agent inside explicit governance, collect verification evidence, generate proof, and make approval a conscious decision.
+It is not trying to be a richer prompt template, a planning-doc generator, or a methodology router. CES is not a spec-framework compatibility layer. The product thesis is narrower and stronger: turn intent into a bounded execution contract, run the agent inside explicit governance, collect verification evidence, generate proof, and make approval a conscious decision.
 
 ```text
 intent → execution contract → governed run → verification evidence → proof → approval
@@ -19,7 +19,7 @@ CES sits after planning and before approval. It accepts stable human-facing inpu
 | CES | Govern execution, evidence, proof, and approval | Native accountability layer |
 | CI/source control | Independent repo verification and collaboration | Complementary final check, not replaced by CES |
 
-## What CES should be better at
+## Product bets CES is designed to test
 
 1. **Execution contracts, not planning theater**  
    CES should make the next agent mission bounded, testable, and reviewable. It should not reward long documents that do not constrain execution.
@@ -67,7 +67,7 @@ Unsupported for now:
 
 Codex CLI is an excellent execution engine. It already brings strong local coding ergonomics: repository context, sandbox and approval modes, non-interactive execution, project instructions, and direct file-edit/test loops.
 
-CES should not compete with that runtime. CES adds the missing accountability plane around it:
+CES should not compete with that runtime. CES adds the missing accountability plane around it as an intended workflow layer:
 
 - intent is compiled into a reviewable contract before the agent starts
 - brownfield scope and behavior preservation stay visible during the run
@@ -75,7 +75,11 @@ CES should not compete with that runtime. CES adds the missing accountability pl
 - proof becomes the approval artifact, separate from the agent's self-report
 - high-risk, ambiguous, or under-evidenced work fails closed instead of drifting into a polished but unapproved change
 
-The durable value is not "a smarter Codex." It is Codex plus contract, context discipline, evidence, proof, and explicit approval.
+The value thesis to test is not "a smarter Codex." It is Codex plus contract, context discipline, evidence, proof, and explicit approval.
+
+## Benchmark claim discipline
+
+Public narrative can claim shipped workflow features, local-first boundaries, and proof surfaces. Benchmark or value claims must be scenario-scoped, cite the exact benchmark report path and summary counts, and never generalize from inferred, missing, or sample-template data.
 
 ## Public narrative
 
