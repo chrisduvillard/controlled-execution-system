@@ -13,6 +13,7 @@ from pathlib import Path
 
 from ces.harness.models.sensor_result import SensorFinding
 from ces.harness.sensors.base import BaseSensor
+from ces.harness.sensors.completion_gate import missing_artifact_result_with_reduced_evidence
 from ces.verification.profile import VerificationStatus, load_verification_profile
 
 
@@ -45,6 +46,17 @@ class CoverageSensor(BaseSensor):
             return self._parse_coverage_json(coverage_json)
 
         # No coverage data found
+        profile_result = missing_artifact_result_with_reduced_evidence(
+            self,
+            context,
+            check_name="coverage",
+            artifact_name="coverage.json",
+            command_markers=("coverage", "pytest-cov", "trace-coverage"),
+            require_artifact_path=True,
+            summary_percent_min=90.0,
+        )
+        if profile_result is not None:
+            return profile_result
         profile = None if context.get("profile_trusted") is False else load_verification_profile(root)
         if profile is not None:
             requirement = profile.requirement_for("coverage")

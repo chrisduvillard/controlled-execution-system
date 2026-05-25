@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import posixpath
 from datetime import datetime, timezone
+from fnmatch import fnmatch
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -102,7 +103,11 @@ class CompletionVerifier:
     ) -> list[SensorResult]:
         """Execute every sensor listed in the manifest and emit findings on failure."""
         results: list[SensorResult] = []
-        context = {"project_root": str(project_root), "profile_trusted": not _profile_changed(claim)}
+        context = {
+            "project_root": str(project_root),
+            "profile_trusted": not _profile_changed(claim),
+            "completion_verification_commands": tuple(claim.verification_commands),
+        }
 
         for sensor_id in manifest.verification_sensors:
             sensor = self._sensors.get(sensor_id)
@@ -226,7 +231,7 @@ def _check_scope(manifest: TaskManifest, claim: CompletionClaim) -> list[Verific
     affected = list(manifest.affected_files)
     forbidden = list(manifest.forbidden_files)
     for file_path in claim.files_changed:
-        if not PolicyEngine.check_file_access(file_path, affected, forbidden):
+        if not _file_access_allowed(file_path, affected, forbidden):
             findings.append(
                 VerificationFinding(
                     kind=VerificationFindingKind.SCOPE_VIOLATION,
@@ -242,6 +247,76 @@ def _check_scope(manifest: TaskManifest, claim: CompletionClaim) -> list[Verific
                 )
             )
     return findings
+
+
+def _file_access_allowed(file_path: str, affected: list[str], forbidden: list[str]) -> bool:
+    """Return whether a claimed file is allowed by concrete or semantic scope.
+
+    Brownfield builder manifests can carry operator-facing labels such as
+    ``CLI/API`` before exact files are known. Treat those labels as narrow
+    source-code categories so valid API module edits are not false-blocked.
+    """
+
+    normalized = _normalize_claim_path(file_path)
+    normalized_affected = [_normalize_policy_pattern(pattern) for pattern in affected]
+    normalized_forbidden = [_normalize_policy_pattern(pattern) for pattern in forbidden]
+    if not _is_safe_relative_claim_path(file_path):
+        return False
+    if any(fnmatch(file_path, pattern) or fnmatch(normalized, pattern) for pattern in normalized_forbidden):
+        return False
+    if PolicyEngine.check_file_access(normalized, normalized_affected, normalized_forbidden):
+        return True
+    return _semantic_scope_allows(normalized, normalized_affected)
+
+
+_SOURCE_SCOPE_LABELS = {
+    "api",
+    "cli",
+    "cli/api",
+    "command line",
+    "implementation",
+    "runtime code",
+    "source",
+    "source code",
+}
+_SOURCE_EXTENSIONS = {
+    ".cs",
+    ".go",
+    ".java",
+    ".js",
+    ".jsx",
+    ".kt",
+    ".php",
+    ".py",
+    ".rb",
+    ".rs",
+    ".swift",
+    ".ts",
+    ".tsx",
+}
+
+
+def _semantic_scope_allows(file_path: str, affected: list[str]) -> bool:
+    labels = {_normalize_scope_label(item) for item in affected}
+    if not labels.intersection(_SOURCE_SCOPE_LABELS):
+        return False
+    normalized = _normalize_claim_path(file_path)
+    if not _is_safe_relative_claim_path(file_path):
+        return False
+    parts = tuple(part.casefold() for part in Path(normalized).parts)
+    if not normalized or normalized.startswith((".ces/", "tests/", "docs/")):
+        return False
+    if any(part in {"tests", "docs", "documentation", "examples"} for part in parts):
+        return False
+    return Path(normalized).suffix.casefold() in _SOURCE_EXTENSIONS
+
+
+def _normalize_scope_label(value: str) -> str:
+    return _normalize_policy_pattern(value).strip("'\"` ").casefold()
+
+
+def _normalize_policy_pattern(value: str) -> str:
+    return str(value).replace("\\", "/").strip()
 
 
 _DEPENDENCY_FILE_NAMES = {
@@ -451,7 +526,20 @@ def _expects_nonzero_exit(text: str) -> bool:
 
 
 def _has_impacted_flow_evidence(claim: CompletionClaim) -> bool:
-    needles = ("critical flow", "impacted flow", "must-not-break", "must not break", "caller", "route")
+    needles = (
+        "critical flow",
+        "impacted flow",
+        "must-not-break",
+        "must not break",
+        "caller",
+        "route",
+        "public api",
+        "public function",
+        "compatibility",
+        "regression",
+        "preserved behavior",
+        "behavior preserved",
+    )
     for entry in claim.exploration_evidence:
         haystack = f"{entry.path} {entry.reason} {entry.observation}".lower()
         if any(needle in haystack for needle in needles):
@@ -469,6 +557,20 @@ def _normalize_claim_path(path: str) -> str:
     while normalized.startswith("/"):
         normalized = normalized[1:]
     return posixpath.normpath(normalized)
+
+
+def _is_safe_relative_claim_path(path: str) -> bool:
+    raw = path.replace("\\", "/").strip()
+    if not raw or raw.startswith("/") or _looks_like_windows_absolute_path(raw):
+        return False
+    if any(part == ".." for part in raw.split("/")):
+        return False
+    normalized = posixpath.normpath(raw)
+    return normalized not in {".", ".."} and not normalized.startswith("../")
+
+
+def _looks_like_windows_absolute_path(path: str) -> bool:
+    return len(path) >= 3 and path[1] == ":" and path[2] == "/" and path[0].isalpha()
 
 
 def _profile_changed(claim: CompletionClaim) -> bool:
@@ -493,7 +595,8 @@ def _check_profile_governance(claim: CompletionClaim) -> list[VerificationFindin
 
 
 def _check_open_questions(claim: CompletionClaim) -> list[VerificationFinding]:
-    if not claim.open_questions:
+    material_questions = [question for question in claim.open_questions if _is_material_open_question(question)]
+    if not material_questions:
         return []
     return [
         VerificationFinding(
@@ -503,3 +606,45 @@ def _check_open_questions(claim: CompletionClaim) -> list[VerificationFinding]:
             hint="Resolve material open questions before completion, or stop and ask the operator for clarification.",
         )
     ]
+
+
+_INFORMATIONAL_CAVEAT_MARKERS = (
+    "not installed",
+    "unavailable",
+    "not available",
+    "missing from this environment",
+)
+_REDUCED_EVIDENCE_MARKERS = (
+    "alternative",
+    "fallback",
+    "reduced evidence",
+    "reduced local evidence",
+    "used instead",
+    "used as",
+)
+_MATERIAL_QUESTION_MARKERS = (
+    "?",
+    " need ",
+    " needs ",
+    "confirm",
+    "confirmation",
+    "unclear",
+    "unknown",
+    "blocked",
+    "blocker",
+    "todo",
+    "tbd",
+    "decision",
+)
+
+
+def _is_material_open_question(question: str) -> bool:
+    folded = f" {question.strip().casefold()} "
+    has_material_marker = any(marker in folded for marker in _MATERIAL_QUESTION_MARKERS)
+    if has_material_marker:
+        return True
+    if any(marker in folded for marker in _INFORMATIONAL_CAVEAT_MARKERS) and any(
+        marker in folded for marker in _REDUCED_EVIDENCE_MARKERS
+    ):
+        return False
+    return bool(question.strip())

@@ -12,16 +12,18 @@ Artifacts (all in project root, all fail-on-missing when the sensor runs):
 - ``mypy-report.txt``     — mypy stdout/stderr; this sensor counts ``error:`` lines
 
 A manifest opts in to a sensor by listing it in ``verification_sensors``.
-Missing artifacts are governance failures, because a configured check without
-data is not a passing verification.
+Missing artifacts are governance failures when an explicit verification profile
+requires that exact artifact. Otherwise, successful equivalent commands in the
+completion claim can satisfy the sensor as reduced evidence.
 """
 
 from __future__ import annotations
 
 import json
 import re
+import shlex
 from pathlib import Path
-from typing import Iterable
+from typing import Any, Iterable
 
 from ces.harness.models.sensor_result import SensorFinding
 from ces.harness.sensors.base import BaseSensor
@@ -79,6 +81,172 @@ def _missing_artifact_profile_result(
     return (True, 1.0, f"Missing {artifact_name} ignored because {reason}")
 
 
+def missing_artifact_result_with_reduced_evidence(
+    sensor: BaseSensor,
+    context: dict,
+    *,
+    check_name: str,
+    artifact_name: str,
+    command_markers: tuple[str, ...],
+    require_artifact_path: bool = False,
+    summary_percent_min: float | None = None,
+) -> tuple[bool, float, str] | None:
+    """Return a non-blocking reduced-evidence result for missing artifacts.
+
+    Explicit verification profiles still win: if a profile requires the exact
+    artifact, the sensor remains blocking. Without an explicit profile, a
+    successful completion-claim command that invokes the same tool can be
+    accepted as reduced evidence instead of false-blocking otherwise valid work.
+    """
+
+    profile_result = _missing_artifact_profile_result(
+        sensor,
+        context,
+        check_name=check_name,
+        artifact_name=artifact_name,
+    )
+    if profile_result is not None:
+        return profile_result
+    requirement = _profile_requirement(context, check_name)
+    if requirement is not None and requirement.status is VerificationStatus.REQUIRED:
+        return None
+    if not _has_successful_completion_command(
+        context,
+        command_markers,
+        require_artifact_path=require_artifact_path,
+        summary_percent_min=summary_percent_min,
+    ):
+        return None
+    reason = f"structured {artifact_name} missing; accepted equivalent successful completion command"
+    sensor._set_verification_metadata(configured=False, required=False, reason=reason)
+    sensor._mark_skipped(reason)
+    return (True, 0.8, f"Missing {artifact_name}; accepted reduced evidence from completion claim")
+
+
+def _has_successful_completion_command(
+    context: dict,
+    markers: tuple[str, ...],
+    *,
+    require_artifact_path: bool = False,
+    summary_percent_min: float | None = None,
+) -> bool:
+    for entry in context.get("completion_verification_commands", ()) or ():
+        try:
+            exit_code = int(_field(entry, "exit_code") or 0)
+        except ValueError:
+            continue
+        if exit_code != 0:
+            continue
+        if require_artifact_path and not _artifact_path_exists(context, _field(entry, "artifact_path")):
+            continue
+        if summary_percent_min is not None and not _summary_reports_min_percent(
+            _field(entry, "summary"), summary_percent_min
+        ):
+            continue
+        if _command_invokes_marker(_field(entry, "command"), markers):
+            return True
+    return False
+
+
+def _command_invokes_marker(command: str, markers: tuple[str, ...]) -> bool:
+    try:
+        tokens = tuple(token.casefold() for token in shlex.split(command, comments=True, posix=True))
+    except ValueError:
+        tokens = tuple(command.casefold().split())
+    if not tokens:
+        return False
+    invoked = set(_invoked_tools(tokens))
+    return any(marker.casefold() in invoked for marker in markers)
+
+
+def _invoked_tools(tokens: tuple[str, ...]) -> tuple[str, ...]:
+    index = _first_executable_index(tokens)
+    if index is None:
+        return ()
+    tools: list[str] = []
+    executable = _tool_name(tokens[index])
+    tools.append(executable)
+    if executable.startswith("python"):
+        module = _python_module(tokens, index + 1)
+        if module:
+            tools.append(module)
+    if executable in {"uv", "poetry", "pipx", "npx"}:
+        wrapped = _wrapped_tool(tokens, index + 1)
+        if wrapped:
+            tools.append(wrapped)
+            if wrapped.startswith("python"):
+                module = _python_module(tokens, tokens.index(wrapped, index + 1) + 1) if wrapped in tokens else ""
+                if module:
+                    tools.append(module)
+    if "pytest" in tools and any(part == "--cov" or part.startswith("--cov=") for part in tokens):
+        tools.append("pytest-cov")
+    if "trace" in tools and {"--count", "--summary"}.intersection(tokens):
+        tools.append("trace-coverage")
+    return tuple(tools)
+
+
+def _first_executable_index(tokens: tuple[str, ...]) -> int | None:
+    for index, part in enumerate(tokens):
+        if "=" in part and not part.startswith("-") and part.split("=", 1)[0].isidentifier():
+            continue
+        if part == "env":
+            continue
+        return index
+    return None
+
+
+def _python_module(tokens: tuple[str, ...], start: int) -> str:
+    for index in range(start, len(tokens)):
+        if tokens[index] == "-m" and index + 1 < len(tokens):
+            return tokens[index + 1].rsplit(".", 1)[-1]
+        if not tokens[index].startswith("-"):
+            return ""
+    return ""
+
+
+def _wrapped_tool(tokens: tuple[str, ...], start: int) -> str:
+    for index in range(start, len(tokens)):
+        part = tokens[index]
+        if part not in {"run", "exec", "x"}:
+            continue
+        for candidate in tokens[index + 1 :]:
+            if candidate.startswith("-"):
+                continue
+            return _tool_name(candidate)
+    return ""
+
+
+def _tool_name(token: str) -> str:
+    return token.rsplit("/", 1)[-1]
+
+
+def _artifact_path_exists(context: dict, artifact_path: str) -> bool:
+    if not artifact_path:
+        return False
+    root = _project_root(context)
+    if root is None:
+        return False
+    path = (root / artifact_path).resolve()
+    try:
+        path.relative_to(root.resolve())
+    except ValueError:
+        return False
+    return path.exists()
+
+
+_PERCENT_RE = re.compile(r"(?P<value>\d+(?:\.\d+)?)\s*%")
+
+
+def _summary_reports_min_percent(summary: str, minimum: float) -> bool:
+    percentages = [float(match.group("value")) for match in _PERCENT_RE.finditer(summary)]
+    return bool(percentages) and max(percentages) >= minimum
+
+
+def _field(entry: Any, name: str) -> str:
+    value = entry.get(name, "") if isinstance(entry, dict) else getattr(entry, name, "")
+    return "" if value is None else str(value)
+
+
 # ---------------------------------------------------------------------------
 # TestPassSensor
 # ---------------------------------------------------------------------------
@@ -102,11 +270,12 @@ class TestPassSensor(BaseSensor):
 
         artifact = root / self.ARTIFACT_NAME
         if not artifact.is_file():
-            profile_result = _missing_artifact_profile_result(
+            profile_result = missing_artifact_result_with_reduced_evidence(
                 self,
                 context,
                 check_name="pytest",
                 artifact_name=self.ARTIFACT_NAME,
+                command_markers=("pytest",),
             )
             if profile_result is not None:
                 return profile_result
@@ -180,11 +349,12 @@ class LintSensor(BaseSensor):
 
         artifact = root / self.ARTIFACT_NAME
         if not artifact.is_file():
-            profile_result = _missing_artifact_profile_result(
+            profile_result = missing_artifact_result_with_reduced_evidence(
                 self,
                 context,
                 check_name="ruff",
                 artifact_name=self.ARTIFACT_NAME,
+                command_markers=("ruff", "tabnanny"),
             )
             if profile_result is not None:
                 return profile_result
@@ -281,11 +451,12 @@ class TypeCheckSensor(BaseSensor):
 
         artifact = root / self.ARTIFACT_NAME
         if not artifact.is_file():
-            profile_result = _missing_artifact_profile_result(
+            profile_result = missing_artifact_result_with_reduced_evidence(
                 self,
                 context,
                 check_name="mypy",
                 artifact_name=self.ARTIFACT_NAME,
+                command_markers=("mypy", "pyright", "pyre", "tsc", "py_compile", "compileall"),
             )
             if profile_result is not None:
                 return profile_result
