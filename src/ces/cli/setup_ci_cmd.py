@@ -23,6 +23,8 @@ import typer
 from rich.panel import Panel
 
 from ces.cli._output import console
+from ces.local_state_path import write_text_project_path
+from ces.shared.artifact_paths import resolve_project_artifact_path
 
 _VALID_PROVIDERS = ("github", "gitlab")
 
@@ -48,17 +50,27 @@ def setup_ci(
         "--force",
         help="Overwrite an existing workflow file if present.",
     ),
+    project_root: Path | None = typer.Option(
+        None,
+        "--project-root",
+        help="Repository root to write into (defaults to current working directory).",
+    ),
 ) -> None:
     """Generate a CES gating workflow for the chosen CI provider.
 
     Writes ``.github/workflows/ces-gating.yml`` for GitHub, or
-    ``.gitlab-ci.yml`` for GitLab, into the current working directory.
+    ``.gitlab-ci.yml`` for GitLab, into the selected repository root.
     """
     if provider not in _PROVIDER_TARGETS:
         raise typer.BadParameter(f"Unknown provider '{provider}'. Valid choices: {', '.join(_VALID_PROVIDERS)}.")
 
     relative_target, template_resource = _PROVIDER_TARGETS[provider]
-    target_path = Path.cwd() / relative_target
+    effective_root = (project_root or Path.cwd()).resolve()
+    if not effective_root.is_dir():
+        raise typer.BadParameter(f"Project root is not a directory: {effective_root}")
+    target_path = resolve_project_artifact_path(effective_root, relative_target)
+    if target_path is None:
+        raise typer.BadParameter(f"Refusing to write unsafe CI workflow path: {relative_target}")
 
     if target_path.exists() and not force:
         console.print(
@@ -70,8 +82,7 @@ def setup_ci(
         )
         raise typer.Exit(code=1)
 
-    target_path.parent.mkdir(parents=True, exist_ok=True)
-    target_path.write_text(_read_template(template_resource), encoding="utf-8")
+    write_text_project_path(effective_root, relative_target, _read_template(template_resource), encoding="utf-8")
 
     console.print(
         Panel(

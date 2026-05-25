@@ -178,6 +178,7 @@ def scan(
     root: Path | None = typer.Option(
         None,
         "--root",
+        "--project-root",
         help="Root directory to scan (defaults to current working directory).",
     ),
     dry_run: bool = typer.Option(

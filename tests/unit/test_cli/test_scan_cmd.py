@@ -197,6 +197,23 @@ class TestCesScan:
         assert "outside the project root" in combined_output or "symlinked CES state path" in combined_output
         assert not (outside_state / "scan.json").exists()
 
+    def test_scan_project_root_alias_writes_to_requested_root(self, tmp_path: Path, monkeypatch: object) -> None:
+        """--project-root is an alias for the repository root scanned and written."""
+        repo = tmp_path / "repo"
+        outside = tmp_path / "outside"
+        repo.mkdir()
+        outside.mkdir()
+        monkeypatch.chdir(outside)  # type: ignore[attr-defined]
+        _write(repo / "pyproject.toml", '[project]\nname = "example"\n')
+
+        result = runner.invoke(_get_app(), ["scan", "--project-root", str(repo)])
+
+        assert result.exit_code == 0, result.stdout
+        assert (repo / ".ces" / "brownfield" / "scan.json").is_file()
+        assert not (outside / ".ces").exists()
+        data = json.loads((repo / ".ces" / "brownfield" / "scan.json").read_text(encoding="utf-8"))
+        assert Path(data["root"]) == repo.resolve()
+
     def test_scan_dry_run_does_not_touch_symlinked_ces_dir(self, tmp_path: Path, monkeypatch: object) -> None:
         """Dry-run scans should stay read-only even if a dangerous local state path exists."""
         monkeypatch.chdir(tmp_path)  # type: ignore[attr-defined]
