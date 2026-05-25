@@ -223,7 +223,7 @@ def _missing_required_artifacts(
     if contract is None:
         return ["completion contract"]
     missing: list[str] = []
-    known_artifacts = {"readme.md", "run command", "test command", "verification evidence"}
+    known_artifacts = {"readme.md", "run command", "test command", "verification evidence", "regression-evidence.md"}
     for artifact in _required_artifacts(contract):
         normalized = artifact.strip().lower()
         known_missing = (
@@ -231,6 +231,7 @@ def _missing_required_artifacts(
             or (normalized == "run command" and not _readme_has_instruction(root, ("run", "start")))
             or (normalized == "test command" and not _readme_has_instruction(root, ("test", "pytest", "npm test")))
             or (normalized == "verification evidence" and not _verification_passed(verification))
+            or (normalized == "regression-evidence.md" and not _safe_project_artifact_exists(root, artifact))
         )
         if known_missing or (normalized not in known_artifacts and not _safe_project_artifact_exists(root, artifact)):
             missing.append(artifact)
@@ -666,10 +667,83 @@ def _readme_has_instruction(root: Path, verbs: tuple[str, ...]) -> bool:
     text = readme.read_text(encoding="utf-8", errors="ignore")
     for verb in verbs:
         escaped = re.escape(verb)
-        if re.search(rf"(?im)^\s*(?:[-*]\s*)?{escaped}\s*:\s*`?\S+", text):
+        label_match = re.search(rf"(?im)^\s*(?:[-*]\s*)?{escaped}\s*:\s*`?([^`\n]+)`?", text)
+        if label_match and _readme_command_satisfies(label_match.group(1), verbs, context=verb):
             return True
-        if re.search(rf"(?im)^\s*(?:```(?:bash|sh|shell)?\s*)?\$\s*\S*{escaped}\S*\b", text):
+        shell_match = re.search(rf"(?im)^\s*(?:```(?:bash|sh|shell)?\s*)?\$\s*(\S*{escaped}\S*\b.*)$", text)
+        if shell_match and _readme_command_satisfies(shell_match.group(1), verbs, context=verb):
             return True
+    if _readme_has_inline_command(text, verbs):
+        return True
+    return _readme_has_sectioned_command(text, verbs)
+
+
+_COMMAND_START_RE = re.compile(
+    r"^\s*(?:\$\s*)?(?:python(?:3)?\b|uv\b|pytest\b|npm\b|pnpm\b|yarn\b|node\b|deno\b|go\b|cargo\b|make\b)"
+)
+_TEST_COMMAND_RE = re.compile(
+    r"\b(pytest|unittest|npm\s+(?:run\s+)?test|pnpm\s+(?:run\s+)?test|yarn\s+(?:run\s+)?test|go\s+test|cargo\s+test|make\s+test)\b"
+)
+_INLINE_BACKTICK_COMMAND_RE = re.compile(r"(?i)\b(run|start|execute|use|test|verify|check)\b[^`\n]{0,80}`([^`\n]+)`")
+
+
+def _readme_has_inline_command(text: str, verbs: tuple[str, ...]) -> bool:
+    for match in _INLINE_BACKTICK_COMMAND_RE.finditer(text):
+        lead_verb = match.group(1).casefold()
+        command = match.group(2).casefold()
+        if _readme_command_satisfies(command, verbs, context=lead_verb):
+            return True
+    return False
+
+
+def _readme_command_satisfies(command: str, verbs: tuple[str, ...], *, context: str = "") -> bool:
+    wants_test = any(verb in {"test", "pytest", "npm test"} for verb in verbs)
+    wants_run = any(verb in {"run", "start"} for verb in verbs)
+    folded_command = command.casefold().strip()
+    folded_context = context.casefold()
+    is_executable_command = bool(_COMMAND_START_RE.search(folded_command))
+    if not is_executable_command:
+        return False
+    is_test_command = bool(_TEST_COMMAND_RE.search(folded_command))
+    if wants_test and (is_test_command or any(marker in folded_context for marker in ("test", "verify", "check"))):
+        return True
+    return bool(
+        wants_run
+        and not is_test_command
+        and any(marker in folded_context for marker in ("run", "start", "execute", "use", "usage", "quickstart"))
+    )
+
+
+def _readme_has_sectioned_command(text: str, verbs: tuple[str, ...]) -> bool:
+    wants_test = any(verb in {"test", "pytest", "npm test"} for verb in verbs)
+    wants_run = any(verb in {"run", "start"} for verb in verbs)
+    current_heading = ""
+    recent_text: list[str] = []
+    in_fence = False
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
+        heading_match = re.match(r"^#{1,6}\s+(.*)$", line)
+        if heading_match:
+            current_heading = heading_match.group(1).casefold()
+            recent_text.clear()
+            continue
+        if line.startswith("```"):
+            in_fence = not in_fence
+            continue
+        if in_fence and _COMMAND_START_RE.search(line):
+            command = line.casefold()
+            context = "\n".join([current_heading, *recent_text[-3:]]).casefold()
+            is_test_command = bool(_TEST_COMMAND_RE.search(command))
+            if wants_test and (is_test_command or "test" in context or "verify" in context):
+                return True
+            if (
+                wants_run
+                and not is_test_command
+                and any(marker in context for marker in ("usage", "run", "start", "install", "quickstart"))
+            ):
+                return True
+        if not in_fence and line:
+            recent_text.append(line)
     return False
 
 

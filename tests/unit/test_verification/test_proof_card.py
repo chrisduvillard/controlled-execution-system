@@ -462,6 +462,88 @@ def test_proof_card_requires_real_readme_run_and_test_instructions_not_incidenta
     assert "test command" in payload["missing_required_artifacts"]
 
 
+def test_proof_card_accepts_sectioned_readme_code_block_commands(tmp_path: Path) -> None:
+    from ces.verification.proof_card import build_proof_card
+
+    _write_completion_contract(tmp_path)
+    _write_latest_verification(tmp_path)
+    (tmp_path / "README.md").write_text(
+        "# Calculator\n\n"
+        "## Usage\n\n"
+        "```bash\n"
+        "python app.py --help\n"
+        "```\n\n"
+        "## Verify\n\n"
+        "Run the test suite:\n\n"
+        "```bash\n"
+        "python -m pytest\n"
+        "```\n\n"
+        "Verification evidence: local smoke passed.\n",
+        encoding="utf-8",
+    )
+
+    payload = build_proof_card(tmp_path).to_dict()
+
+    assert payload["ship_recommendation"] == "candidate"
+    assert payload["missing_required_artifacts"] == []
+
+
+def test_proof_card_rejects_inline_api_reference_and_test_only_run_command(tmp_path: Path) -> None:
+    from ces.verification.proof_card import build_proof_card
+
+    _write_completion_contract(tmp_path)
+    _write_latest_verification(tmp_path)
+    (tmp_path / "README.md").write_text(
+        "# ParserLib\n\nUse `parse_tags(text)` from Python. Run: `pytest -q`. Run `npm run test` to verify.\n",
+        encoding="utf-8",
+    )
+
+    payload = build_proof_card(tmp_path).to_dict()
+
+    assert payload["ship_recommendation"] == "no-ship"
+    assert "run command" in payload["missing_required_artifacts"]
+    assert "test command" not in payload["missing_required_artifacts"]
+
+
+def test_proof_card_accepts_inline_commands_and_regression_evidence_file(tmp_path: Path) -> None:
+    from ces.verification.proof_card import build_proof_card
+
+    _write_completion_contract(tmp_path)
+    contract_path = tmp_path / ".ces" / "completion-contract.json"
+    payload = json.loads(contract_path.read_text(encoding="utf-8"))
+    payload["behavior_delta"] = {
+        "added": [],
+        "modified": ["Parser preserves quoted comma tags."],
+        "removed": [],
+        "preserved": ["Public API parse_tags(text) is unchanged."],
+        "unknown": [],
+    }
+    payload["risk_track"] = {
+        "tier": "B",
+        "required_artifacts": ["regression-evidence.md"],
+        "proof_requirements": ["Document regression evidence for modified or preserved behavior."],
+        "evidence_requirements": ["Fresh verification passed.", "Regression evidence recorded."],
+    }
+    contract_path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+    _write_latest_verification(tmp_path)
+    (tmp_path / "README.md").write_text(
+        "# ParserLib\n\n"
+        "Run `python parserlib.py --help` for local usage. "
+        "Verify with `python3 -m pytest -q`. Public API: `parse_tags(text)`.\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "regression-evidence.md").write_text(
+        "# Regression evidence\n\n- Public API parse_tags(text) preserved.\n- Pytest verification passed.\n",
+        encoding="utf-8",
+    )
+
+    result = build_proof_card(tmp_path).to_dict()
+
+    assert result["ship_recommendation"] == "candidate"
+    assert result["missing_required_artifacts"] == []
+    assert result["review_summary"]["risk_evidence"] == "1/1 risk artifacts present"
+
+
 def test_proof_card_rejects_verification_with_mismatched_expected_exit_codes(tmp_path: Path) -> None:
     from ces.verification.proof_binding import proof_binding_hash_from_payload
     from ces.verification.proof_card import build_proof_card
