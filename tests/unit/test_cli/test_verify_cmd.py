@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 
 from typer.testing import CliRunner
@@ -36,6 +37,28 @@ def test_verify_infers_contract_without_writing_by_default(tmp_path: Path, monke
     assert latest["proof_binding_hash"]
     assert latest["objective"] == "Independent verification"
     assert not (tmp_path / ".ces" / "completion-contract.json").exists()
+
+
+def test_verify_inferred_python_commands_work_without_bare_python(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    empty_bin = tmp_path / "empty-bin"
+    empty_bin.mkdir()
+    monkeypatch.setenv("PATH", str(empty_bin))
+    (tmp_path / ".ces").mkdir()
+    (tmp_path / ".ces" / "config.yaml").write_text("project_id: demo\npreferred_runtime: codex\n")
+    (tmp_path / "pyproject.toml").write_text("[project]\nname='demo'\n", encoding="utf-8")
+    (tmp_path / "tests").mkdir()
+    (tmp_path / "tests" / "test_demo.py").write_text("def test_demo():\n    assert True\n", encoding="utf-8")
+
+    result = runner.invoke(_get_app(), ["verify", "--json"])
+
+    assert result.exit_code == 0, result.stdout
+    payload = json.loads(result.stdout)
+    assert payload["verification"]["passed"] is True
+    assert all(command["exit_code"] == 0 for command in payload["verification"]["commands"])
+    assert all(
+        command["effective_command"].startswith(sys.executable) for command in payload["verification"]["commands"]
+    )
 
 
 def test_verify_writes_inferred_contract_when_requested(tmp_path: Path, monkeypatch) -> None:

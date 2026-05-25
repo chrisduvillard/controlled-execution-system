@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import shlex
+import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
@@ -145,9 +147,10 @@ def test_auto_evidence_refreshes_stale_empty_contract_after_greenfield_files_exi
     result = run_auto_evidence_recovery(project_root=project_root, local_store=store, dry_run=True, auto_complete=True)
 
     assert result.verification.passed is True
+    python = shlex.quote(sys.executable)
     assert [command.command for command in result.verification.commands] == [
-        "python -m pytest -q",
-        "python -m compileall tests",
+        f"{python} -m pytest -q",
+        f"{python} -m compileall tests",
     ]
 
 

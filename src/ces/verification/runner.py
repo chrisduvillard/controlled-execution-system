@@ -10,6 +10,7 @@ from typing import Any
 from ces.execution.processes import run_sync_command
 from ces.shared.secrets import scrub_secrets_from_text
 from ces.verification.completion_contract import VerificationCommand
+from ces.verification.python_interpreter import resolve_python_argv
 
 
 @dataclass(frozen=True)
@@ -17,6 +18,7 @@ class VerificationCommandResult:
     id: str
     kind: str
     command: str
+    effective_command: str
     required: bool
     exit_code: int
     stdout: str
@@ -44,8 +46,9 @@ def run_verification_commands(
     results: list[VerificationCommandResult] = []
     for command in commands:
         cwd = _resolve_command_cwd(resolved_project_root, command.cwd)
+        argv = resolve_python_argv(resolved_project_root, shlex.split(command.command))
         result = run_sync_command(
-            shlex.split(command.command),
+            argv,
             cwd=cwd,
             timeout_seconds=command.timeout_seconds,
         )
@@ -58,6 +61,7 @@ def run_verification_commands(
                 id=command.id,
                 kind=command.kind,
                 command=scrub_secrets_from_text(command.command),
+                effective_command=scrub_secrets_from_text(shlex.join(argv)),
                 required=command.required,
                 exit_code=exit_code,
                 stdout=stdout,
