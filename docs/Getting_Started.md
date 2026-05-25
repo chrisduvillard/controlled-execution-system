@@ -110,6 +110,8 @@ If any box is unchecked, do not run mutating commands yet.
 
 Legacy verification evidence without a proof binding hash is intentionally not approval-safe. This prevents an old `.ces/latest-verification.json` from looking like proof for a new brownfield objective.
 
+The proof card labels evidence provenance explicitly. `verification_commands` are planned contract checks, not proof by themselves. `commands_run` entries are `ces_executed` only when they come from a fresh `ces verify` run bound to the current contract and matching the planned commands; stale, legacy, objective-mismatched, or command-mismatched runs are labelled `stale` and keep approval closed. Proof cards report both planned-command matches and raw persisted command records. Artifact evidence paths must be project-local relative paths. CES rejects absolute paths, `..` traversal, Windows drive paths, and symlinked components instead of treating them as valid proof.
+
 ## 2. Verify a Local Runtime
 
 ```bash

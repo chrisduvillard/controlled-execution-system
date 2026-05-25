@@ -11,6 +11,7 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
+from ces.shared.artifact_paths import project_artifact_exists, resolve_project_artifact_path
 from ces.shared.secrets import scrub_secrets_recursive
 from ces.verification.completion_contract import BehaviorDelta, CompletionContract, RiskTrack, VerificationCommand
 from ces.verification.proof_binding import proof_binding_hash
@@ -32,6 +33,7 @@ class ProofCardReport:
     changed_files: tuple[str, ...]
     commands_run: tuple[dict[str, Any], ...]
     verification_commands: tuple[VerificationCommand, ...]
+    evidence_provenance: dict[str, Any]
     behavior_delta: BehaviorDelta
     risk_track: RiskTrack
     missing_required_artifacts: tuple[str, ...]
@@ -56,6 +58,7 @@ class ProofCardReport:
             "verification_commands": [
                 _shareable_verification_command(command) for command in self.verification_commands
             ],
+            "evidence_provenance": self.evidence_provenance,
             "behavior_delta": _behavior_delta_dict(self.behavior_delta),
             "risk_track": _risk_track_dict(self.risk_track),
             "missing_required_artifacts": list(self.missing_required_artifacts),
@@ -103,6 +106,7 @@ class ProofCardReport:
                     f"Behavior delta coverage: {payload['review_summary']['behavior_delta_coverage']}",
                     f"Risk track: {payload['review_summary']['risk_track']}",
                     f"Risk evidence: {payload['review_summary']['risk_evidence']}",
+                    f"Evidence provenance: {_evidence_provenance_markdown_line(payload['evidence_provenance'])}",
                     "Next steps:",
                     *_bullet(payload["review_summary"]["next_steps"]),
                     "",
@@ -177,6 +181,7 @@ def build_proof_card(project_root: str | Path) -> ProofCardReport:
         proof_status,
         verification=verification,
         verification_fresh=verification_fresh,
+        verification_matches=verification_matches,
         binding_status=binding_status,
     )
     recommendation = "candidate" if status == "candidate" else "no-ship"
@@ -193,6 +198,12 @@ def build_proof_card(project_root: str | Path) -> ProofCardReport:
         binding_status=binding_status,
     )
     semantic_review = _semantic_review_summary(root)
+    verification_evidence_class = _verification_evidence_class(
+        verification,
+        verification_fresh=verification_fresh,
+        verification_matches=verification_matches,
+        binding_status=binding_status,
+    )
     return ProofCardReport(
         project_root=root,
         objective=contract.request if contract else None,
@@ -201,8 +212,13 @@ def build_proof_card(project_root: str | Path) -> ProofCardReport:
         approval_safety=approval_safety,
         ship_recommendation=recommendation,
         changed_files=_changed_files(root),
-        commands_run=_commands_run(verification),
+        commands_run=_commands_run(verification, evidence_class=verification_evidence_class),
         verification_commands=contract.inferred_commands if contract else (),
+        evidence_provenance=_evidence_provenance(
+            contract,
+            verification,
+            evidence_class=verification_evidence_class,
+        ),
         behavior_delta=behavior_delta,
         risk_track=risk_track,
         missing_required_artifacts=tuple(missing),
@@ -227,7 +243,7 @@ def _missing_required_artifacts(
     for artifact in _required_artifacts(contract):
         normalized = artifact.strip().lower()
         known_missing = (
-            (normalized == "readme.md" and not (root / "README.md").is_file())
+            (normalized == "readme.md" and not _safe_project_artifact_exists(root, "README.md"))
             or (normalized == "run command" and not _readme_has_instruction(root, ("run", "start")))
             or (normalized == "test command" and not _readme_has_instruction(root, ("test", "pytest", "npm test")))
             or (normalized == "verification evidence" and not _verification_passed(verification))
@@ -280,8 +296,8 @@ def _unproven_areas(
 
 
 def _load_latest_verification(root: Path) -> dict[str, Any] | None:
-    path = root / _VERIFICATION_RESULT_PATH
-    if not path.is_file():
+    path = resolve_project_artifact_path(root, _VERIFICATION_RESULT_PATH)
+    if path is None or not path.is_file():
         return None
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
@@ -295,8 +311,8 @@ def _verification_is_fresh(root: Path, contract_path: Path, verification: dict[s
 
     if verification is None or not contract_path.is_file():
         return False
-    verification_path = root / _VERIFICATION_RESULT_PATH
-    if not verification_path.is_file():
+    verification_path = resolve_project_artifact_path(root, _VERIFICATION_RESULT_PATH)
+    if verification_path is None or not verification_path.is_file():
         return False
     try:
         return verification_path.stat().st_mtime >= contract_path.stat().st_mtime
@@ -334,6 +350,7 @@ def _approval_safety(
     *,
     verification: dict[str, Any] | None,
     verification_fresh: bool,
+    verification_matches: bool,
     binding_status: str,
 ) -> str:
     """Return a compact approval safety hint for the current proof state."""
@@ -342,7 +359,12 @@ def _approval_safety(
         return "safe-to-review"
     if proof_status == "contradicted":
         return "blocked"
-    if verification is None or not verification_fresh or binding_status in {"missing", "mismatched"}:
+    if (
+        verification is None
+        or not verification_fresh
+        or not verification_matches
+        or binding_status in {"missing", "mismatched"}
+    ):
         return "needs-fresh-verification"
     return "needs-evidence"
 
@@ -588,27 +610,29 @@ def _verification_matches_contract(
     if not isinstance(commands, list):
         return False
     by_id = {command.get("id"): command for command in commands if isinstance(command, dict)}
-    for expected in contract.inferred_commands:
-        actual = by_id.get(expected.id)
-        if not actual:
-            return False
-        expected_codes = tuple(expected.expected_exit_codes or (0,))
-        actual_codes = _int_tuple(actual.get("expected_exit_codes"))
-        actual_timeout = _optional_int(actual.get("timeout_seconds"))
-        if (
-            actual.get("command") != scrub_secrets_recursive(expected.command)
-            or actual.get("kind") != expected.kind
-            or actual.get("required") is not expected.required
-            or actual.get("cwd", ".") != expected.cwd
-            or actual_timeout != expected.timeout_seconds
-            or actual_codes != expected_codes
-        ):
-            return False
-        if actual.get("exit_code") not in expected_codes:
-            return False
-        if expected.required and actual.get("passed") is not True:
-            return False
-    return True
+    return all(
+        _actual_command_matches_expected(expected, by_id.get(expected.id)) for expected in contract.inferred_commands
+    )
+
+
+def _actual_command_matches_expected(expected: VerificationCommand, actual: Any) -> bool:
+    if not isinstance(actual, dict):
+        return False
+    expected_codes = tuple(expected.expected_exit_codes or (0,))
+    actual_codes = _int_tuple(actual.get("expected_exit_codes"))
+    actual_timeout = _optional_int(actual.get("timeout_seconds"))
+    if (
+        actual.get("command") != scrub_secrets_recursive(expected.command)
+        or actual.get("kind") != expected.kind
+        or actual.get("required") is not expected.required
+        or actual.get("cwd", ".") != expected.cwd
+        or actual_timeout != expected.timeout_seconds
+        or actual_codes != expected_codes
+    ):
+        return False
+    if actual.get("exit_code") not in expected_codes:
+        return False
+    return not (expected.required and actual.get("passed") is not True)
 
 
 def _int_tuple(value: Any) -> tuple[int, ...]:
@@ -627,20 +651,24 @@ def _optional_int(value: Any) -> int | None:
         return None
 
 
-def _commands_run(verification: dict[str, Any] | None) -> tuple[dict[str, Any], ...]:
+def _commands_run(
+    verification: dict[str, Any] | None, *, evidence_class: str = "ces_executed"
+) -> tuple[dict[str, Any], ...]:
     payload = _verification_payload(verification)
     if payload is None:
         return ()
     commands = payload.get("commands", [])
     if not isinstance(commands, list):
         return ()
-    return tuple(_shareable_command(command) for command in commands if isinstance(command, dict))
+    return tuple(
+        _shareable_command(command, evidence_class=evidence_class) for command in commands if isinstance(command, dict)
+    )
 
 
-def _shareable_command(command: dict[str, Any]) -> dict[str, Any]:
+def _shareable_command(command: dict[str, Any], *, evidence_class: str) -> dict[str, Any]:
     """Return command evidence safe for a compact shareable proof card."""
 
-    allowed = {
+    allowed = (
         "id",
         "kind",
         "command",
@@ -650,19 +678,98 @@ def _shareable_command(command: dict[str, Any]) -> dict[str, Any]:
         "exit_code",
         "expected_exit_codes",
         "passed",
+    )
+    payload = {key: command[key] for key in allowed if key in command}
+    payload["evidence_class"] = evidence_class
+    return scrub_secrets_recursive(payload)
+
+
+def _verification_evidence_class(
+    verification: dict[str, Any] | None,
+    *,
+    verification_fresh: bool,
+    verification_matches: bool,
+    binding_status: str,
+) -> str:
+    """Classify trust provenance for persisted verification evidence."""
+
+    if verification is None:
+        return "missing"
+    if not verification_fresh or not verification_matches or binding_status in {"missing", "mismatched"}:
+        return "stale"
+    return "ces_executed"
+
+
+def _evidence_provenance(
+    contract: CompletionContract | None,
+    verification: dict[str, Any] | None,
+    *,
+    evidence_class: str,
+) -> dict[str, Any]:
+    """Return compact evidence provenance counters for proof consumers."""
+
+    payload = _verification_payload(verification)
+    commands = payload.get("commands", []) if payload else []
+    persisted_count = len(commands) if isinstance(commands, list) else 0
+    matched_count = _matched_planned_command_count(contract, commands)
+    command_classes = {evidence_class: matched_count} if matched_count else {}
+    return {
+        "verification": evidence_class,
+        "commands": command_classes,
+        "planned_commands": len(contract.inferred_commands) if contract else 0,
+        "planned_commands_matched": matched_count,
+        "persisted_commands": persisted_count,
     }
-    return scrub_secrets_recursive({key: command[key] for key in allowed if key in command})
+
+
+def _matched_planned_command_count(contract: CompletionContract | None, commands: Any) -> int:
+    if contract is None or not isinstance(commands, list):
+        return 0
+    by_id = {command.get("id"): command for command in commands if isinstance(command, dict)}
+    return sum(
+        1
+        for expected in contract.inferred_commands
+        if _actual_command_matches_expected(expected, by_id.get(expected.id))
+    )
+
+
+def _evidence_provenance_markdown_line(provenance: dict[str, Any]) -> str:
+    label = str(provenance.get("verification") or "missing")
+    labels = {
+        "ces_executed": "CES-executed verification",
+        "ces_observed": "CES-observed runtime evidence",
+        "agent_claimed": "agent-claimed evidence",
+        "stale": "stale verification evidence",
+        "missing": "missing verification evidence",
+    }
+    command_classes = provenance.get("commands")
+    matched = provenance.get("planned_commands_matched", 0)
+    if not isinstance(matched, int):
+        try:
+            matched = int(matched)
+        except (TypeError, ValueError):
+            matched = 0
+    if isinstance(command_classes, dict) and not matched:
+        try:
+            matched = sum(int(value) for value in command_classes.values())
+        except (TypeError, ValueError):
+            matched = 0
+    planned = provenance.get("planned_commands", 0)
+    persisted = provenance.get("persisted_commands", matched)
+    return f"{labels.get(label, label)} ({matched}/{planned} planned commands matched; {persisted} persisted command records)"
 
 
 def _shareable_verification_command(command: VerificationCommand) -> dict[str, Any]:
     """Return contract command metadata without leaking inline secrets."""
 
-    return scrub_secrets_recursive(asdict(command))
+    payload = asdict(command)
+    payload["evidence_class"] = "planned"
+    return scrub_secrets_recursive(payload)
 
 
 def _readme_has_instruction(root: Path, verbs: tuple[str, ...]) -> bool:
-    readme = root / "README.md"
-    if not readme.is_file():
+    readme = resolve_project_artifact_path(root, "README.md")
+    if readme is None or not readme.is_file():
         return False
     text = readme.read_text(encoding="utf-8", errors="ignore")
     for verb in verbs:
@@ -748,16 +855,7 @@ def _readme_has_sectioned_command(text: str, verbs: tuple[str, ...]) -> bool:
 
 
 def _safe_project_artifact_exists(root: Path, artifact: str) -> bool:
-    path = Path(artifact)
-    if path.is_absolute() or any(part in {"", ".", ".."} for part in path.parts):
-        return False
-    try:
-        resolved_root = root.resolve()
-        candidate = (resolved_root / path).resolve()
-        candidate.relative_to(resolved_root)
-    except (OSError, ValueError):
-        return False
-    return candidate.exists()
+    return project_artifact_exists(root, artifact)
 
 
 def _changed_files(root: Path) -> tuple[str, ...]:

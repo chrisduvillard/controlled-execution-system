@@ -108,6 +108,8 @@ The proof card also includes a `review_summary` object for reviewer triage:
 - `freshness`, `command_coverage`, `artifact_coverage`, `behavior_delta_coverage`, `risk_track`, and `risk_evidence`: compact evidence quality signals.
 - `next_steps`: the next operator commands/actions to unblock review.
 
+Evidence provenance is separate from evidence presence. `verification_commands` are planned checks from the contract. `commands_run` evidence from `.ces/latest-verification.json` is labelled `ces_executed` only when the run is fresh, bound to the current contract, and matching the planned commands; stale, legacy, objective-mismatched, or command-mismatched verification remains no-ship even if commands passed. Proof cards report both planned-command matches and raw persisted command records. Artifact evidence paths must be relative project-local paths and must not escape through absolute paths, `..`, Windows drive prefixes, or symlinked components.
+
 ## Legacy interview
 
 The older phase-based interview command remains available under:

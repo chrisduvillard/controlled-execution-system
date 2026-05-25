@@ -34,6 +34,7 @@ from ces.harness.models.completion_claim import (
 from ces.harness.models.sensor_result import SensorResult
 from ces.harness.sensors.base import BaseSensor
 from ces.harness.services.change_impact import detects_docs_impact
+from ces.shared.artifact_paths import project_artifact_exists, resolve_project_artifact_path
 from ces.verification.profile import PROFILE_RELATIVE_PATH
 
 if TYPE_CHECKING:
@@ -475,15 +476,26 @@ def _check_required_evidence(
                     hint="Fix the failure or disclose why the command cannot pass before claiming completion.",
                 )
             )
-        if project_root is not None and entry.artifact_path and not (project_root / entry.artifact_path).exists():
-            findings.append(
-                VerificationFinding(
-                    kind=VerificationFindingKind.EVIDENCE_MISMATCH,
-                    severity="medium",
-                    message=f"Verification artifact path does not exist: {entry.artifact_path}",
-                    hint="Attach an existing artifact path or omit artifact_path when the command has no artifact output.",
+        if project_root is not None and entry.artifact_path:
+            safe_artifact_path = resolve_project_artifact_path(project_root, entry.artifact_path)
+            if safe_artifact_path is None:
+                findings.append(
+                    VerificationFinding(
+                        kind=VerificationFindingKind.EVIDENCE_MISMATCH,
+                        severity="high",
+                        message=f"unsafe verification artifact path rejected: {entry.artifact_path}",
+                        hint="Use a relative, project-local artifact path that does not traverse directories or pass through symlinks.",
+                    )
                 )
-            )
+            elif not project_artifact_exists(project_root, entry.artifact_path):
+                findings.append(
+                    VerificationFinding(
+                        kind=VerificationFindingKind.EVIDENCE_MISMATCH,
+                        severity="medium",
+                        message=f"Verification artifact path does not exist: {entry.artifact_path}",
+                        hint="Attach an existing artifact path or omit artifact_path when the command has no artifact output.",
+                    )
+                )
     return findings
 
 

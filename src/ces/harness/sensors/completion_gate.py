@@ -27,6 +27,7 @@ from typing import Any, Iterable
 
 from ces.harness.models.sensor_result import SensorFinding
 from ces.harness.sensors.base import BaseSensor
+from ces.shared.artifact_paths import project_artifact_exists, resolve_project_artifact_path
 from ces.verification.profile import VerificationCheck, VerificationStatus, load_verification_profile
 
 
@@ -226,12 +227,14 @@ def _artifact_path_exists(context: dict, artifact_path: str) -> bool:
     root = _project_root(context)
     if root is None:
         return False
-    path = (root / artifact_path).resolve()
-    try:
-        path.relative_to(root.resolve())
-    except ValueError:
-        return False
-    return path.exists()
+    return project_artifact_exists(root, artifact_path)
+
+
+def _project_artifact_file(root: Path, artifact_name: str) -> Path | None:
+    artifact = resolve_project_artifact_path(root, artifact_name)
+    if artifact is None or not artifact.is_file():
+        return None
+    return artifact
 
 
 _PERCENT_RE = re.compile(r"(?P<value>\d+(?:\.\d+)?)\s*%")
@@ -268,8 +271,8 @@ class TestPassSensor(BaseSensor):
             self._mark_skipped("No project_root in context")
             return (True, 1.0, "No project root provided; skipping pytest results check")
 
-        artifact = root / self.ARTIFACT_NAME
-        if not artifact.is_file():
+        artifact = _project_artifact_file(root, self.ARTIFACT_NAME)
+        if artifact is None:
             profile_result = missing_artifact_result_with_reduced_evidence(
                 self,
                 context,
@@ -347,8 +350,8 @@ class LintSensor(BaseSensor):
             self._mark_skipped("No project_root in context")
             return (True, 1.0, "No project root provided; skipping lint check")
 
-        artifact = root / self.ARTIFACT_NAME
-        if not artifact.is_file():
+        artifact = _project_artifact_file(root, self.ARTIFACT_NAME)
+        if artifact is None:
             profile_result = missing_artifact_result_with_reduced_evidence(
                 self,
                 context,
@@ -449,8 +452,8 @@ class TypeCheckSensor(BaseSensor):
             self._mark_skipped("No project_root in context")
             return (True, 1.0, "No project root provided; skipping typecheck")
 
-        artifact = root / self.ARTIFACT_NAME
-        if not artifact.is_file():
+        artifact = _project_artifact_file(root, self.ARTIFACT_NAME)
+        if artifact is None:
             profile_result = missing_artifact_result_with_reduced_evidence(
                 self,
                 context,

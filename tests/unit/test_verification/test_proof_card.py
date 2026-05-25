@@ -134,6 +134,15 @@ def test_proof_card_marks_candidate_when_required_beginner_artifacts_exist(tmp_p
     assert payload["approval_safety"] == "safe-to-review"
     assert payload["evidence_status"] == "candidate"
     assert payload["ship_recommendation"] == "candidate"
+    assert payload["evidence_provenance"] == {
+        "verification": "ces_executed",
+        "commands": {"ces_executed": 2},
+        "planned_commands": 2,
+        "planned_commands_matched": 2,
+        "persisted_commands": 2,
+    }
+    assert {command["evidence_class"] for command in payload["commands_run"]} == {"ces_executed"}
+    assert payload["verification_commands"][0]["evidence_class"] == "planned"
     assert payload["review_summary"] == {
         "decision": "ready-for-review",
         "approval_gate": "open",
@@ -157,6 +166,10 @@ def test_proof_card_marks_candidate_when_required_beginner_artifacts_exist(tmp_p
     assert "Behavior delta coverage: 0 recorded / 0 unresolved ambiguity" in markdown
     assert "Risk track: C" in markdown
     assert "Risk evidence: low-risk: no additional risk evidence required" in markdown
+    assert (
+        "Evidence provenance: CES-executed verification (2/2 planned commands matched; 2 persisted command records)"
+        in markdown
+    )
     assert "Proof status: **proven**" in markdown
     assert "Ship recommendation: **candidate**" in markdown
     assert "python app.py --help" in markdown
@@ -272,6 +285,8 @@ def test_proof_card_rejects_stale_verification_older_than_completion_contract(tm
     assert payload["proof_status"] == "unproven"
     assert payload["approval_safety"] == "needs-fresh-verification"
     assert payload["ship_recommendation"] == "no-ship"
+    assert payload["evidence_provenance"]["verification"] == "stale"
+    assert {command["evidence_class"] for command in payload["commands_run"]} == {"stale"}
     assert any("not fresh" in item for item in payload["unproven_areas"])
 
 
@@ -299,6 +314,13 @@ def test_proof_card_does_not_overclaim_from_readme_without_persisted_verificatio
 
     assert payload["ship_recommendation"] == "no-ship"
     assert "verification evidence" in payload["missing_required_artifacts"]
+    assert payload["evidence_provenance"] == {
+        "verification": "missing",
+        "commands": {},
+        "planned_commands": 2,
+        "planned_commands_matched": 0,
+        "persisted_commands": 0,
+    }
     assert any("No persisted verification run" in item for item in payload["unproven_areas"])
 
 
@@ -389,6 +411,15 @@ def test_proof_card_rejects_latest_verification_not_matching_current_contract(tm
     payload = build_proof_card(tmp_path).to_dict()
 
     assert payload["ship_recommendation"] == "no-ship"
+    assert payload["approval_safety"] == "needs-fresh-verification"
+    assert payload["evidence_provenance"] == {
+        "verification": "stale",
+        "commands": {},
+        "planned_commands": 2,
+        "planned_commands_matched": 0,
+        "persisted_commands": 1,
+    }
+    assert {command["evidence_class"] for command in payload["commands_run"]} == {"stale"}
     assert any("does not match the current completion contract" in item for item in payload["unproven_areas"])
 
 
@@ -419,6 +450,26 @@ def test_proof_card_rejects_required_artifact_paths_outside_project(tmp_path: Pa
     assert result["ship_recommendation"] == "no-ship"
     assert "/etc/passwd" in result["missing_required_artifacts"]
     assert "../outside-proof.txt" in result["missing_required_artifacts"]
+
+
+def test_proof_card_rejects_symlinked_readme_artifact(tmp_path: Path) -> None:
+    from ces.verification.proof_card import build_proof_card
+
+    _write_completion_contract(tmp_path)
+    _write_latest_verification(tmp_path)
+    outside_readme = tmp_path.parent / "outside-readme.md"
+    outside_readme.write_text(
+        "Run: `python app.py --help`\n\nTest: `pytest`\n\nVerification evidence: local smoke passed.\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "README.md").symlink_to(outside_readme)
+
+    result = build_proof_card(tmp_path).to_dict()
+
+    assert result["ship_recommendation"] == "no-ship"
+    assert "README.md" in result["missing_required_artifacts"]
+    assert "run command" in result["missing_required_artifacts"]
+    assert "test command" in result["missing_required_artifacts"]
 
 
 def test_proof_card_shareable_output_omits_raw_stdout_stderr_and_absolute_root(tmp_path: Path) -> None:
@@ -635,6 +686,14 @@ def test_proof_card_rejects_latest_verification_for_different_objective_binding(
     assert payload["approval_safety"] == "needs-fresh-verification"
     assert payload["review_summary"]["binding_status"] == "mismatched"
     assert payload["review_summary"]["freshness"] == "stale-objective"
+    assert payload["evidence_provenance"] == {
+        "verification": "stale",
+        "commands": {"stale": 2},
+        "planned_commands": 2,
+        "planned_commands_matched": 2,
+        "persisted_commands": 2,
+    }
+    assert {command["evidence_class"] for command in payload["commands_run"]} == {"stale"}
     assert any("different objective context" in item for item in payload["unproven_areas"])
 
 
@@ -653,4 +712,12 @@ def test_proof_card_rejects_legacy_verification_without_binding_hash(tmp_path: P
     assert payload["proof_status"] == "unproven"
     assert payload["approval_safety"] == "needs-fresh-verification"
     assert payload["review_summary"]["binding_status"] == "missing"
+    assert payload["evidence_provenance"] == {
+        "verification": "stale",
+        "commands": {"stale": 2},
+        "planned_commands": 2,
+        "planned_commands_matched": 2,
+        "persisted_commands": 2,
+    }
+    assert {command["evidence_class"] for command in payload["commands_run"]} == {"stale"}
     assert any("proof binding hash" in item for item in payload["unproven_areas"])
