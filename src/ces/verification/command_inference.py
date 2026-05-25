@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from ces.verification.completion_contract import VerificationCommand
+from ces.verification.python_interpreter import python_invocation_for_project, rewrite_python_command_text
 
 NEGATIVE_EXIT_MARKERS = (
     "nonzero",
@@ -38,34 +39,33 @@ def infer_verification_commands(
 
 
 def _python_commands(project_root: Path, project_type: str) -> tuple[VerificationCommand, ...]:
-    prefix = "uv run " if (project_root / "uv.lock").is_file() else ""
+    python = python_invocation_for_project(project_root)
+    uses_uv = python.startswith("uv run ")
     commands: list[VerificationCommand] = []
     if (project_root / "tests").is_dir() and _python_has_pytest_evidence(project_root):
-        commands.append(
-            VerificationCommand(id=_command_id(commands), kind="test", command=f"{prefix}python -m pytest -q")
-        )
+        commands.append(VerificationCommand(id=_command_id(commands), kind="test", command=f"{python} -m pytest -q"))
     compile_targets = [target for target in ("src", "tests") if (project_root / target).exists()]
     if compile_targets:
         commands.append(
             VerificationCommand(
                 id=_command_id(commands),
                 kind="compile",
-                command=f"{prefix}python -m compileall {' '.join(compile_targets)}",
+                command=f"{python} -m compileall {' '.join(compile_targets)}",
             )
         )
     if project_type == "python-cli":
         script = _first_project_script(project_root)
         script_module = _first_project_script_module(project_root)
-        if script and prefix:
+        if script and uses_uv:
             commands.append(
-                VerificationCommand(id=_command_id(commands), kind="smoke", command=f"{prefix}{script} --help")
+                VerificationCommand(id=_command_id(commands), kind="smoke", command=f"uv run {script} --help")
             )
         elif script_module:
             commands.append(
                 VerificationCommand(
                     id=_command_id(commands),
                     kind="smoke",
-                    command=f"python -c \"import sys; sys.path.insert(0, 'src'); import {script_module}\"",
+                    command=f"{python} -c \"import sys; sys.path.insert(0, 'src'); import {script_module}\"",
                 )
             )
     return tuple(commands)
@@ -248,7 +248,6 @@ def _command_id(commands: list[VerificationCommand]) -> str:
 
 def _criterion_commands(criteria: tuple[str, ...] | list[str], project_root: Path) -> tuple[VerificationCommand, ...]:
     commands: list[VerificationCommand] = []
-    prefix = "uv run " if (project_root / "uv.lock").is_file() else ""
     for criterion in criteria:
         text = str(criterion).strip()
         if not _expects_failure(text):
@@ -256,8 +255,13 @@ def _criterion_commands(criteria: tuple[str, ...] | list[str], project_root: Pat
         command = _extract_backticked_command(text)
         if command is None:
             continue
-        if prefix and _first_project_script(project_root) and not command.startswith("uv run "):
-            command = f"{prefix}{command}"
+        command = rewrite_python_command_text(project_root, command)
+        if (
+            (project_root / "uv.lock").is_file()
+            and _first_project_script(project_root)
+            and not command.startswith("uv run ")
+        ):
+            command = f"uv run {command}"
         commands.append(
             VerificationCommand(
                 id=f"VC-criterion-negative-{len(commands) + 1:03d}",

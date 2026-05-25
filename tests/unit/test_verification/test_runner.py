@@ -24,6 +24,25 @@ def test_runner_captures_pass_and_fail(tmp_path: Path) -> None:
     assert results.commands[1].exit_code == 2
 
 
+def test_runner_resolves_bare_python_when_path_has_no_python(tmp_path: Path, monkeypatch) -> None:
+    from ces.verification.completion_contract import VerificationCommand
+    from ces.verification.runner import run_verification_commands
+
+    empty_bin = tmp_path / "empty-bin"
+    empty_bin.mkdir()
+    monkeypatch.setenv("PATH", str(empty_bin))
+
+    result = run_verification_commands(
+        tmp_path,
+        (VerificationCommand(id="VC-python", kind="smoke", command="python -c 'import sys; print(sys.executable)'"),),
+    )
+
+    assert result.passed is True
+    assert result.commands[0].command == "python -c 'import sys; print(sys.executable)'"
+    assert result.commands[0].effective_command.startswith(sys.executable)
+    assert Path(result.commands[0].stdout.strip()).resolve() == Path(sys.executable).resolve()
+
+
 def test_runner_fails_when_no_commands_are_inferred(tmp_path: Path) -> None:
     from ces.verification.runner import run_verification_commands
 
