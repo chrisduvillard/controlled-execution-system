@@ -509,6 +509,43 @@ async def test_missing_verification_artifact_path_blocks_completion(tmp_path) ->
 
 
 @pytest.mark.asyncio
+async def test_unsafe_existing_verification_artifact_paths_block_completion(tmp_path) -> None:
+    outside_path = tmp_path.parent / "outside-report.json"
+    outside_path.write_text("{}\n", encoding="utf-8")
+    symlink_path = tmp_path / "symlink-report.json"
+    symlink_path.symlink_to(outside_path)
+
+    for artifact_path in (str(outside_path), "../outside-report.json", r"C:\\Temp\\report.json", "symlink-report.json"):
+        claim = CompletionClaim(
+            task_id="M-evidence",
+            summary="Added behavior",
+            files_changed=("src/app.py", "tests/test_app.py"),
+            criteria_satisfied=(_criterion(),),
+            exploration_evidence=(
+                ExplorationEvidence(
+                    path="src/app.py",
+                    reason="existing application pattern",
+                    observation="handlers return plain dicts",
+                ),
+            ),
+            verification_commands=(
+                VerificationCommandEvidence(
+                    command="pytest --json-report-file=pytest-results.json",
+                    exit_code=0,
+                    summary="1 passed",
+                    artifact_path=artifact_path,
+                ),
+            ),
+            complexity_notes=ComplexityNotes(),
+        )
+
+        result = await CompletionVerifier(sensors={}).verify(_manifest(), claim, tmp_path)
+
+        assert result.passed is False, artifact_path
+        assert any("unsafe verification artifact path" in finding.message for finding in result.findings)
+
+
+@pytest.mark.asyncio
 async def test_brownfield_impacted_flow_evidence_is_required_when_manifest_says_so(tmp_path) -> None:
     claim = CompletionClaim(
         task_id="M-evidence",

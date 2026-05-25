@@ -14,6 +14,7 @@ from pathlib import Path
 from ces.harness.models.sensor_result import SensorFinding
 from ces.harness.sensors.base import BaseSensor
 from ces.harness.sensors.completion_gate import missing_artifact_result_with_reduced_evidence
+from ces.shared.artifact_paths import resolve_project_artifact_path
 from ces.verification.profile import VerificationStatus, load_verification_profile
 
 
@@ -41,8 +42,8 @@ class CoverageSensor(BaseSensor):
         root = Path(project_root)
 
         # Try coverage.json first (produced by `coverage json`)
-        coverage_json = root / "coverage.json"
-        if coverage_json.is_file():
+        coverage_json = resolve_project_artifact_path(root, "coverage.json")
+        if coverage_json is not None and coverage_json.is_file():
             return self._parse_coverage_json(coverage_json)
 
         # No coverage data found
