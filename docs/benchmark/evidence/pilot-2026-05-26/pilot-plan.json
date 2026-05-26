@@ -1,0 +1,38 @@
+{
+  "run_id": "pilot-2026-05-26",
+  "evidence_status": "runtime-preflight-blocked",
+  "created_at_utc": "2026-05-26T05:32:15Z",
+  "comparison_target": "CES vs direct runtime CLI on identical tasks",
+  "runtime_candidates": ["codex", "claude"],
+  "workspace_policy": "fresh isolated /tmp workspace per scenario and arm; no unsandboxed runtime bypass without explicit operator approval",
+  "scenarios": [
+    {
+      "scenario_id": "greenfield-python-cli",
+      "scenario_type": "greenfield",
+      "objective": "Build a small Python CLI task tracker with add, list, complete, tests, and README usage examples.",
+      "verification": [
+        "python3 -m unittest",
+        "manual CLI smoke for add/list/complete against a temp tasks.json"
+      ]
+    },
+    {
+      "scenario_id": "greenfield-text-stats",
+      "scenario_type": "greenfield",
+      "objective": "Build a standard-library Python CLI that reports line, word, and character counts for stdin or a file, with tests and README.",
+      "verification": [
+        "python3 -m unittest",
+        "CLI smoke for file input and stdin input"
+      ]
+    },
+    {
+      "scenario_id": "brownfield-calculator-bugfix",
+      "scenario_type": "brownfield",
+      "objective": "Fix a deliberately seeded calculator regression while preserving existing behavior and adding regression tests.",
+      "verification": [
+        "python3 -m unittest",
+        "diff review confirms only calculator/test/docs scope changed"
+      ]
+    }
+  ],
+  "decision": "Do not run measured arms until runtime preflight can create files in the benchmark workspace without unsafe sandbox bypass."
+}

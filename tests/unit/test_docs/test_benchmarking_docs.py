@@ -36,11 +36,40 @@ def test_benchmarking_docs_define_value_question_and_metrics() -> None:
     assert "missing" in docs
     assert "no-successful-completion" in docs
     assert "recommendation-comparable" in docs
-    assert "recommendation-comparable flag" in docs
-    assert "two-sided measured completion" in docs
+    assert "ces benchmark compare" in docs
+    assert "--project-spec" in docs
     assert "measured successful completions" in docs
     assert "secondary-metric-counted" in docs
     assert "Failed-row secondary metrics remain visible but do not prove CES value" in docs
+    assert "ces benchmark preflight" in docs
+    assert "--probe-runtime" in docs
+
+
+def test_benchmark_docs_track_blocked_runtime_pilot_without_product_claims() -> None:
+    readme = (_REPO_ROOT / "docs" / "benchmark" / "evidence" / "pilot-2026-05-26" / "README.md").read_text(
+        encoding="utf-8"
+    )
+    plan = json.loads(
+        (_REPO_ROOT / "docs" / "benchmark" / "evidence" / "pilot-2026-05-26" / "pilot-plan.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    codex = json.loads(
+        (_REPO_ROOT / "docs" / "benchmark" / "evidence" / "pilot-2026-05-26" / "preflight" / "codex.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    claude = json.loads(
+        (_REPO_ROOT / "docs" / "benchmark" / "evidence" / "pilot-2026-05-26" / "preflight" / "claude.json").read_text(
+            encoding="utf-8"
+        )
+    )
+
+    assert "not CES-vs-vanilla product evidence" in readme
+    assert "runtime-blocked" in readme
+    assert len(plan["scenarios"]) == 3
+    assert codex["recommendation"] == "runtime-blocked"
+    assert claude["recommendation"] == "runtime-blocked"
 
 
 def test_benchmarking_docs_require_self_contained_evidence_packs() -> None:

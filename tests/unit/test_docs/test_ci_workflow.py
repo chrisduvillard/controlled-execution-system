@@ -78,6 +78,10 @@ def test_ci_smokes_installed_wheel_public_contract() -> None:
     assert '"$smoke_venv/bin/ces" --version' in workflow_text
     assert 'ces" --json doctor --project-root "$smoke_dir"' in workflow_text
     assert 'ces" --json scan --root "$smoke_dir"' in workflow_text
+    assert (
+        'ces" --json benchmark preflight --runtime codex --project-root "$smoke_dir" --probe-runtime' in workflow_text
+    )
+    assert 'preflight_payload["recommendation"] == "runtime-ready"' in workflow_text
     assert 'scan_payload["modules"]' in workflow_text
     assert '"$smoke_venv/bin/ces" baseline' in workflow_text
     assert '"$smoke_venv/bin/ces" setup-ci --provider github' in workflow_text

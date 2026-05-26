@@ -1,0 +1,22 @@
+{
+  "runtime": "claude",
+  "project_root": "<isolated-temp-workspace>",
+  "probe_runtime": true,
+  "installed": true,
+  "recommendation": "runtime-blocked",
+  "checks": [
+    {
+      "name": "runtime-installed",
+      "ok": true,
+      "detail": "claude found on PATH"
+    },
+    {
+      "name": "workspace-write-probe",
+      "ok": false,
+      "detail": "runtime exited without creating benchmark probe file",
+      "exit_code": 1,
+      "stdout_tail": "runtime provider reported authentication or entitlement unavailable on this host; exact message redacted",
+      "stderr_tail": ""
+    }
+  ]
+}
