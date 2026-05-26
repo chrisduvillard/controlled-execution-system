@@ -230,3 +230,13 @@ This log records friction found during the production-readiness dogfood pass. Fr
 - **Status:** Fixed.
 - **Fix:** README and positioning now label value as a thesis, Benchmarking documents template vs evidence-pack rules, and the sample spec declares `template-unmeasured` with an expected `insufficient-measured-evidence` recommendation.
 - **Evidence after fix:** `tests/unit/test_docs/test_benchmarking_docs.py::test_sample_ab_gauntlet_spec_is_unmeasured_template_not_evidence`, `::test_benchmarking_docs_require_self_contained_evidence_packs`, and `tests/unit/test_docs/test_public_repo_contract.py::test_readme_exposes_benchmark_evidence_status_without_overclaiming`.
+
+## FL-024: Measured A/B benchmark pilot can fail before scoring because runtime cannot write
+
+- **Step attempted:** Start a three-scenario measured CES-vs-vanilla benchmark pilot in isolated temp workspaces.
+- **Expected:** The chosen direct runtime can create files inside the isolated benchmark workspace before the pilot spends tokens on full scenario arms.
+- **Actual:** Codex was installed but the workspace write path failed with `bwrap: loopback: Failed RTM_NEWADDR: Operation not permitted`; Claude Code was installed but runtime authentication or entitlement was unavailable on this host.
+- **Severity:** High for benchmark operations because a runtime readiness failure can masquerade as poor task performance if it is scored as a scenario result.
+- **Status:** Fixed for detection and documentation; benchmark measurement remains blocked until at least one runtime preflight returns `runtime-ready`.
+- **Fix:** Added `ces benchmark preflight --probe-runtime`, documented runtime preflight before measured A/B runs, and committed a sanitized blocked pilot evidence pack under `docs/benchmark/evidence/pilot-2026-05-26/`.
+- **Evidence after fix:** `tests/unit/test_benchmark/test_runtime_preflight.py`, `tests/unit/test_cli/test_benchmark_cmd.py::test_benchmark_preflight_json_reports_blocked_runtime_probe`, `tests/unit/test_docs/test_benchmarking_docs.py::test_benchmark_docs_track_blocked_runtime_pilot_without_product_claims`, and sanitized preflight outputs in `docs/benchmark/evidence/pilot-2026-05-26/preflight/`.

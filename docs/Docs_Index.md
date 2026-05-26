@@ -15,7 +15,7 @@ Start with the shortest path that matches your role.
 - [Verification Profile](Verification_Profile.md) - project verification contracts
 - [Operator Playbook](Operator_Playbook.md) - governed local execution workflow
 - [Product Playbooks](Product_Playbooks.md) - prompt contracts, brownfield playbooks, monorepo guidance, and PR proof examples
-- [Benchmarking](Benchmarking.md) - A/B gauntlet for measuring CES value against vanilla Codex/Claude workflows; explains templates vs measured evidence and self-contained evidence-pack requirements
+- [Benchmarking](Benchmarking.md) - A/B gauntlet for measuring CES value against vanilla Codex/Claude workflows; explains runtime preflight, templates vs measured evidence, and self-contained evidence-pack requirements
 - [Runtime Adapter Matrix](Runtime_Adapter_Matrix.md) - Codex/Claude boundary comparison
 - [Data and Credential Boundary](Data_Boundary.md) - local state, runtime data flow, redaction, and env pass-through
 - [Audit Integrity](Audit_Integrity.md) - HMAC chain model and `ces audit verify`

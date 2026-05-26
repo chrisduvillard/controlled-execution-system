@@ -11,6 +11,7 @@ from rich.table import Table
 
 from ces.benchmark.compare import load_comparison_spec, run_comparison
 from ces.benchmark.greenfield import BUILTIN_GREENFIELD_SCENARIOS, run_greenfield_benchmark
+from ces.benchmark.runtime_preflight import run_runtime_preflight
 from ces.cli._errors import handle_error
 from ces.cli._output import console, is_json_mode
 
@@ -55,6 +56,55 @@ def run_greenfield(
         handle_error(exc)
 
 
+@benchmark_app.command(name="preflight")
+def run_preflight(
+    runtime: str = typer.Option(
+        "codex",
+        "--runtime",
+        help="Runtime to check before a measured A/B benchmark: codex or claude.",
+    ),
+    project_root: Path = typer.Option(
+        Path("."),
+        "--project-root",
+        help="Isolated benchmark workspace where the optional write probe may run.",
+    ),
+    probe_runtime: bool = typer.Option(
+        False,
+        "--probe-runtime",
+        help="Ask the runtime to create a single probe file. May contact the runtime provider.",
+    ),
+    timeout_seconds: int = typer.Option(
+        90,
+        "--timeout-seconds",
+        min=10,
+        max=600,
+        help="Timeout for --probe-runtime.",
+    ),
+) -> None:
+    """Check whether a benchmark runtime can safely produce measured evidence."""
+
+    try:
+        normalized_runtime = runtime.lower().strip()
+        if normalized_runtime not in {"codex", "claude"}:
+            raise typer.BadParameter("--runtime must be one of: codex, claude")
+        payload = run_runtime_preflight(
+            runtime=normalized_runtime,  # type: ignore[arg-type]
+            project_root=project_root,
+            probe_runtime=probe_runtime,
+            timeout_seconds=timeout_seconds,
+        )
+        if is_json_mode():
+            typer.echo(json.dumps(payload, indent=2, default=str))
+        else:
+            _print_preflight_result(payload)
+        if payload["recommendation"] in {"runtime-missing", "runtime-blocked"}:
+            raise typer.Exit(1)
+    except typer.Exit:
+        raise
+    except Exception as exc:  # pragma: no cover - defensive CLI boundary
+        handle_error(exc)
+
+
 @benchmark_app.command(name="compare")
 def run_compare(
     project_spec: Path = typer.Option(
@@ -82,6 +132,39 @@ def run_compare(
         raise
     except Exception as exc:  # pragma: no cover - defensive CLI boundary
         handle_error(exc)
+
+
+def _print_preflight_result(payload: dict) -> None:
+    recommendation = payload["recommendation"]
+    border_style = "green" if recommendation == "runtime-ready" else "yellow"
+    if recommendation in {"runtime-missing", "runtime-blocked"}:
+        border_style = "red"
+    console.print(
+        Panel(
+            f"Runtime: [bold]{payload['runtime']}[/bold]\n"
+            f"Recommendation: [bold]{recommendation}[/bold]\n"
+            f"Project root: {payload['project_root']}\n"
+            f"Probe runtime: {payload['probe_runtime']}",
+            title="Benchmark Runtime Preflight",
+            border_style=border_style,
+        )
+    )
+    table = Table(title="Preflight Checks")
+    table.add_column("Check")
+    table.add_column("Status")
+    table.add_column("Detail")
+    for check in payload["checks"]:
+        ok = check.get("ok")
+        status = "PASS" if ok is True else "FAIL" if ok is False else "NOT RUN"
+        detail = str(check.get("detail", ""))
+        if "exit_code" in check:
+            detail = f"{detail} exit_code={check['exit_code']}"
+        for stream_key in ("stderr_tail", "stdout_tail"):
+            stream_tail = str(check.get(stream_key) or "").strip()
+            if stream_tail:
+                detail = f"{detail}\n{stream_key}: {stream_tail}"
+        table.add_row(check["name"], status, detail)
+    console.print(table)
 
 
 def _print_compare_result(payload: dict) -> None:

@@ -56,6 +56,21 @@ A scenario is `recommendation-comparable` only when `completion` is `measured` f
 
 JSON and Markdown row details include a recommendation-comparable flag, a secondary-metric-counted flag, and an exclusion reason so reviewers can see which scenarios drove the verdict.
 
+## Runtime preflight before measured runs
+
+Before spending tokens on a measured A/B run, verify that the selected runtime can actually create files inside an isolated benchmark workspace:
+
+```bash
+ces benchmark preflight \
+  --runtime codex \
+  --project-root /tmp/ces-benchmark-probe \
+  --probe-runtime
+```
+
+Use `--runtime claude` for a Claude Code arm. The probe asks the runtime to create a single `.ces-benchmark-runtime-probe.txt` file. It may contact the runtime provider, but it is not a benchmark result and does not count as CES-vs-vanilla product evidence. CES runs the probe with filtered environment variables, bounded timeout cleanup, and runtime safety flags; it is still a runtime-readiness check, not a substitute for a host-level container or VM sandbox.
+
+If preflight reports `runtime-blocked`, do not fill the A/B scorecard with inferred values. Record the blocker in the evidence pack and fix the runtime environment first.
+
 ## Running the comparison report
 
 After filling a scenario file with measured values, run:

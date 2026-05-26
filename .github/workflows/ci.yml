@@ -158,7 +158,11 @@ jobs:
           cat > "$fake_runtime_dir/codex" <<'EOF'
           #!/usr/bin/env bash
           if [[ "${1:-}" == "--version" ]]; then echo "codex-cli ci-smoke"; exit 0; fi
-          echo "ci smoke runtime stub: execution is not expected" >&2
+          if printf '%s\n' "$@" | grep -qx 'exec'; then
+            printf 'ces-benchmark-runtime-ready' > .ces-benchmark-runtime-probe.txt
+            exit 0
+          fi
+          echo "ci smoke runtime stub: unsupported invocation $*" >&2
           exit 2
           EOF
           chmod +x "$fake_runtime_dir/codex"
@@ -169,6 +173,15 @@ jobs:
           version = "0.1.0"
           EOF
           PATH="$fake_runtime_dir:$PATH" "$smoke_venv/bin/ces" --json doctor --project-root "$smoke_dir" > "$smoke_dir/doctor.json"
+          PATH="$fake_runtime_dir:$PATH" "$smoke_venv/bin/ces" --json benchmark preflight --runtime codex --project-root "$smoke_dir" --probe-runtime > "$smoke_dir/benchmark-preflight.json"
+          python - "$smoke_dir/benchmark-preflight.json" <<'PY'
+          import json
+          import sys
+
+          preflight_payload = json.loads(open(sys.argv[1], encoding="utf-8").read())
+          assert preflight_payload["runtime"] == "codex"
+          assert preflight_payload["recommendation"] == "runtime-ready"
+          PY
           python - "$smoke_dir/doctor.json" <<'PY'
           import json
           import sys

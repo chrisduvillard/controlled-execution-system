@@ -199,6 +199,89 @@ def test_benchmark_compare_text_output_highlights_recommendation(tmp_path: Path)
     assert "comparison-report.md" in result.stdout
 
 
+def test_benchmark_preflight_json_reports_blocked_runtime_probe(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    app = _get_app()
+
+    def fake_preflight(**kwargs):  # type: ignore[no-untyped-def]
+        assert kwargs["runtime"] == "codex"
+        assert kwargs["project_root"] == tmp_path
+        assert kwargs["probe_runtime"] is True
+        return {
+            "runtime": "codex",
+            "project_root": str(tmp_path),
+            "probe_runtime": True,
+            "installed": True,
+            "recommendation": "runtime-blocked",
+            "checks": [
+                {"name": "runtime-installed", "ok": True, "detail": "codex found on PATH"},
+                {
+                    "name": "workspace-write-probe",
+                    "ok": False,
+                    "detail": "runtime exited without creating benchmark probe file",
+                    "exit_code": 0,
+                },
+            ],
+        }
+
+    monkeypatch.setattr("ces.cli.benchmark_cmd.run_runtime_preflight", fake_preflight)
+
+    result = runner.invoke(
+        app,
+        [
+            "--json",
+            "benchmark",
+            "preflight",
+            "--runtime",
+            "codex",
+            "--project-root",
+            str(tmp_path),
+            "--probe-runtime",
+        ],
+    )
+
+    assert result.exit_code == 1, result.stdout
+    payload = json.loads(result.stdout)
+    assert payload["recommendation"] == "runtime-blocked"
+    assert payload["checks"][1]["name"] == "workspace-write-probe"
+
+
+def test_benchmark_preflight_text_reports_not_probed(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    app = _get_app()
+
+    def fake_preflight(**kwargs):  # type: ignore[no-untyped-def]
+        assert kwargs["runtime"] == "claude"
+        assert kwargs["probe_runtime"] is False
+        return {
+            "runtime": "claude",
+            "project_root": str(tmp_path),
+            "probe_runtime": False,
+            "installed": True,
+            "recommendation": "runtime-not-verified",
+            "checks": [
+                {"name": "runtime-installed", "ok": True, "detail": "claude found on PATH"},
+                {
+                    "name": "workspace-write-probe",
+                    "ok": None,
+                    "detail": "not run; pass --probe-runtime to verify workspace writes",
+                },
+            ],
+        }
+
+    monkeypatch.setattr("ces.cli.benchmark_cmd.run_runtime_preflight", fake_preflight)
+
+    result = runner.invoke(
+        app,
+        ["benchmark", "preflight", "--runtime", "claude", "--project-root", str(tmp_path)],
+    )
+
+    assert result.exit_code == 0, result.stdout
+    assert "Benchmark Runtime Preflight" in result.stdout
+    assert "runtime-not-verified" in result.stdout
+    assert "workspace-write-probe" in result.stdout
+
+
 def test_benchmark_compare_text_output_hides_uncounted_secondary_wins(tmp_path: Path) -> None:
     app = _get_app()
     spec_path = tmp_path / "ab-missing-completion.json"
