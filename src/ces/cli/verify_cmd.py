@@ -17,7 +17,11 @@ from ces.cli._errors import handle_error
 from ces.cli._output import console, set_json_mode
 from ces.shared.secrets import scrub_secrets_recursive
 from ces.verification.build_contract import build_completion_contract
-from ces.verification.completion_contract import CompletionContract
+from ces.verification.completion_contract import (
+    CompletionContract,
+    _safe_reality_boundary_dict,
+    verification_commands_for_contract,
+)
 from ces.verification.proof_binding import proof_binding_hash
 from ces.verification.runner import run_verification_commands
 
@@ -63,7 +67,7 @@ def verify_project(
             if write_contract:
                 _write_contract_safely(resolved_root, resolved_contract_path, contract)
                 contract_persisted = True
-        verification = run_verification_commands(resolved_root, contract.inferred_commands)
+        verification = run_verification_commands(resolved_root, verification_commands_for_contract(contract))
         binding_hash = proof_binding_hash(contract)
         payload = {
             "project_root": str(resolved_root),
@@ -72,6 +76,7 @@ def verify_project(
             "project_type": contract.project_type,
             "objective": scrub_secrets_recursive(contract.request),
             "proof_binding_hash": binding_hash,
+            "reality_boundary": _latest_reality_boundary_evidence(contract),
             "verification": verification.to_dict(),
         }
         _write_latest_verification(resolved_root, payload)
@@ -118,9 +123,21 @@ def _write_latest_verification(project_root: Path, payload: dict[str, object]) -
     return path
 
 
+def _latest_reality_boundary_evidence(contract: CompletionContract) -> dict[str, object]:
+    """Return latest-verification-safe metadata without raw predicates, shell commands, or local paths."""
+
+    evidence = _safe_reality_boundary_dict(contract.reality_boundary)
+    evidence.pop("success_predicates", None)
+    evidence["success_predicate_count"] = len(contract.reality_boundary.success_predicates)
+    evidence["official_evaluator_count"] = len(contract.reality_boundary.official_evaluators)
+    evidence["protected_surface_count"] = len(contract.reality_boundary.protected_surfaces)
+    evidence["policy_enforcement"] = "warn_only"
+    return scrub_secrets_recursive(evidence)
+
+
 def _write_contract_safely(project_root: Path, path: Path, contract: CompletionContract) -> Path:
     safe_path = _safe_project_write_path(project_root, path, "completion contract")
-    _write_json_atomic(safe_path, contract.to_dict())
+    contract.write(safe_path)
     return safe_path
 
 

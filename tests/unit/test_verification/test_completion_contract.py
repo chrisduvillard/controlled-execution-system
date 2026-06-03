@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
 
@@ -176,6 +177,254 @@ def test_completion_contract_roundtrip_preserves_proof_binding_hash(tmp_path: Pa
 
     assert loaded.proof_binding_hash == "abc123"
     assert loaded.to_dict()["proof_binding_hash"] == "abc123"
+
+
+def test_completion_contract_roundtrip_preserves_reality_boundary_contract(tmp_path: Path) -> None:
+    from ces.verification.completion_contract import (
+        CompletionContract,
+        OfficialEvaluator,
+        ProtectedSurface,
+        RealityBoundaryContract,
+        SuccessPredicate,
+    )
+
+    contract = CompletionContract(
+        request="Build a safe migration helper",
+        project_type="python-cli",
+        reality_boundary=RealityBoundaryContract(
+            success_predicates=(SuccessPredicate(id="AC-001", text="pytest must pass", source="acceptance_criterion"),),
+            official_evaluators=(
+                OfficialEvaluator(
+                    id="VC-001",
+                    command_id="VC-001",
+                    kind="test",
+                    command="uv run pytest -q",
+                    required=True,
+                    expected_exit_codes=(0,),
+                ),
+            ),
+            protected_surfaces=(
+                ProtectedSurface(path="tests/regression/test_migration.py", reason="official evaluator fixture"),
+            ),
+            mutable_test_policy="warn",
+            allowed_test_paths=("tests/new/",),
+            denied_test_paths=("tests/regression/",),
+            contract_frozen_at="2026-06-03T09:00:00Z",
+        ).with_predicate_hash(),
+    )
+    path = tmp_path / "contract.json"
+
+    contract.write(path)
+    loaded = CompletionContract.read(path)
+
+    assert loaded.reality_boundary.success_predicates[0].text == "pytest must pass"
+    assert loaded.reality_boundary.official_evaluators[0].command == "uv run pytest -q"
+    assert loaded.reality_boundary.protected_surfaces[0].path == "tests/regression/test_migration.py"
+    assert loaded.reality_boundary.denied_test_paths == ("tests/regression/",)
+    assert loaded.reality_boundary.predicate_hash
+    assert loaded.to_dict()["reality_boundary"]["predicate_hash"] == loaded.reality_boundary.predicate_hash
+
+
+def test_reality_boundary_predicate_hash_uses_scrubbed_material() -> None:
+    from ces.verification.completion_contract import OfficialEvaluator, RealityBoundaryContract, SuccessPredicate
+
+    secret_key = "OPENAI_" + "API_KEY="
+    secret_a = secret_key + "sk-tes...alue"
+    secret_b = secret_key + "sk-oth...alue"
+    first = RealityBoundaryContract(
+        success_predicates=(SuccessPredicate(id="AC-001", text=f"Do not leak {secret_a}"),),
+        official_evaluators=(
+            OfficialEvaluator(
+                id="VC-001",
+                command_id="VC-001",
+                kind="smoke",
+                command=f"{secret_a} uv run pytest -q",
+            ),
+        ),
+    ).with_predicate_hash()
+    second = RealityBoundaryContract(
+        success_predicates=(SuccessPredicate(id="AC-001", text=f"Do not leak {secret_b}"),),
+        official_evaluators=(
+            OfficialEvaluator(
+                id="VC-001",
+                command_id="VC-001",
+                kind="smoke",
+                command=f"{secret_b} uv run pytest -q",
+            ),
+        ),
+    ).with_predicate_hash()
+
+    assert first.predicate_hash == second.predicate_hash
+
+
+def test_completion_contract_to_dict_scrubs_reality_boundary_secret_material() -> None:
+    from ces.verification.completion_contract import (
+        CompletionContract,
+        OfficialEvaluator,
+        RealityBoundaryContract,
+        SuccessPredicate,
+    )
+
+    secret_key = "OPENAI_" + "API_KEY="
+    secret = secret_key + "sk-tes...alue"
+    contract = CompletionContract(
+        request="Protect proof material",
+        project_type="python-cli",
+        reality_boundary=RealityBoundaryContract(
+            success_predicates=(SuccessPredicate(id="AC-001", text=f"Do not leak {secret}"),),
+            official_evaluators=(
+                OfficialEvaluator(
+                    id="VC-001",
+                    command_id="VC-001",
+                    kind="smoke",
+                    command=f"{secret} uv run pytest -q",
+                ),
+            ),
+        ).with_predicate_hash(),
+    )
+
+    exported_payload = contract.to_dict()
+    exported = json.dumps(exported_payload)
+
+    assert "Do not leak" not in exported
+    assert "uv run pytest -q" not in exported
+    assert "sk-tes...alue" not in exported
+    assert exported_payload["reality_boundary"]["success_predicates"][0]["text_sha256"]
+    assert exported_payload["reality_boundary"]["official_evaluators"][0]["command_sha256"]
+    assert "text" not in exported_payload["reality_boundary"]["success_predicates"][0]
+    assert "command" not in exported_payload["reality_boundary"]["official_evaluators"][0]
+
+
+def test_completion_contract_read_accepts_legacy_payload_without_reality_boundary(tmp_path: Path) -> None:
+    from ces.verification.completion_contract import CompletionContract
+
+    path = tmp_path / "legacy-contract.json"
+    path.write_text(
+        "{\n"
+        '  "version": 1,\n'
+        '  "request": "Build PromptVault",\n'
+        '  "project_type": "python-cli",\n'
+        '  "acceptance_criteria": [],\n'
+        '  "inferred_commands": [],\n'
+        '  "runtime": {"name": "codex"}\n'
+        "}\n",
+        encoding="utf-8",
+    )
+
+    loaded = CompletionContract.read(path)
+
+    assert loaded.reality_boundary.success_predicates == ()
+    assert loaded.reality_boundary.official_evaluators == ()
+    assert loaded.reality_boundary.protected_surfaces == ()
+    assert loaded.reality_boundary.mutable_test_policy == "warn"
+
+
+def test_build_completion_contract_binds_reality_boundary_to_proof_hash(tmp_path: Path) -> None:
+    from dataclasses import replace
+
+    from ces.verification.build_contract import build_completion_contract
+    from ces.verification.completion_contract import OfficialEvaluator, RealityBoundaryContract
+    from ces.verification.proof_binding import proof_binding_hash
+
+    (tmp_path / "pyproject.toml").write_text("[project]\nname='demo'\n", encoding="utf-8")
+    (tmp_path / "tests").mkdir()
+    (tmp_path / "tests" / "test_demo.py").write_text("def test_demo():\n    assert True\n", encoding="utf-8")
+
+    contract = build_completion_contract(
+        project_root=tmp_path,
+        request="Build demo",
+        acceptance_criteria=["The test suite passes."],
+        runtime_name="codex",
+    )
+    mutated_boundary = replace(
+        contract.reality_boundary,
+        official_evaluators=(
+            OfficialEvaluator(
+                id="VC-999",
+                command_id="VC-999",
+                kind="test",
+                command="echo forged self-report",
+                required=True,
+                expected_exit_codes=(0,),
+            ),
+        ),
+    ).with_predicate_hash()
+    mutated = replace(contract, reality_boundary=mutated_boundary, proof_binding_hash=None)
+
+    assert contract.reality_boundary.success_predicates[0].text == "The test suite passes."
+    assert contract.reality_boundary.official_evaluators
+    assert contract.reality_boundary.protected_surfaces
+    assert contract.reality_boundary.predicate_hash
+    assert proof_binding_hash(mutated) != contract.proof_binding_hash
+    assert RealityBoundaryContract.from_dict(contract.to_dict()["reality_boundary"]).predicate_hash
+
+
+def test_completion_contract_write_preserves_reality_boundary_hashes_when_scrubbing_secret_material(
+    tmp_path: Path,
+) -> None:
+    from ces.verification.completion_contract import (
+        CompletionContract,
+        OfficialEvaluator,
+        RealityBoundaryContract,
+        SuccessPredicate,
+    )
+    from ces.verification.proof_binding import proof_binding_hash
+
+    secret_key = "OPENAI_" + "API_KEY="
+    secret = secret_key + "sk-tes...alue"
+    contract = CompletionContract(
+        request="Protect proof material",
+        project_type="python-cli",
+        reality_boundary=RealityBoundaryContract(
+            success_predicates=(SuccessPredicate(id="AC-001", text=f"Do not leak {secret}"),),
+            official_evaluators=(
+                OfficialEvaluator(
+                    id="VC-001",
+                    command_id="VC-001",
+                    kind="smoke",
+                    command=f"{secret} uv run pytest -q",
+                ),
+            ),
+        ).with_predicate_hash(),
+    )
+    before = proof_binding_hash(contract)
+
+    contract.write(tmp_path / ".ces" / "completion-contract.json")
+    reloaded = CompletionContract.read(tmp_path / ".ces" / "completion-contract.json")
+
+    assert proof_binding_hash(reloaded) == before
+    stored = json.loads((tmp_path / ".ces" / "completion-contract.json").read_text(encoding="utf-8"))
+    assert "sk-tes...alue" not in json.dumps(stored)
+    assert stored["reality_boundary"]["success_predicates"][0]["text_sha256"]
+    assert stored["reality_boundary"]["official_evaluators"][0]["command_sha256"]
+
+
+def test_completion_contract_write_preserves_reality_boundary_path_hashes_when_scrubbing_secret_material(
+    tmp_path: Path,
+) -> None:
+    from ces.verification.completion_contract import CompletionContract, RealityBoundaryContract
+    from ces.verification.proof_binding import proof_binding_hash
+
+    secret_key = "OPENAI_" + "API_KEY="
+    secret_path = f"tests/{secret_key}sk-tes...alue/test_private.py"
+    contract = CompletionContract(
+        request="Protect path proof material",
+        project_type="python-cli",
+        reality_boundary=RealityBoundaryContract(
+            allowed_test_paths=(secret_path,),
+            denied_test_paths=(secret_path,),
+        ).with_predicate_hash(),
+    )
+    before = proof_binding_hash(contract)
+
+    contract.write(tmp_path / ".ces" / "completion-contract.json")
+    reloaded = CompletionContract.read(tmp_path / ".ces" / "completion-contract.json")
+
+    assert proof_binding_hash(reloaded) == before
+    stored = json.loads((tmp_path / ".ces" / "completion-contract.json").read_text(encoding="utf-8"))
+    assert "sk-tes...alue" not in json.dumps(stored)
+    assert stored["reality_boundary"]["allowed_test_paths_sha256"]
+    assert stored["reality_boundary"]["denied_test_paths_sha256"]
 
 
 @requires_symlink

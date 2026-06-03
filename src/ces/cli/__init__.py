@@ -227,6 +227,17 @@ def _rewrite_review_default(argv: Sequence[str]) -> list[str]:
     return rewritten
 
 
+def _click_exception_details(exc: object) -> tuple[str, int] | None:
+    """Return message/exit details for Click or Typer-vendored Click errors."""
+    if isinstance(exc, click.ClickException):
+        return exc.format_message(), exc.exit_code
+    format_message = getattr(exc, "format_message", None)
+    exit_code = getattr(exc, "exit_code", None)
+    if callable(format_message) and isinstance(exit_code, int):
+        return str(format_message()), exit_code
+    return None
+
+
 class JsonAwareTyperGroup(typer.core.TyperGroup):
     """Typer group that preserves machine-readable usage errors under root --json."""
 
@@ -252,7 +263,11 @@ class JsonAwareTyperGroup(typer.core.TyperGroup):
                 windows_expand_args=windows_expand_args,
                 **extra,
             )
-        except click.ClickException as exc:
+        except Exception as exc:
+            details = _click_exception_details(exc)
+            if details is None:
+                raise
+            message, exit_code = details
             if not standalone_mode:
                 raise
             if json_requested:
@@ -261,18 +276,20 @@ class JsonAwareTyperGroup(typer.core.TyperGroup):
                     "error": {
                         "type": "usage_error",
                         "title": "Usage Error",
-                        "message": exc.format_message(),
-                        "exit_code": exc.exit_code,
+                        "message": message,
+                        "exit_code": exit_code,
                     }
                 }
                 click.echo(json.dumps(payload), err=True)
             else:
-                exc.show()
+                show = getattr(exc, "show", None)
+                if callable(show):
+                    show()
+                else:
+                    click.echo(message, err=True)
             if standalone_mode:
-                sys.exit(exc.exit_code)
-            raise click.exceptions.Exit(exc.exit_code) from exc
-        except click.exceptions.Exit:
-            raise
+                sys.exit(exit_code)
+            raise click.exceptions.Exit(exit_code) from exc
         if standalone_mode and isinstance(result, int):
             sys.exit(result)
         if standalone_mode:

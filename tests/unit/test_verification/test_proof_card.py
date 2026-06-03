@@ -95,6 +95,64 @@ def _write_latest_verification(root: Path, *, passed: bool = True, include_bindi
     )
 
 
+def test_reality_boundary_warnings_report_changed_protected_or_denied_paths() -> None:
+    from ces.verification.completion_contract import (
+        CompletionContract,
+        ProtectedSurface,
+        RealityBoundaryContract,
+    )
+    from ces.verification.proof_card import _reality_boundary_warnings
+
+    contract = CompletionContract(
+        request="Protect verifier fixtures",
+        project_type="python-cli",
+        reality_boundary=RealityBoundaryContract(
+            protected_surfaces=(
+                ProtectedSurface(path="./tests/regression/test_cli.py", reason="regression fixture"),
+                ProtectedSurface(path="/workspace/example/project/frontend", reason="official evaluator cwd"),
+                ProtectedSurface(path="secrets.txt", reason="token=" + "sk-tes...alue"),
+            ),
+            denied_test_paths=("./benchmarks/",),
+            mutable_test_policy="warn",
+        ),
+    )
+
+    warnings = _reality_boundary_warnings(
+        contract,
+        ("tests/regression/test_cli.py", "benchmarks/eval.json", "frontend/package.json", "secrets.txt"),
+    )
+
+    joined = "\n".join(warnings)
+    assert "Protected reality-boundary surface changed: tests/regression/test_cli.py." in warnings
+    assert "Protected reality-boundary surface changed: frontend/package.json." in warnings
+    assert "Denied reality-boundary test path changed: benchmarks/eval.json." in warnings
+    assert "sk-tes...alue" not in joined
+    assert "regression fixture" not in joined
+    assert "official evaluator cwd" not in joined
+
+
+def test_reality_boundary_root_surface_warns_for_any_changed_file() -> None:
+    from ces.verification.completion_contract import CompletionContract, ProtectedSurface, RealityBoundaryContract
+    from ces.verification.proof_card import _reality_boundary_warnings
+
+    contract = CompletionContract(
+        request="Protect the whole verification surface",
+        project_type="python-cli",
+        reality_boundary=RealityBoundaryContract(
+            protected_surfaces=(ProtectedSurface(path="./", reason="root contract"),),
+            denied_test_paths=(".",),
+        ),
+    )
+
+    warnings = _reality_boundary_warnings(contract, ("src/app.py", "tests/test_app.py"))
+
+    assert "Protected reality-boundary surface changed: src/app.py." in warnings
+    assert "Protected reality-boundary surface changed: tests/test_app.py." in warnings
+    assert "root contract" not in json.dumps(warnings)
+    assert "Denied reality-boundary test path changed: src/app.py." in warnings
+    assert "Denied reality-boundary test path changed: tests/test_app.py." in warnings
+
+
 def test_proof_card_json_summarizes_claims_and_no_ship_gaps(tmp_path: Path) -> None:
     from ces.verification.proof_card import build_proof_card
 
@@ -154,6 +212,7 @@ def test_proof_card_marks_candidate_when_required_beginner_artifacts_exist(tmp_p
         "behavior_delta_coverage": "0 recorded / 0 unresolved ambiguity",
         "risk_track": "C",
         "risk_evidence": "low-risk: no additional risk evidence required",
+        "reality_boundary_warnings": [],
         "next_steps": ["Review changed files and evidence, then run `ces approve` if satisfied."],
     }
     assert payload["missing_required_artifacts"] == []
@@ -225,6 +284,87 @@ def test_proof_card_surfaces_behavior_delta_and_blocks_unknowns(tmp_path: Path) 
     assert "Added:" in markdown
     assert "Unresolved ambiguity:" in markdown
     assert "Unknown:" not in markdown
+
+
+def test_proof_card_markdown_renders_reality_boundary_warning_details(tmp_path: Path) -> None:
+    from ces.verification.completion_contract import BehaviorDelta, RiskTrack
+    from ces.verification.proof_card import ProofCardReport
+
+    report = ProofCardReport(
+        project_root=tmp_path,
+        objective="Protect evaluator fixtures",
+        evidence_status="candidate",
+        proof_status="partially_proven",
+        approval_safety="needs-evidence",
+        ship_recommendation="no-ship",
+        changed_files=("tests/regression/test_cli.py",),
+        commands_run=(),
+        verification_commands=(),
+        evidence_provenance={"verification": "ces_executed", "commands": {}, "planned_commands": 0},
+        behavior_delta=BehaviorDelta(),
+        risk_track=RiskTrack(),
+        missing_required_artifacts=(),
+        unproven_areas=(),
+        review_summary={
+            "decision": "needs-evidence",
+            "approval_gate": "closed",
+            "primary_blocker": None,
+            "freshness": "fresh",
+            "command_coverage": "0/0 required commands verified",
+            "artifact_coverage": "0/0 required artifacts present",
+            "behavior_delta_coverage": "0 recorded / 0 unresolved ambiguity",
+            "risk_track": "C",
+            "risk_evidence": "low-risk: no additional risk evidence required",
+            "reality_boundary_warnings": ["Protected reality-boundary surface changed: tests/regression/test_cli.py."],
+            "next_steps": ["Review reality-boundary warnings before approval."],
+        },
+        next_command="ces verify --json",
+    )
+
+    markdown = report.to_markdown()
+
+    assert "## Reality Boundary warnings" in markdown
+    assert "Protected reality-boundary surface changed: tests/regression/test_cli.py." in markdown
+
+
+def test_proof_card_rejects_persisted_verification_that_bypasses_official_evaluators(tmp_path: Path) -> None:
+    from ces.verification.proof_binding import proof_binding_hash_from_payload
+    from ces.verification.proof_card import build_proof_card
+
+    _write_completion_contract(tmp_path)
+    contract_path = tmp_path / ".ces" / "completion-contract.json"
+    payload = json.loads(contract_path.read_text(encoding="utf-8"))
+    payload["reality_boundary"] = {
+        "official_evaluators": [
+            {
+                "id": "official-smoke",
+                "command_id": "official-smoke",
+                "kind": "smoke",
+                "command": "python app.py --version",
+                "expected_exit_codes": [0],
+            }
+        ]
+    }
+    contract_path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+    _write_latest_verification(tmp_path)
+    verification_path = tmp_path / ".ces" / "latest-verification.json"
+    verification = json.loads(verification_path.read_text(encoding="utf-8"))
+    verification["proof_binding_hash"] = proof_binding_hash_from_payload(payload)
+    verification_path.write_text(json.dumps(verification, indent=2) + "\n", encoding="utf-8")
+    (tmp_path / "README.md").write_text(
+        "# Calculator\n\nRun: `python app.py --help`\n\nTest: `pytest`\n\nVerification evidence: local smoke passed.\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "app.py").write_text("print('hello')\n", encoding="utf-8")
+    (tmp_path / "tests").mkdir()
+    (tmp_path / "tests" / "test_app.py").write_text("def test_ok():\n    assert True\n", encoding="utf-8")
+
+    proof = build_proof_card(tmp_path).to_dict()
+
+    assert proof["proof_status"] == "unproven"
+    assert proof["approval_safety"] == "needs-fresh-verification"
+    assert proof["review_summary"]["command_coverage"] == "0/1 required commands verified"
+    assert any("different objective context" in area for area in proof["unproven_areas"])
 
 
 def test_proof_card_marks_partial_when_verification_passes_but_artifacts_are_missing(tmp_path: Path) -> None:
