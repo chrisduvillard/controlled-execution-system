@@ -10,7 +10,11 @@ from ces.verification.command_inference import infer_verification_commands
 from ces.verification.completion_contract import (
     BehaviorDelta,
     CompletionContract,
+    OfficialEvaluator,
+    ProtectedSurface,
+    RealityBoundaryContract,
     RiskTrack,
+    SuccessPredicate,
     criteria_from_texts,
     infer_risk_track,
 )
@@ -41,18 +45,24 @@ def build_completion_contract(
     if runtime_metadata:
         runtime.update(runtime_metadata)
     delta = behavior_delta or BehaviorDelta()
+    acceptance = criteria_from_texts(acceptance_criteria)
+    inferred_commands = infer_verification_commands(project_root, project_type, acceptance_criteria=acceptance_criteria)
+    reality_boundary = _build_reality_boundary_contract(
+        acceptance_criteria=acceptance,
+        inferred_commands=inferred_commands,
+        required_artifacts=GREENFIELD_REQUIRED_ARTIFACTS,
+    )
     contract = CompletionContract(
         request=request,
         project_type=project_type,
-        acceptance_criteria=criteria_from_texts(acceptance_criteria),
-        inferred_commands=infer_verification_commands(
-            project_root, project_type, acceptance_criteria=acceptance_criteria
-        ),
+        acceptance_criteria=acceptance,
+        inferred_commands=inferred_commands,
         runtime=runtime,
         required_artifacts=GREENFIELD_REQUIRED_ARTIFACTS,
         proof_requirements=GREENFIELD_PROOF_REQUIREMENTS,
         behavior_delta=delta,
         risk_track=risk_track or infer_risk_track(delta),
+        reality_boundary=reality_boundary,
         next_ces_command="ces verify --json",
     )
     return replace(contract, proof_binding_hash=proof_binding_hash(contract))
@@ -80,3 +90,42 @@ def write_completion_contract(
     path = project_root / ".ces" / "completion-contract.json"
     contract.write(path)
     return path
+
+
+def _build_reality_boundary_contract(
+    *,
+    acceptance_criteria: tuple,
+    inferred_commands: tuple,
+    required_artifacts: tuple[str, ...],
+) -> RealityBoundaryContract:
+    success_predicates = tuple(
+        SuccessPredicate(id=criterion.id, text=criterion.text, source="acceptance_criterion")
+        for criterion in acceptance_criteria
+    )
+    official_evaluators = tuple(
+        OfficialEvaluator(
+            id=command.id,
+            command_id=command.id,
+            kind=command.kind,
+            command=command.command,
+            required=command.required,
+            cwd=command.cwd,
+            timeout_seconds=command.timeout_seconds,
+            expected_exit_codes=command.expected_exit_codes,
+        )
+        for command in inferred_commands
+    )
+    protected_surfaces = tuple(
+        ProtectedSurface(path=path, reason="required completion artifact") for path in required_artifacts
+    ) + tuple(
+        ProtectedSurface(path=command.cwd, reason=f"official evaluator cwd for {command.id}")
+        for command in inferred_commands
+        if command.cwd and command.cwd != "."
+    )
+    return RealityBoundaryContract(
+        success_predicates=success_predicates,
+        official_evaluators=official_evaluators,
+        protected_surfaces=protected_surfaces,
+        mutable_test_policy="warn",
+        denied_test_paths=("tests/regression/", "benchmarks/", ".ces/contracts/"),
+    ).with_predicate_hash()

@@ -9,7 +9,7 @@ from typing import Any
 
 from ces.recovery.planner import build_recovery_plan
 from ces.verification.build_contract import build_completion_contract
-from ces.verification.completion_contract import CompletionContract
+from ces.verification.completion_contract import CompletionContract, verification_commands_for_contract
 from ces.verification.runner import VerificationRunResult, run_verification_commands
 
 
@@ -67,7 +67,8 @@ def run_auto_evidence_recovery(
 
     contract = CompletionContract.read(Path(plan.contract_path))
     contract = _refresh_contract_if_unverifiable(project_root, contract)
-    if not contract.inferred_commands:
+    verification_commands = verification_commands_for_contract(contract)
+    if not verification_commands:
         return RecoveryExecutionResult(
             verification=VerificationRunResult(passed=False, commands=()),
             completed=False,
@@ -79,7 +80,7 @@ def run_auto_evidence_recovery(
             message="No verification commands are available yet; run `ces continue` to retry the builder session.",
             verification_attempted=False,
         )
-    verification = run_verification_commands(project_root, contract.inferred_commands)
+    verification = run_verification_commands(project_root, verification_commands)
     if dry_run:
         return RecoveryExecutionResult(
             verification=verification,
@@ -189,7 +190,7 @@ def run_auto_evidence_recovery(
 
 def _refresh_contract_if_unverifiable(project_root: Path, contract: CompletionContract) -> CompletionContract:
     """Re-infer verification commands when a pre-runtime contract has no checks."""
-    if contract.inferred_commands:
+    if verification_commands_for_contract(contract):
         return contract
     return build_completion_contract(
         project_root=project_root,

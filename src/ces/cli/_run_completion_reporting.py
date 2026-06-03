@@ -5,7 +5,7 @@ from __future__ import annotations
 from ces.cli._builder_flow import BuilderBriefDraft
 from ces.control.models.control_plane_status import ControlPlaneStatus
 from ces.harness.services.control_plane_status import build_control_plane_status
-from ces.verification.completion_contract import CompletionContract
+from ces.verification.completion_contract import CompletionContract, verification_commands_for_contract
 
 
 def acceptance_verified_from_auto_blockers(auto_blockers: list[str]) -> bool:
@@ -87,7 +87,7 @@ def build_completion_summary(
 def greenfield_handoff_lines(completion_contract: CompletionContract | None) -> list[str]:
     """Return greenfield handoff lines for the completion summary."""
 
-    commands = list(completion_contract.inferred_commands if completion_contract is not None else ())
+    commands = list(verification_commands_for_contract(completion_contract) if completion_contract is not None else ())
     test_commands = [
         command.command for command in commands if command.kind in {"test", "typecheck", "lint", "build", "compile"}
     ]

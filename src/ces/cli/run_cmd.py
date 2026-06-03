@@ -95,7 +95,7 @@ from ces.shared.enums import (
 from ces.verification.build_contract import (
     write_completion_contract,
 )
-from ces.verification.completion_contract import BehaviorDelta, CompletionContract
+from ces.verification.completion_contract import BehaviorDelta, CompletionContract, verification_commands_for_contract
 from ces.verification.project_detector import detect_project_type
 from ces.verification.runner import run_verification_commands
 
@@ -1286,8 +1286,9 @@ async def _run_brief_flow(
     independent_verification = None
     completion_contract = CompletionContract.read(contract_path) if contract_path.is_file() else None
     if execution["exit_code"] == 0 and completion_contract is not None:
-        if completion_contract.inferred_commands:
-            independent_verification = run_verification_commands(project_root, completion_contract.inferred_commands)
+        verification_commands = verification_commands_for_contract(completion_contract)
+        if verification_commands:
+            independent_verification = run_verification_commands(project_root, verification_commands)
     local_store.save_runtime_execution(manifest.manifest_id, execution)
 
     # When manifest has no affected_files, discover Python files from project root
