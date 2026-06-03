@@ -78,6 +78,39 @@ def test_programmatic_non_standalone_usage_errors_still_raise_original_click_exc
     assert exc_info.value.exit_code == 2
 
 
+class _VendoredStyleUsageError(Exception):
+    """Minimal stand-in for Typer's vendored Click exceptions in newer wheels."""
+
+    exit_code = 2
+
+    def format_message(self) -> str:
+        return "No such option: --definitely-not-an-option"
+
+
+def test_global_json_usage_errors_from_vendored_click_are_json_enveloped(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Installed wheels must catch Typer-vendored Click errors under root --json."""
+    command = typer.main.get_command(_get_app())
+
+    def raise_vendored_usage_error(*args: object, **kwargs: object) -> None:
+        raise _VendoredStyleUsageError
+
+    monkeypatch.setattr(typer.core.TyperGroup, "main", raise_vendored_usage_error)
+
+    with pytest.raises(SystemExit) as exc_info:
+        command.main(args=["--json", "scan", "--definitely-not-an-option", "."], standalone_mode=True)
+
+    captured = capsys.readouterr()
+    assert exc_info.value.code == 2
+    assert captured.out == ""
+    payload = json.loads(captured.err)
+    assert payload["error"]["type"] == "usage_error"
+    assert payload["error"]["title"] == "Usage Error"
+    assert payload["error"]["message"] == "No such option: --definitely-not-an-option"
+    assert payload["error"]["exit_code"] == 2
+
+
 def test_command_local_json_does_not_activate_root_json_usage_envelope() -> None:
     """Only root --json promises machine-readable usage errors."""
     result = runner.invoke(_get_app(), ["scan", "--json"], catch_exceptions=False)
