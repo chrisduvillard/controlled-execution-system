@@ -238,6 +238,14 @@ A run is ready for review when:
 5. `ces proof` reports `proven`.
 6. The recommendation is `safe-to-review`.
 
+### Reality Boundary proof contracts
+
+For brownfield-style work, CES also records a **Reality Boundary**: the specific reality the proof must stay tied to. It includes success predicates, official evaluators, protected surfaces, and allowed or denied test paths.
+
+That means `ces verify` and `ces proof` do more than remember that tests once passed. They bind evidence to the exact contract being proven through a proof binding fingerprint. If the predicates, evaluator commands, protected areas, or test-policy boundaries change later, old evidence becomes stale instead of being reused silently.
+
+To keep boundary metadata safe to share, durable evidence stores hashes and counts for the Reality Boundary. Reality Boundary metadata omits raw commands, local paths, and secret-like values in proof cards or latest-verification metadata.
+
 If any item is missing, run:
 
 ```bash

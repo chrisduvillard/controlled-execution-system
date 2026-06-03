@@ -311,7 +311,7 @@ requires-dist = [
     { name = "rich", specifier = ">=14.1.0,<16" },
     { name = "sqlalchemy", specifier = ">=2.0.49,<3" },
     { name = "structlog", specifier = ">=25.5.0,<26" },
-    { name = "typer", specifier = ">=0.24.1,<1" },
+    { name = "typer", specifier = ">=0.24.1,<0.26" },
 ]
 provides-extras = ["observability", "all"]
 

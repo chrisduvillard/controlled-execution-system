@@ -13,7 +13,13 @@ from typing import Any
 
 from ces.shared.artifact_paths import project_artifact_exists, resolve_project_artifact_path
 from ces.shared.secrets import scrub_secrets_recursive
-from ces.verification.completion_contract import BehaviorDelta, CompletionContract, RiskTrack, VerificationCommand
+from ces.verification.completion_contract import (
+    BehaviorDelta,
+    CompletionContract,
+    RiskTrack,
+    VerificationCommand,
+    verification_commands_for_contract,
+)
 from ces.verification.proof_binding import proof_binding_hash
 
 _SCHEMA_VERSION = "1.0"
@@ -80,6 +86,8 @@ class ProofCardReport:
         command_lines = _bullet(
             f"`{command['command']}` — {command['kind']} / {command['id']}" for command in payload["commands_run"]
         )
+        warnings = payload["review_summary"].get("reality_boundary_warnings", [])
+        warning_lines = ["", "## Reality Boundary warnings", "", *_bullet(warnings)] if warnings else []
         return (
             "\n".join(
                 [
@@ -107,6 +115,7 @@ class ProofCardReport:
                     f"Risk track: {payload['review_summary']['risk_track']}",
                     f"Risk evidence: {payload['review_summary']['risk_evidence']}",
                     f"Evidence provenance: {_evidence_provenance_markdown_line(payload['evidence_provenance'])}",
+                    *warning_lines,
                     "Next steps:",
                     *_bullet(payload["review_summary"]["next_steps"]),
                     "",
@@ -145,6 +154,8 @@ def build_proof_card(project_root: str | Path) -> ProofCardReport:
     verification = _load_latest_verification(root)
     verification_fresh = _verification_is_fresh(root, contract_path, verification)
     binding_status = _proof_binding_status(contract, verification)
+    changed_files = _changed_files(root)
+    reality_boundary_warnings = _reality_boundary_warnings(contract, changed_files)
     missing = _missing_required_artifacts(root, contract, verification)
     behavior_delta = _behavior_delta(contract, execution_contract)
     risk_track = contract.risk_track if contract else RiskTrack()
@@ -196,6 +207,7 @@ def build_proof_card(project_root: str | Path) -> ProofCardReport:
         behavior_delta=behavior_delta,
         risk_track=risk_track,
         binding_status=binding_status,
+        reality_boundary_warnings=reality_boundary_warnings,
     )
     semantic_review = _semantic_review_summary(root)
     verification_evidence_class = _verification_evidence_class(
@@ -211,9 +223,9 @@ def build_proof_card(project_root: str | Path) -> ProofCardReport:
         proof_status=proof_status,
         approval_safety=approval_safety,
         ship_recommendation=recommendation,
-        changed_files=_changed_files(root),
+        changed_files=changed_files,
         commands_run=_commands_run(verification, evidence_class=verification_evidence_class),
-        verification_commands=contract.inferred_commands if contract else (),
+        verification_commands=verification_commands_for_contract(contract) if contract else (),
         evidence_provenance=_evidence_provenance(
             contract,
             verification,
@@ -271,8 +283,8 @@ def _unproven_areas(
     areas: list[str] = []
     if missing:
         areas.append("Required beginner handoff artifacts are incomplete.")
-    if not contract.inferred_commands:
-        areas.append("No inferred verification commands are recorded.")
+    if not verification_commands_for_contract(contract):
+        areas.append("No verification commands are recorded.")
     if verification is None:
         areas.append("No persisted verification run found; run `ces verify --json` before treating this as proof.")
     elif not _verification_passed(verification):
@@ -369,6 +381,68 @@ def _approval_safety(
     return "needs-evidence"
 
 
+def _reality_boundary_warnings(contract: CompletionContract | None, changed_files: tuple[str, ...]) -> tuple[str, ...]:
+    """Return warn-only evidence when changed files touch protected reality-boundary paths."""
+
+    if contract is None or not changed_files:
+        return ()
+    warnings: list[str] = []
+    changed = tuple(_normalize_reality_boundary_path(path) for path in changed_files if path.strip())
+    for surface in contract.reality_boundary.protected_surfaces:
+        protected_candidates = _reality_boundary_path_candidates(surface.path)
+        if not protected_candidates:
+            continue
+        for path in changed:
+            if _reality_boundary_path_matches(path, protected_candidates):
+                warnings.append(f"Protected reality-boundary surface changed: {path}.")
+    denied_candidates = tuple(
+        candidate
+        for denied_path in contract.reality_boundary.denied_test_paths
+        for candidate in _reality_boundary_path_candidates(denied_path)
+    )
+    for path in changed:
+        if _reality_boundary_path_matches(path, denied_candidates):
+            warnings.append(f"Denied reality-boundary test path changed: {path}.")
+    return tuple(dict.fromkeys(scrub_secrets_recursive(warnings)))
+
+
+def _normalize_reality_boundary_path(path: str) -> str:
+    """Return a stable POSIX-ish path for reality-boundary path comparisons."""
+
+    normalized = path.strip().replace("\\", "/")
+    while normalized.startswith("./"):
+        normalized = normalized[2:]
+    parts: list[str] = []
+    absolute = normalized.startswith("/")
+    for part in normalized.split("/"):
+        if part in {"", "."}:
+            continue
+        if part == "..":
+            if parts:
+                parts.pop()
+            continue
+        parts.append(part)
+    joined = "/".join(parts).rstrip("/")
+    return f"/{joined}" if absolute and joined else joined
+
+
+def _reality_boundary_path_candidates(path: str) -> tuple[str, ...]:
+    if path.strip() in {".", "./", "/"}:
+        return ("",)
+    normalized = _normalize_reality_boundary_path(path)
+    if normalized in {"", "."}:
+        return ("",)
+    candidates = [normalized.lstrip("/")]
+    if normalized.startswith("/"):
+        parts = normalized.strip("/").split("/")
+        candidates.extend("/".join(parts[index:]) for index in range(1, len(parts)))
+    return tuple(dict.fromkeys(candidate for candidate in candidates if candidate))
+
+
+def _reality_boundary_path_matches(path: str, candidates: tuple[str, ...]) -> bool:
+    return any(candidate in {"", path} or path.startswith(f"{candidate}/") for candidate in candidates)
+
+
 def _review_summary(
     *,
     contract: CompletionContract | None,
@@ -381,6 +455,7 @@ def _review_summary(
     behavior_delta: BehaviorDelta,
     risk_track: RiskTrack,
     binding_status: str,
+    reality_boundary_warnings: tuple[str, ...] = (),
 ) -> dict[str, Any]:
     """Return reviewer-facing decision metadata for the proof card."""
 
@@ -395,7 +470,13 @@ def _review_summary(
         "behavior_delta_coverage": _behavior_delta_coverage(behavior_delta),
         "risk_track": risk_track.tier,
         "risk_evidence": _risk_evidence_coverage(risk_track, missing),
-        "next_steps": _review_next_steps(proof_status, approval_safety, behavior_delta=behavior_delta),
+        "reality_boundary_warnings": list(reality_boundary_warnings),
+        "next_steps": _review_next_steps(
+            proof_status,
+            approval_safety,
+            behavior_delta=behavior_delta,
+            reality_boundary_warnings=reality_boundary_warnings,
+        ),
     }
 
 
@@ -439,7 +520,7 @@ def _freshness_label(
 def _command_coverage(contract: CompletionContract | None, verification: dict[str, Any] | None) -> str:
     if contract is None:
         return "0/0 required commands verified"
-    required = tuple(command for command in contract.inferred_commands if command.required)
+    required = tuple(command for command in verification_commands_for_contract(contract) if command.required)
     payload = _verification_payload(verification)
     commands = payload.get("commands", []) if payload else []
     verified = 0
@@ -482,7 +563,18 @@ def _risk_evidence_coverage(track: RiskTrack, missing: list[str]) -> str:
     return f"{present}/{len(track.required_artifacts)} risk artifacts present"
 
 
-def _review_next_steps(proof_status: str, approval_safety: str, *, behavior_delta: BehaviorDelta) -> list[str]:
+def _review_next_steps(
+    proof_status: str,
+    approval_safety: str,
+    *,
+    behavior_delta: BehaviorDelta,
+    reality_boundary_warnings: tuple[str, ...] = (),
+) -> list[str]:
+    if reality_boundary_warnings:
+        return [
+            "Review reality-boundary warnings before approval; rerun `ces verify --json` after intentional changes.",
+            "Regenerate `ces proof` before approval.",
+        ]
     if behavior_delta.unknown:
         return [
             "Resolve unresolved behavior ambiguity or attach explicit evidence for it, then rerun `ces verify --json`.",
@@ -611,7 +703,8 @@ def _verification_matches_contract(
         return False
     by_id = {command.get("id"): command for command in commands if isinstance(command, dict)}
     return all(
-        _actual_command_matches_expected(expected, by_id.get(expected.id)) for expected in contract.inferred_commands
+        _actual_command_matches_expected(expected, by_id.get(expected.id))
+        for expected in verification_commands_for_contract(contract)
     )
 
 
@@ -716,7 +809,7 @@ def _evidence_provenance(
     return {
         "verification": evidence_class,
         "commands": command_classes,
-        "planned_commands": len(contract.inferred_commands) if contract else 0,
+        "planned_commands": len(verification_commands_for_contract(contract)) if contract else 0,
         "planned_commands_matched": matched_count,
         "persisted_commands": persisted_count,
     }
@@ -728,7 +821,7 @@ def _matched_planned_command_count(contract: CompletionContract | None, commands
     by_id = {command.get("id"): command for command in commands if isinstance(command, dict)}
     return sum(
         1
-        for expected in contract.inferred_commands
+        for expected in verification_commands_for_contract(contract)
         if _actual_command_matches_expected(expected, by_id.get(expected.id))
     )
 

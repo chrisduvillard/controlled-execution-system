@@ -36,6 +36,11 @@ def test_verify_infers_contract_without_writing_by_default(tmp_path: Path, monke
     assert latest["verification"]["passed"] is True
     assert latest["proof_binding_hash"]
     assert latest["objective"] == "Independent verification"
+    assert latest["reality_boundary"]["predicate_hash"]
+    assert latest["reality_boundary"]["official_evaluators"][0]["id"]
+    assert "command" not in latest["reality_boundary"]["official_evaluators"][0]
+    assert "success_predicates" not in latest["reality_boundary"]
+    assert latest["reality_boundary"]["protected_surfaces"]
     assert not (tmp_path / ".ces" / "completion-contract.json").exists()
 
 
@@ -80,6 +85,44 @@ def test_verify_writes_inferred_contract_when_requested(tmp_path: Path, monkeypa
     assert contract["proof_binding_hash"] == payload["proof_binding_hash"]
 
 
+def test_verify_write_contract_preserves_binding_hash_after_reload_for_secret_like_boundary(
+    tmp_path: Path, monkeypatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / ".ces").mkdir()
+    (tmp_path / ".ces" / "config.yaml").write_text("project_id: demo\npreferred_runtime: codex\n")
+    (tmp_path / "pyproject.toml").write_text("[project]\nname='demo'\n", encoding="utf-8")
+    (tmp_path / "tests").mkdir()
+    (tmp_path / "tests" / "test_demo.py").write_text("def test_demo():\n    assert True\n", encoding="utf-8")
+
+    result = runner.invoke(_get_app(), ["verify", "--json", "--write-contract"])
+
+    assert result.exit_code == 0, result.stdout
+    payload = json.loads(result.stdout)
+    from ces.verification.completion_contract import CompletionContract
+    from ces.verification.proof_binding import proof_binding_hash
+
+    reloaded = CompletionContract.read(tmp_path / ".ces" / "completion-contract.json")
+    assert proof_binding_hash(reloaded) == payload["proof_binding_hash"]
+
+
+def test_verify_write_contract_uses_storage_contract_not_evidence_export(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / ".ces").mkdir()
+    (tmp_path / ".ces" / "config.yaml").write_text("project_id: demo\npreferred_runtime: codex\n")
+    (tmp_path / "pyproject.toml").write_text("[project]\nname='demo'\n", encoding="utf-8")
+    (tmp_path / "tests").mkdir()
+    (tmp_path / "tests" / "test_demo.py").write_text("def test_demo():\n    assert True\n", encoding="utf-8")
+
+    result = runner.invoke(_get_app(), ["verify", "--json", "--write-contract"])
+
+    assert result.exit_code == 0, result.stdout
+    stored = json.loads((tmp_path / ".ces" / "completion-contract.json").read_text(encoding="utf-8"))
+    evaluator = stored["reality_boundary"]["official_evaluators"][0]
+    assert evaluator["command"]
+    assert evaluator["command_sha256"]
+
+
 def test_verify_accepts_project_root(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.chdir(tmp_path)
     project = tmp_path / "project"
@@ -108,6 +151,53 @@ def test_verify_json_exits_nonzero_when_no_commands_are_inferred(tmp_path: Path,
     payload = json.loads(result.stdout)
     assert payload["verification"]["passed"] is False
     assert payload["verification"]["commands"] == []
+
+
+def test_verify_runs_reality_boundary_official_evaluators_instead_of_weakened_inferred_commands(
+    tmp_path: Path, monkeypatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / ".ces").mkdir()
+    (tmp_path / ".ces" / "completion-contract.json").write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "request": "Do not let inferred commands bypass the official evaluator",
+                "project_type": "unknown",
+                "acceptance_criteria": [],
+                "inferred_commands": [
+                    {
+                        "id": "smoke",
+                        "kind": "smoke",
+                        "command": "true",
+                        "expected_exit_codes": [0],
+                    }
+                ],
+                "runtime": {"name": "manual"},
+                "reality_boundary": {
+                    "official_evaluators": [
+                        {
+                            "id": "official-smoke",
+                            "command_id": "official-smoke",
+                            "kind": "smoke",
+                            "command": f'{sys.executable} -c "import sys; sys.exit(99)"',
+                            "expected_exit_codes": [0],
+                        }
+                    ]
+                },
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    result = runner.invoke(_get_app(), ["verify", "--json"])
+
+    assert result.exit_code == 1
+    payload = json.loads(result.stdout)
+    assert payload["verification"]["passed"] is False
+    assert payload["verification"]["commands"][0]["id"] == "official-smoke"
+    assert payload["verification"]["commands"][0]["exit_code"] == 99
 
 
 def test_verify_json_scrubs_secret_like_objective_in_latest_evidence(tmp_path: Path, monkeypatch) -> None:
@@ -143,6 +233,67 @@ def test_verify_json_scrubs_secret_like_objective_in_latest_evidence(tmp_path: P
     assert payload["objective"] == "Verify OPENAI_API_KEY=<REDACTED> stays hidden"
     latest = json.loads((tmp_path / ".ces" / "latest-verification.json").read_text(encoding="utf-8"))
     assert latest["objective"] == "Verify OPENAI_API_KEY=<REDACTED> stays hidden"
+
+
+def test_verify_latest_reality_boundary_metadata_omits_raw_private_boundary_material(
+    tmp_path: Path, monkeypatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / ".ces").mkdir()
+    private_root = tmp_path / "private" / "project"
+    (tmp_path / ".ces" / "completion-contract.json").write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "request": "Verify private boundary material stays hidden",
+                "project_type": "unknown",
+                "acceptance_criteria": [],
+                "inferred_commands": [
+                    {
+                        "id": "smoke",
+                        "kind": "smoke",
+                        "command": "true",
+                        "expected_exit_codes": [0],
+                    }
+                ],
+                "runtime": {"name": "manual"},
+                "reality_boundary": {
+                    "contract_version": 1,
+                    "success_predicates": [{"id": "AC-001", "text": "private acceptance detail"}],
+                    "official_evaluators": [
+                        {
+                            "id": "VC-001",
+                            "command_id": "smoke",
+                            "kind": "smoke",
+                            "command": "true",
+                            "cwd": ".",
+                            "expected_exit_codes": [0],
+                        }
+                    ],
+                    "protected_surfaces": [
+                        {"path": str(private_root / "tests" / "private_flow.py"), "reason": "private reason"}
+                    ],
+                    "mutable_test_policy": "warn",
+                    "allowed_test_paths": [str(private_root / "tests")],
+                    "denied_test_paths": [str(private_root / "tests" / "private_flow.py")],
+                    "predicate_hash": "abc123",
+                },
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    result = runner.invoke(_get_app(), ["verify", "--json"])
+
+    assert result.exit_code == 0, result.stdout
+    latest = json.loads((tmp_path / ".ces" / "latest-verification.json").read_text(encoding="utf-8"))
+    exported = json.dumps(latest["reality_boundary"])
+    assert "private acceptance detail" not in exported
+    assert "uv run pytest tests/private_flow.py -q" not in exported
+    assert str(private_root) not in exported
+    assert "private reason" not in exported
+    assert latest["reality_boundary"]["official_evaluators"][0]["command_sha256"]
 
 
 def test_verify_refuses_to_write_latest_evidence_through_symlinked_ces_dir(tmp_path: Path, monkeypatch) -> None:

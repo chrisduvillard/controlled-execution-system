@@ -142,3 +142,14 @@ def test_entry_docs_explain_zero_argument_help_front_door() -> None:
     for text in (readme, quickstart):
         assert "Run `ces` or `ces --help` to print the Start Here guide and command reference." in text
         assert "ces --help" in text
+
+
+def test_readme_explains_reality_boundary_proof_contract() -> None:
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+
+    assert "Reality Boundary" in readme
+    assert "success predicates" in readme
+    assert "official evaluators" in readme
+    assert "proof binding" in readme
+    assert "protected surfaces" in readme
+    assert "Reality Boundary metadata omits raw commands, local paths, and secret-like values" in readme
