@@ -32,11 +32,11 @@ dependencies = [
     # class creation time, breaking minimal installed CLI imports.
     "python-statemachine>=3.0.0,<3.2",
     "cryptography>=46.0.7,<50",
-    "structlog>=25.5.0,<26",
+    "structlog>=25.5.0,<27",
     # Typer 0.26 vendors Click internally, changing exception and test-runner
     # contracts that CES' JSON error wrapper and CLI tests rely on. Re-evaluate
     # before widening.
-    "typer>=0.24.1,<0.26",
+    "typer>=0.24.1,<0.27",
     "click>=8.3.2,<9",
     "rich>=14.1.0,<16",
 ]
